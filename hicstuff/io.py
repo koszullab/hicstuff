@@ -908,7 +908,7 @@ def get_hic_format(mat):
     str :
         Hi-C format string. One of graal, bg2, cool
     """
-    if mat.endswith(".cool"):
+    if mat.endswith(".cool") or mat.count('.mcool::/') == 1:
         hic_format = "cool"
     else:
         # Use the first line to determine COO / bg2 format
