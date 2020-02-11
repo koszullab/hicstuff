@@ -422,16 +422,14 @@ class View(AbstractCommand):
         self.vmax = np.percentile(binned_map.data, self.perc_vmax)
         # ZOOM REGION
         if self.args["--region"]:
-            if not self.args["--frags"]:
+            if self.frags is None:
                 logger.error(
                     "A fragment file must be provided to subset "
                     "genomic regions. See hicstuff view --help"
                 )
                 sys.exit(1)
             # Load chromosomes and positions from fragments list
-            reg_pos = pd.read_csv(
-                self.args["--frags"], delimiter="\t", usecols=(1, 2)
-            )
+            reg_pos = self.frags.iloc[:, [1, 2]]
             # Readjust bin coords post binning
             if self.binning:
                 # Fixed genomic bins
