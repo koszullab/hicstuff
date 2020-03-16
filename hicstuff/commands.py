@@ -308,7 +308,7 @@ class View(AbstractCommand):
 
     usage:
         view [--binning=1] [--despeckle] [--frags FILE] [--trim INT] [--n-mad FLOAT]
-             [--normalize] [--max=99] [--output=IMG] [--cmap=CMAP] [--dpi=INT]
+             [--normalize] [--min=0] [--max=99%] [--output=IMG] [--cmap=CMAP] [--dpi=INT]
              [--transform=FUN] [--circular] [--region=STR] <contact_map> [<contact_map2>]
 
     arguments:
@@ -337,10 +337,14 @@ class View(AbstractCommand):
         -T, --transform=FUN              Apply a mathematical transformation to pixel values 
                                          to improve visibility of long range signals. Possible
                                          values are: log2, log10, ln, sqrt, exp0.2.
-        -m, --max=INT                    Saturation threshold. Maximum pixel
-                                         value is set to this percentile
-                                         [default: 99].
-        -N, --n-mad=INT                 Number of median absolute deviations (MAD) from the median
+        -M, --max=INT                    Saturation threshold. Maximum pixel
+                                         value is set to this number. Can be
+                                         followed by % to use a percentile of
+                                         nonzero pixels in the contact
+                                         map. [default: 99%]
+        -m, --min=INT                    Minimum of the colorscale, works
+                                         identically to --max. [default: 0]
+        -N, --n-mad=INT                  Number of median absolute deviations (MAD) from the median
                                          of log bin sums allowed to keep bins in the normalization
                                          procedure [default: 3].
         -n, --normalize                  Should ICE normalization be performed
@@ -419,7 +423,6 @@ class View(AbstractCommand):
                 binned_map, norm="ICE", n_mad=float(self.args["--n-mad"])
             )
 
-        self.vmax = np.percentile(binned_map.data, self.perc_vmax)
         # ZOOM REGION
         if self.args["--region"]:
             if self.frags is None:
@@ -492,7 +495,6 @@ class View(AbstractCommand):
                 "another divergent colormap if you wish."
             )
             cmap = "seismic"
-        self.perc_vmax = float(self.args["--max"])
         self.bp_unit = False
         bin_str = self.args["--binning"].upper()
         self.symmetric = True
@@ -554,15 +556,34 @@ class View(AbstractCommand):
                 )
             else:
                 dense_map = processed_map.toarray()
+
+            def set_v(v, mat):
+                if "%" in v:
+                    try:
+                        valid_pixels = (mat > 0) & (np.isfinite(mat))
+                        val = np.percentile(
+                            mat[valid_pixels],
+                            float(v.strip("%"))
+                        )
+                    # No nonzero / finite value
+                    except IndexError:
+                        val = 0
+                else:
+                    val = float(v)
+                return val
+
             dense_map = dense_map.astype(float)
-            self.vmin = 0
+            self.vmax = set_v(self.args["--max"], dense_map)
+            self.vmin = set_v(self.args["--min"], dense_map)
             if self.args["<contact_map2>"]:
                 self.vmin, self.vmax = -2, 2
             # Log transform the map and the colorscale limits if needed
             if transform:
                 dense_map = self.data_transform(dense_map, transform)
-                self.vmin = np.percentile(dense_map[np.isfinite(dense_map)], 1)
-                self.vmax = self.data_transform(self.vmax, transform)
+                #self.vmin = np.percentile(dense_map[np.isfinite(dense_map)], 1)
+                #self.vmax = self.data_transform(self.vmax, transform)
+                self.vmax = set_v(self.args["--max"], dense_map)
+                self.vmin = set_v(self.args["--min"], dense_map)
             else:
                 # Set 0 values in matrix to NA
                 dense_map[dense_map == 0] = np.inf
