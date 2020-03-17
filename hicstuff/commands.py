@@ -319,9 +319,9 @@ class View(AbstractCommand):
 
 
     options:
-        -b, --binning=INT[bp|kb|Mb|Gb]   Subsampling factor or fix value in
-                                         basepairs to use for binning
-                                         [default: 1].
+        -b, --binning=INT[bp|kb|Mb|Gb]   Rebin the matrix. If no unit is given, bins will
+                                         be merged by groups of INT. If a unit is given,
+                                         bins of that size will be generated. [default: 1]
         -c, --cmap=CMAP                  The name of a matplotlib colormap to
                                          use for the matrix. [default: Reds]
         -C, --circular                   Use if the genome is circular.
