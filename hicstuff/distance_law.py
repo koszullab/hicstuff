@@ -15,12 +15,12 @@ from hicstuff.log import logger
 
 
 def export_distance_law(xs, ps, names, out_dir=None):
-    """ Export the x(s) and p(s) from two list of numpy.ndarrays to a table in txt 
-    file with three columns separated by a tabulation. The first column
-    contains the x(s), the second the p(s) and the third the name of the arm or 
-    chromosome. The file is createin the directory given by outdir or the 
+    """ Export the x(s) and p(s) from two list of numpy.ndarrays to a table
+    in txt file with three columns separated by a tabulation. The first column
+    contains the x(s), the second the p(s) and the third the name of the arm or
+    chromosome. The file is createin the directory given by outdir or the
     current directory if no directory given.
-    
+
     Parameters
     ----------
     xs : list of numpy.ndarray
@@ -31,15 +31,15 @@ def export_distance_law(xs, ps, names, out_dir=None):
         List containing the names of the chromosomes/arms/conditions of the p(s)
         values given.
     out_dir : str or None
-        Path where output files should be written. Current directory by 
+        Path where output files should be written. Current directory by
         default.
-    
+
     Return
     ------
     txt file:
          File with three coulumns separated by a tabulation. The first column
-         contains the x(s), the second the p(s) and the third the name of the arm  
-         or chromosome. The file is createin the directory given by outdir or 
+         contains the x(s), the second the p(s) and the third the name of the arm
+         or chromosome. The file is createin the directory given by outdir or
          the current directory if no directory given.
     """
     # Give the current directory as out_dir if no out_dir is given.
@@ -66,24 +66,24 @@ def export_distance_law(xs, ps, names, out_dir=None):
 
 
 def import_distance_law(distance_law_file):
-    """ Import the table created by export_distance_law and return the list of 
+    """ Import the table created by export_distance_law and return the list of
     x(s) and p(s) in the order of the chromosomes.
-    
+
     Parameters
     ----------
     distance_law_file : string
-        Path to the file containing three columns : the x(s), the p(s), and the 
+        Path to the file containing three columns : the x(s), the p(s), and the
         chromosome/arm name.
-    
+
     Returns
     -------
     list of numpy.ndarray :
         The start coordinate of each bin one array per chromosome or arm.
     list of numpy.ndarray :
-        The distance law probabilities corresponding of the bins of the 
+        The distance law probabilities corresponding of the bins of the
         previous list.
     list of numpy.ndarray :
-        The names of the arms/chromosomes corresponding to the previous 
+        The names of the arms/chromosomes corresponding to the previous
         list.
     """
     file = pd.read_csv(
