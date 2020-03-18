@@ -948,9 +948,15 @@ def flexible_hic_saver(mat, out_prefix, frags=None, chroms=None, hic_fmt="graal"
         except AttributeError:
             logger.warning("Could not create info_contigs.txt from input files")
     elif hic_fmt == "cool":
+        frag_sizes = frags.end - frags.start
+        size_mad = np.median(frag_sizes - np.median(frag_sizes))
+        bin_type = 'variable' if size_mad else 'fixed'
         try:
             save_cool(
-                out_prefix + ".cool", mat, frags, metadata={"hicstuff": __version__}
+                out_prefix + ".cool",
+                mat,
+                frags,
+                metadata={"hicstuff": __version__, 'bin-type': bin_type}
             )
         except NameError:
             NameError("frags is required to save a cool file")
