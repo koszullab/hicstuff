@@ -948,7 +948,7 @@ def flexible_hic_saver(mat, out_prefix, frags=None, chroms=None, hic_fmt="graal"
         except AttributeError:
             logger.warning("Could not create info_contigs.txt from input files")
     elif hic_fmt == "cool":
-        frag_sizes = frags.end - frags.start
+        frag_sizes = frags.end_pos - frags.start_pos
         size_mad = np.median(frag_sizes - np.median(frag_sizes))
         bin_type = 'variable' if size_mad else 'fixed'
         try:
