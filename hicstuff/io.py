@@ -141,7 +141,10 @@ def save_sparse_matrix(s_mat, path):
     path : str
         File path where the matrix will be stored
     """
-    s_mat = s_mat.tocoo()
+    if s_mat.format != 'coo':
+        ValueError("Sparse matrix must be in coo format")
+    dtype = s_mat.dtype
+    fmt = "%i" if dtype == int else "%.10e"
     sparse_arr = np.vstack([s_mat.row, s_mat.col, s_mat.data]).T
 
     np.savetxt(
@@ -151,7 +154,7 @@ def save_sparse_matrix(s_mat, path):
             nrows=s_mat.shape[0], ncols=s_mat.shape[1], nonzero=s_mat.nnz
         ),
         comments="",
-        fmt="%i",
+        fmt=fmt,
         delimiter="\t",
     )
 
