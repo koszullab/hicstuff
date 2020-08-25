@@ -698,7 +698,7 @@ def normalize_dense(M, norm="SCN", order=1, iterations=3):
         s = norm(M)
 
     else:
-        print("Unknown norm. Returning input as fallback")
+        raise Exception('Unknown norm, please specify one of ("mirnylib", "SCN", "frag")')
 
     return (s + s.T) / 2
 
@@ -769,7 +769,7 @@ def normalize_sparse(M, norm="ICE", iterations=40, n_mad=3.0):
         r = norm(M)
 
     else:
-        logger.error("Unknown norm. Returning input as fallback")
+        raise Exception('Unknown norm, please specify one of ("ICE", "SCN")')
 
     return r
 
