@@ -1167,9 +1167,11 @@ class Distancelaw(AbstractCommand):
                                             logbins. These slices will be in basepairs unit.
                                             Default is 1.1.
         -c, --centromeres=FILE              Positions of the centromeres separated by
-                                            a space and in the same order than the 
-                                            chromosomes. Discordant with the circular
-                                            option.
+                                            a space and in the same order as the 
+                                            chromosomes. This allows to plot chromosomal arms
+                                            separately. Note this will only work with --pairs
+                                            input, as the distance law needs to be recomputed.
+                                            Incompatible with the circular option.
         -C, --circular                      Enable if the genome is circular. Discordant 
                                             with the centromeres option.
         -d, --dist-tbl=FILE1[,FILE2,...]    Directory to the file or files containing the 
