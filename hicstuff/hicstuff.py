@@ -630,7 +630,7 @@ def trim_sparse(M, n_mad=3, s_min=None, s_max=None):
     return N
 
 
-def normalize_dense(M, norm="SCN", order=1, iterations=3):
+def normalize_dense(M, norm="SCN", order=1, iterations=40):
     """Apply one of the many normalization types to input dense
     matrix. Will also apply any callable norms such as a user-made
     or a lambda function.
@@ -703,7 +703,7 @@ def normalize_dense(M, norm="SCN", order=1, iterations=3):
     return (s + s.T) / 2
 
 
-def normalize_sparse(M, norm="ICE", iterations=40, n_mad=3.0):
+def normalize_sparse(M, norm="SCN", iterations=40, n_mad=3.0):
     """Applies a normalization type to a sparse matrix.
 
     Parameters
