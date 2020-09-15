@@ -145,14 +145,17 @@ def test_get_distance_law():
 def test_normalize_distance_law():
     """Test function making the average of distance law."""
     # Test normal conditions.
-    normed_ps = hcdl.normalize_distance_law(test_xs, test_ps, 1000)
+    inf, sup = 1000, 20000
+    normed_ps = hcdl.normalize_distance_law(test_xs, test_ps, inf)
     assert len(normed_ps) == 2
-    assert np.isclose(sum(normed_ps[0]), 5.4540, rtol=0.0001) and np.isclose(
-        sum(normed_ps[1]), 27.1305, rtol=0.0001
-    )
-    assert np.isclose(np.std(normed_ps[0]), 0.1449, rtol=0.001) and np.isclose(
-        np.std(normed_ps[1]), 1.9520, rtol=0.001
-    )
+    for x, p in zip(test_xs, normed_ps):
+        inf_idx = np.searchsorted(x, inf)
+        assert np.isclose(sum(p[inf_idx:]), 1.0, rtol=0.05) 
+
+    normed_ps = hcdl.normalize_distance_law(test_xs, test_ps, inf, sup)
+    for x, p in zip(test_xs, normed_ps):
+        inf_idx, sup_idx = np.searchsorted(x, [inf, sup])
+        assert np.isclose(sum(p[inf_idx:sup_idx]), 1.0, rtol=0.05)
     # Test sanity check of the size of ps and xs
     test = False
     try:

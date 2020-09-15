@@ -1306,7 +1306,7 @@ class Distancelaw(AbstractCommand):
             xs = xs[0]
             ps = ps[0]
         # Normalize and make the derivative
-        ps = hcdl.normalize_distance_law(xs, ps, inf)
+        ps = hcdl.normalize_distance_law(xs, ps, inf, arm_sup)
         # Gave new names for the different samples.
         if self.args["--labels"]:
             labels = self.args["--labels"]

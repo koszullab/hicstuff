@@ -535,12 +535,12 @@ def get_distance_law(
     return xs, ps, names
 
 
-def normalize_distance_law(xs, ps, inf=3000):
+def normalize_distance_law(xs, ps, inf=3000, sup=None):
     """Normalize the distance in order to have the sum of the ps values between
     'inf' (default value is 3kb) until the end of the array equal to one and
     limit the effect of coverage between two conditions/chromosomes/arms when
     you compare them together. If we have a list of ps, it will normalize until
-    the length of the shorter object.
+    the length of the shorter object or the value of sup, whichever is smaller.
 
     Parameters
     ----------
@@ -550,7 +550,9 @@ def normalize_distance_law(xs, ps, inf=3000):
         Average ps or list of ps of the chromosomes/arms. xs and ps have to 
         have the same shape.
     inf : integer
-        Inferior value of the intervall on which, the normalization is making.
+        Inferior value of the interval on which, the normalization is applied.
+    sup : integer
+        Superior value of the interval on which, the normalization is applied.
 
     Returns
     -------
@@ -561,26 +563,28 @@ def normalize_distance_law(xs, ps, inf=3000):
     if np.shape(xs) != np.shape(ps):
         logger.error("xs and ps should have the same dimension.")
         sys.exit(1)
-    # Take the min of xs as superior limit to choose the limits of the
-    # interval use for the normalisation
+    # Define the length of shortest chromosomes as a lower bound for the sup boundary
     min_xs = len(min(xs, key=len))
     normed_ps = [None] * len(ps)
-    for j, my_list in enumerate(ps):
+    if sup is None:
+        sup = np.inf
+    for chrom_id, chrom_ps in enumerate(ps):
         # Iterate on the different ps to normalize each of theme separately
-        sum_values = 0
+        chrom_sum = 0
         # Change the last value to have something continuous because the last
-        # one is much bigger.
-        my_list[-1] = my_list[-2]
-        for i, value in enumerate(my_list):
-            # Keep only the value between 1kb and the length of the shorter
-            # object given in the list
-            if (xs[j][i] > inf) and (i < min_xs):
-                sum_values += value
-        if sum_values == 0:
-            sum_values += 1
+        # one is much bigger (computed on matrix corner = triangle instead of trapezoid).
+        chrom_ps[-1] = chrom_ps[-2]
+        for bin_id, bin_value in enumerate(chrom_ps):
+            # Compute normalization factor based on values between inf and sup
+            # Sup will be whatever is smaller between user-provided sup and length of
+            # the shortest chromosome
+            if (xs[chrom_id][bin_id] > inf) and (xs[chrom_id][bin_id] < sup) and (bin_id < min_xs):
+                chrom_sum += bin_value
+        if chrom_sum == 0:
+            chrom_sum += 1
             logger.warning("No values of p(s) in one segment")
         # Make the normalisation
-        normed_ps[j] = np.array(ps[j]) / sum_values
+        normed_ps[chrom_id] = np.array(ps[chrom_id]) / chrom_sum
     return normed_ps
 
 
