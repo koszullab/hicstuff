@@ -25,9 +25,10 @@ import string
 import collections
 import itertools
 import warnings
+import functools
 from scipy.sparse import coo_matrix, csr_matrix, lil_matrix
 from scipy.sparse.linalg import eigsh
-from scipy.linalg import eig
+from scipy.linalg import eig, toeplitz
 import scipy.sparse as sparse
 from scipy.sparse import issparse
 import copy
@@ -364,10 +365,10 @@ def bin_bp_sparse(M, positions, bin_len=10000):
     unique_bins = np.unique(frags, axis=0)
     # Check if some bins are missing (happens if a single
     # fragment should contain multiple bins)
-    bins_jumps =  (unique_bins[1:, 1] - unique_bins[:-1, 1]) - 1
+    bins_jumps = (unique_bins[1:, 1] - unique_bins[:-1, 1]) - 1
     # Compute number of missing bins to add (no restriction site in bin)
     missing_bins = np.where(bins_jumps > 0)[0]
-    n_missing_bins = np.sum(bins_jumps[bins_jumps>0])
+    n_missing_bins = np.sum(bins_jumps[bins_jumps > 0])
     # Compute correct number of bins to create
     n_bins = unique_bins.shape[0] + n_missing_bins
     # Initialise output fragment list (post binning)
@@ -375,7 +376,7 @@ def bin_bp_sparse(M, positions, bin_len=10000):
     row = copy.copy(r.row)
     col = copy.copy(r.col)
     # unique_bin_No: Number of bins w/ unique restriction fragments
-    # actual_bin_No: Number of bins in total (including missing ones 
+    # actual_bin_No: Number of bins in total (including missing ones
     # sharing the same fragment)
     unique_bin_No, actual_bin_No = 0, 0
     # Match empty missing bins added with the original bin sharing
@@ -391,8 +392,12 @@ def bin_bp_sparse(M, positions, bin_len=10000):
         bin_frags = list(bin_frags)
         first_frag, last_frag = bin_frags[0], bin_frags[-1] + 1
         # Pool row/col number by bin
-        row[np.where((r.row >= first_frag) & (r.row < last_frag))] = actual_bin_No
-        col[np.where((r.col >= first_frag) & (r.col < last_frag))] = actual_bin_No
+        row[
+            np.where((r.row >= first_frag) & (r.row < last_frag))
+        ] = actual_bin_No
+        col[
+            np.where((r.col >= first_frag) & (r.col < last_frag))
+        ] = actual_bin_No
         # Get bin position in basepair
         out_pos[actual_bin_No] = coords[1] * bin_len
         # Multiple bins to create in same fragment (rare)
@@ -407,18 +412,17 @@ def bin_bp_sparse(M, positions, bin_len=10000):
                 actual_bin_No += 1
                 # Remember bin coords and #bin /frag to fill contacts later
                 added_bins[actual_bin_No] = orig_bin
-                bin_per_frag[orig_bin] = bin_per_frag.get(
-                    unique_bin_No,
-                    0
-                ) + 1
+                bin_per_frag[orig_bin] = bin_per_frag.get(unique_bin_No, 0) + 1
                 out_pos[actual_bin_No] = coords[1] * bin_len + curr_shift
         unique_bin_No += 1
         actual_bin_No += 1
     row[np.where(r.row >= last_frag)] = actual_bin_No - 1
     col[np.where(r.col >= last_frag)] = actual_bin_No - 1
-    # Sum data of duplicate row/col pairs 
+    # Sum data of duplicate row/col pairs
     # (i.e. combine contacts of all fragments in same bin)
-    binned = coo_matrix((r.data, (row, col)), shape=(actual_bin_No, actual_bin_No))
+    binned = coo_matrix(
+        (r.data, (row, col)), shape=(actual_bin_No, actual_bin_No)
+    )
     binned.sum_duplicates()
     binned.eliminate_zeros()
 
@@ -494,7 +498,7 @@ def mad(M, axis=None):
             dist = r.data
         else:
             dist = M
-        
+
     else:
         if axis < 0:
             axis += 2
@@ -538,7 +542,7 @@ def get_good_bins(M, n_mad=2.0, s_min=None, s_max=None, symmetric=False):
     r = M.tocoo()
     with np.errstate(divide="ignore", invalid="ignore"):
         bins = sum_mat_bins(r)
-        bins[bins==0] = 1
+        bins[bins == 0] = 1
         norm = np.log10(bins)
         median = np.median(norm)
         sigma = 1.4826 * mad(norm)
@@ -554,6 +558,7 @@ def get_good_bins(M, n_mad=2.0, s_min=None, s_max=None, symmetric=False):
         filter_bins = norm > s_min
 
     return filter_bins
+
 
 def trim_dense(M, n_mad=3, s_min=None, s_max=None):
     """By default, return a matrix stripped of component
@@ -698,7 +703,9 @@ def normalize_dense(M, norm="SCN", order=1, iterations=40):
         s = norm(M)
 
     else:
-        raise Exception('Unknown norm, please specify one of ("mirnylib", "SCN", "frag")')
+        raise Exception(
+            'Unknown norm, please specify one of ("mirnylib", "SCN", "frag")'
+        )
 
     return (s + s.T) / 2
 
@@ -794,6 +801,7 @@ def sum_mat_bins(mat):
     # Note: mat.sum returns a 'matrix' object. A1 extracts the 1D flat array
     # from the matrix
     return mat.sum(axis=0).A1 + mat.sum(axis=1).A1 - mat.diagonal(0)
+
 
 def GC_partial(portion: str):
     """Manually compute GC content percentage in a DNA string, taking
@@ -1331,16 +1339,14 @@ def subsample_contacts(M, n_contacts):
     cum_counts = np.cumsum(S)
     # Total number of contacts to sample
     tot_contacts = int(cum_counts[-1])
-    
+
     # Sample desired number of contacts from the range(0, n_contacts) array
     sampled_contacts = np.random.choice(
-        int(tot_contacts),
-        size=int(n_contacts),
-        replace=False
+        int(tot_contacts), size=int(n_contacts), replace=False
     )
-    
+
     # Get indices of sampled contacts in the cum_counts array
-    idx = np.searchsorted(cum_counts, sampled_contacts, side='right')
+    idx = np.searchsorted(cum_counts, sampled_contacts, side="right")
 
     # Bin those indices to the same dimensions as matrix data to get counts
     sampled_counts = np.bincount(idx, minlength=S.shape[0])
@@ -1351,7 +1357,10 @@ def subsample_contacts(M, n_contacts):
     sampled_rows = M.row[nnz_mask]
     sampled_cols = M.col[nnz_mask]
 
-    return coo_matrix((sampled_counts, (sampled_rows, sampled_cols)), shape=(M.shape[0], M.shape[1]))
+    return coo_matrix(
+        (sampled_counts, (sampled_rows, sampled_cols)),
+        shape=(M.shape[0], M.shape[1]),
+    )
 
 
 def shortest_path_interpolation(matrix, alpha=1, strict=True):
@@ -2143,3 +2152,58 @@ def split_matrix(M, contigs):
         l = len(chunk)
         yield M[index : index + l, index : index + l]
         index += l
+
+
+def distance_law(
+    size,
+    prefactor=10000,
+    gamma1=-0.5,
+    gamma2=-1.5,
+    inter=0.01,
+    transition=None,
+):
+    """Generate a theoretical matrix from the usual P(s) model with two
+    exponents for short-scale and large-scale modes and a sigmoid to represent
+    the transition inbetween.
+
+    Parameters
+    ----------
+    size : int 
+        Size of the matrix (which will be of shape (size, size))
+    prefactor : float
+        Prefactor that's analogous to the coverage, by default 10000
+    gamma1 : float, optional
+        Exponent for the short-scale mode, by default -0.5
+    gamma2 : float, optional
+        Exponent for the large-scale mode, by default -1.5
+    inter : float, optional
+        Value for inter-chromosomal contacts that also represents the minimum
+        value for intra-chromosomal contacts, by default 0.01
+    transition : int, optional
+        Coordinate of the transition between scale modes, by default 1/10 of
+        the size
+
+    Returns
+    -------
+    numpy.ndarray
+        A symmetrical Toeplitz matrix whose each diagonal represents a value of
+        the P(s) model
+    """
+
+    if transition is None:
+        transition = size // 10
+
+    def P(s, A=10000, gamma=-0.5, inter=0.01):
+        return np.fmax(inter, A * (s ** gamma))
+
+    P1 = functools.partial(P, gamma=gamma1)
+    P2 = functools.partial(P, gamma=gamma2)
+
+    def sigmoid(s, a=transition):  # ad hoc function to smoothen the transition
+        return 1.0 / (1 + np.exp(-(s - transition) / a))
+
+    s = np.arange(
+        1, size + 1
+    )  # Don't start from 0 to avoid weirdness and NaNs
+
+    return toeplitz((1 - sigmoid(s)) * P1(s) + sigmoid(s) * P2(s))
