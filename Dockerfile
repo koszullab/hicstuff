@@ -10,6 +10,7 @@ RUN conda config --add channels bioconda
 
 # Get 3rd party packages directly from conda
 RUN conda install -c conda-forge -y \
+    pip \
     bowtie2 \
     minimap2 \
     bwa \
