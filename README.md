@@ -348,3 +348,32 @@ To test the code, you can run:
 ```bash
 pytest --doctest-modules --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc hicstuff tests
 ```
+
+### Citation
+
+Please cite hicstuff using the official DOI as follows:
+
+Cyril Matthey-Doret, Lyam Baudry, Amaury Bignaud, Axel Cournac, Remi-Montagne, Nadège Guiglielmoni, Théo Foutel Rodier and Vittore F. Scolari. 2020. hicstuff: Simple library/pipeline to generate and handle Hi-C data . Zenodo. http://doi.org/10.5281/zenodo.4066363
+
+Bibtex entry:
+
+```
+@software{cyril_matthey_doret_2020_4066351,
+  author       = {Cyril Matthey-Doret and
+                  Lyam Baudry and
+                  Amaury Bignaud and
+                  Axel Cournac and
+                  Remi-Montagne and
+                  Nadège Guiglielmoni and
+                  Théo Foutel-Rodier and
+                  Vittore F. Scolari},
+  title        = {hicstuff: Simple library/pipeline to generate and handle Hi-C data },
+  month        = oct,
+  year         = 2020,
+  publisher    = {Zenodo},
+  version      = {v2.3.1},
+  doi          = {10.5281/zenodo.4066351},
+  url          = {http://doi.org/10.5281/zenodo.4066363}
+}
+```
+
