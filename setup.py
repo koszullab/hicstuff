@@ -30,7 +30,7 @@ name = "hicstuff"
 
 MAJOR = 2
 MINOR = 3
-MAINTENANCE = 0
+MAINTENANCE = 1
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "GPLv3"
@@ -50,7 +50,7 @@ with open("hicstuff/version.py", "w") as f:
 
 setup(
     name=name,
-    author="lyam.baudry@pasteur.fr",
+    author="cyril.matthey-doret@pasteur.fr",
     description=DESCRIPTION,
     long_description=LONG_DESCRIPTION,
     version=VERSION,
