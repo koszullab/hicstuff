@@ -59,8 +59,20 @@ import hicstuff.pipeline as hpi
 import hicstuff.distance_law as hcdl
 
 DIVERGENT_CMAPS = [
-            'PiYG', 'PRGn', 'BrBG', 'PuOr', 'RdGy', 'RdBu',
-            'RdYlBu', 'RdYlGn', 'Spectral', 'coolwarm', 'bwr', 'seismic']
+    "PiYG",
+    "PRGn",
+    "BrBG",
+    "PuOr",
+    "RdGy",
+    "RdBu",
+    "RdYlBu",
+    "RdYlGn",
+    "Spectral",
+    "coolwarm",
+    "bwr",
+    "seismic",
+]
+
 
 class AbstractCommand:
     """Abstract base command class
@@ -195,7 +207,7 @@ class Digest(AbstractCommand):
             self.args["--outdir"] = os.getcwd()
         # Create output directory if it does not exist
         if os.path.exists(self.args["--outdir"]):
-            if not self.args['--force']:
+            if not self.args["--force"]:
                 raise IOError(
                     "Output directory already exists. Use --force to overwrite"
                 )
@@ -399,6 +411,9 @@ class View(AbstractCommand):
                 )
 
             else:
+                # Note this is a basic binning procedure, chromosomes are
+                # not taken into account -> last few fragments of a chrom
+                # are merged with the first few of the next
                 binned_map = hcs.bin_sparse(
                     M=sparse_map, subsampling_factor=self.binning
                 )
@@ -459,6 +474,17 @@ class View(AbstractCommand):
                 # Subsample binning (group by N frags)
                 else:
                     reg_pos = reg_pos.iloc[:: self.binning, :]
+                    reg_pos = reg_pos.reset_index(drop=True)
+                    # Since matrix binning ignores chromosomes, we
+                    # have to do the same procedure with fragments
+                    # we just correct the coordinates to start at 0
+                    def shift_min(x):
+                        x[x == min(x)] = 0
+                        return x
+
+                    reg_pos.start_pos = reg_pos.groupby(
+                        "chrom", sort=False
+                    ).start_pos.apply(shift_min)
 
             region = self.args["--region"]
             if ";" in region:
@@ -483,12 +509,15 @@ class View(AbstractCommand):
         hic_fmt = hio.get_hic_format(input_map)
         cmap = self.args["--cmap"]
         # Switch to a divergent colormap for plotting ratios
-        if self.args["<contact_map2>"] is not None and cmap not in DIVERGENT_CMAPS:
+        if (
+            self.args["<contact_map2>"] is not None
+            and cmap not in DIVERGENT_CMAPS
+        ):
             # In case user specified a custom cmap incompatible with ratios
             if cmap != "Reds":
                 logger.warning(
-                            "You chose a non-divergent colormap. Valid divergent "
-                            "cmaps are:\n\t{}".format(' '.join(DIVERGENT_CMAPS))
+                    "You chose a non-divergent colormap. Valid divergent "
+                    "cmaps are:\n\t{}".format(" ".join(DIVERGENT_CMAPS))
                 )
             logger.info(
                 "Defaulting to seismic colormap for ratios. You can pick "
@@ -527,7 +556,8 @@ class View(AbstractCommand):
         if self.args["<contact_map2>"]:
             sparse_map2, _, _ = hio.flexible_hic_loader(
                 self.args["<contact_map2>"],
-                fragments_file=self.args["--frags"], quiet=True
+                fragments_file=self.args["--frags"],
+                quiet=True,
             )
             processed_map2 = self.process_matrix(sparse_map2)
             if sparse_map2.shape != sparse_map.shape:
@@ -562,8 +592,7 @@ class View(AbstractCommand):
                     try:
                         valid_pixels = (mat > 0) & (np.isfinite(mat))
                         val = np.percentile(
-                            mat[valid_pixels],
-                            float(v.strip("%"))
+                            mat[valid_pixels], float(v.strip("%"))
                         )
                     # No nonzero / finite value
                     except IndexError:
@@ -580,8 +609,8 @@ class View(AbstractCommand):
             # Log transform the map and the colorscale limits if needed
             if transform:
                 dense_map = self.data_transform(dense_map, transform)
-                #self.vmin = np.percentile(dense_map[np.isfinite(dense_map)], 1)
-                #self.vmax = self.data_transform(self.vmax, transform)
+                # self.vmin = np.percentile(dense_map[np.isfinite(dense_map)], 1)
+                # self.vmax = self.data_transform(self.vmax, transform)
                 self.vmax = set_v(self.args["--max"], dense_map)
                 self.vmin = set_v(self.args["--min"], dense_map)
             else:
@@ -947,13 +976,13 @@ class Rebin(AbstractCommand):
                 bin_ends = binning * bin_id + binning
                 # Do not allow bin ends to be larger than chrom size
                 try:
-                    chromsize = chromlist.length[chromlist.contig == chrom].values[
-                        0
-                    ]
+                    chromsize = chromlist.length[
+                        chromlist.contig == chrom
+                    ].values[0]
                 except AttributeError:
-                    chromsize = chromlist['length_kb'][chromlist.contig == chrom].values[
-                        0
-                    ]                    
+                    chromsize = chromlist["length_kb"][
+                        chromlist.contig == chrom
+                    ].values[0]
                 bin_ends[bin_ends > chromsize] = chromsize
                 frags.loc[frags.chrom == chrom, "end_pos"] = bin_ends
 
@@ -1045,7 +1074,11 @@ class Rebin(AbstractCommand):
         frags = frags.reindex(columns=col_ordered)
         # Write 3 binned output files
         hio.flexible_hic_saver(
-            hic_map, self.args["<out_prefix>"], frags=frags, chroms=chromlist, hic_fmt=hic_fmt
+            hic_map,
+            self.args["<out_prefix>"],
+            frags=frags,
+            chroms=chromlist,
+            hic_fmt=hic_fmt,
         )
 
 
@@ -1356,26 +1389,29 @@ class Missview(AbstractCommand):
     def execute(self):
         aligner = self.args["--aligner"]
         force = self.args["--force"]
-        genome = self.args['<genome>']
+        genome = self.args["<genome>"]
         out = self.args["<output>"]
-        resolution = parse_bin_str(self.args['--binning'])
-        read_len= int(self.args["--read-len"])
-        threads= int(self.args["--threads"])
-        tmp_dir = self.args['--tmpdir']
+        resolution = parse_bin_str(self.args["--binning"])
+        read_len = int(self.args["--read-len"])
+        threads = int(self.args["--threads"])
+        tmp_dir = self.args["--tmpdir"]
         if tmp_dir is None:
             tmp_dir = tempfile.TemporaryDirectory().name
         # Simulate reads and save into a fastq file
         phred = "F" * read_len
-        tmp_fq = join(tmp_dir, 'simulated_reads.fq')
-        tmp_bam = join(tmp_dir, 'simulated_reads.bam')
+        tmp_fq = join(tmp_dir, "simulated_reads.fq")
+        tmp_bam = join(tmp_dir, "simulated_reads.bam")
         self.check_output_path(tmp_fq, force=force)
-        logger.info("Simulating reads by splitting the genome into %i bp chunks", read_len)
-        with open(tmp_fq, 'w') as fq_handle:
-            for rec in SeqIO.parse(genome, 'fasta'):
+        logger.info(
+            "Simulating reads by splitting the genome into %i bp chunks",
+            read_len,
+        )
+        with open(tmp_fq, "w") as fq_handle:
+            for rec in SeqIO.parse(genome, "fasta"):
                 for i in range(len(rec.seq) - read_len):
-                        fq_handle.write('@NS_SIM_%s_%i\n' % (rec.id, i))
-                        fq_handle.write(str(rec.seq[i:i+read_len]))
-                        fq_handle.write('\n+\n' + phred + '\n')
+                    fq_handle.write("@NS_SIM_%s_%i\n" % (rec.id, i))
+                    fq_handle.write(str(rec.seq[i : i + read_len]))
+                    fq_handle.write("\n+\n" + phred + "\n")
         # Map reads to genome
         hpi.align_reads(
             tmp_fq,
@@ -1387,33 +1423,43 @@ class Missview(AbstractCommand):
         )
         # Sort alignments by name
         ps.sort(
-            "-@", str(threads), "-n", "-O", "BAM", "-o", tmp_bam + ".sorted", tmp_bam 
+            "-@",
+            str(threads),
+            "-n",
+            "-O",
+            "BAM",
+            "-o",
+            tmp_bam + ".sorted",
+            tmp_bam,
         )
-        shutil.move(tmp_bam+ ".sorted", tmp_bam)
+        shutil.move(tmp_bam + ".sorted", tmp_bam)
         # Run the standard pipeline with, using twice the forward reads.
         # This will generate a diagonal-only matrix
         hpi.full_pipeline(
-                genome,
-                tmp_bam,
-                tmp_bam,
-                start_stage='bam',
-                aligner=aligner,
-                enzyme=resolution,
-                force=force,
-                threads=threads,
-                out_dir=tmp_dir,
-                tmp_dir=tmp_dir
+            genome,
+            tmp_bam,
+            tmp_bam,
+            start_stage="bam",
+            aligner=aligner,
+            enzyme=resolution,
+            force=force,
+            threads=threads,
+            out_dir=tmp_dir,
+            tmp_dir=tmp_dir,
         )
         # Plot and save matrix
-        mat_path = join(tmp_dir, 'abs_fragments_contacts_weighted.txt')
+        mat_path = join(tmp_dir, "abs_fragments_contacts_weighted.txt")
         mat = hio.load_sparse_matrix(mat_path)
         # Check which bins are not at the median (i.e. drop in mapping rate)
         log_content = open(glob.glob(join(tmp_dir, "*.log"))[0]).read()
         # Get (int rounded) percentage of reads mapped and convert to proportion
-        prop_mapped = int(re.search(r'.*INFO :: ([0-9]*)% reads.*', log_content)[1]) / 100
+        prop_mapped = (
+            int(re.search(r".*INFO :: ([0-9]*)% reads.*", log_content)[1])
+            / 100
+        )
         logger.info(
-                "Bins with less than %s mapped reads will be considered undetectable",
-                str(100 * prop_mapped) + "%"
+            "Bins with less than %s mapped reads will be considered undetectable",
+            str(100 * prop_mapped) + "%",
         )
         unmappable = mat.diagonal(0) < prop_mapped * resolution
         mappable_mat = np.ones(mat.shape)
@@ -1422,17 +1468,18 @@ class Missview(AbstractCommand):
         hcv.plot_matrix(
             mappable_mat,
             filename=out,
-            title=" %.3f%% missing bins for %s \nwith %i bp reads at resolution %i." % (
+            title=" %.3f%% missing bins for %s \nwith %i bp reads at resolution %i."
+            % (
                 round(100 * sum(unmappable) / len(unmappable), 3),
                 os.path.basename(genome),
-                read_len, resolution,
-            ), 
+                read_len,
+                resolution,
+            ),
             dpi=600,
             vmax=2,
             cmap="Greys",
         )
         logger.info("Output image saved at %s.", out)
-        
 
 
 def parse_bin_str(bin_str):
@@ -1499,8 +1546,8 @@ def parse_ucsc(ucsc_str, bins):
         bins["id"] = bins.index
         chrombins = bins.loc[bins.iloc[:, 0] == chrom, :]
         start = max([start, 1])
-        start = max(chrombins.id[chrombins.iloc[:, 1] // start == 0])
-        end = max(chrombins.id[chrombins.iloc[:, 1] // end == 0])
+        start = max(chrombins.id[chrombins.iloc[:, 1] < start])
+        end = max(chrombins.id[chrombins.iloc[:, 1] < end])
     else:
         chrom = ucsc_str
         # Make absolute bin index (independent of chrom)
