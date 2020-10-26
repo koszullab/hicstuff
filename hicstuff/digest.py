@@ -154,7 +154,7 @@ def attribute_fragments(pairs_file, idx_pairs_file, restriction_table):
     Parameters
     ----------
     pairs_file: str
-        Path the the input pairs file. Consists of 7 white-space separated
+        Path the the input pairs file. Consists of 7 tab-separated
         columns: readID, chr1, pos1, chr2, pos2, strand1, strand2
     idx_pairs_file: str
         Path to the output indexed pairs file. Consists of 9 white space
