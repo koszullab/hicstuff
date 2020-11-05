@@ -243,7 +243,7 @@ def _check_cooler(fun):
                     fun.__name__
                 )
             )
-            raise
+            raise ImportError('The cooler package is required.')
         return fun(*args, **kwargs)
 
     return wrapped

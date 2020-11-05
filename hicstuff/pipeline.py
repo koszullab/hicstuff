@@ -157,7 +157,11 @@ def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30):
         # Remember if all reads in one bam file have been read
         exhausted = [False, False]
         # Iterate on both BAM simultaneously
+        end_regex = re.compile(r'/[12]$')
         for end1, end2 in itertools.zip_longest(forward, reverse):
+            # Remove end-specific suffix if any
+            end1.query_name = re.sub(end_regex, '', end1.query_name)
+            end2.query_name = re.sub(end_regex, '', end2.query_name)
             # Both file still have reads
             # Check if reads pass filter
             try:
