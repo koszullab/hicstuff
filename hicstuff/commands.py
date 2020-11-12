@@ -1114,7 +1114,7 @@ class Subsample(AbstractCommand):
         subsampled = hcs.subsample_contacts(mat, float(self.args["--prop"]))
         subsampled = subsampled.tocoo()
         hio.flexible_hic_saver(
-            subsampled, prefix, frags=frags, hic_fmt=hic_fmt
+            subsampled, prefix, frags=frags, hic_fmt=hic_fmt, quiet=True,
         )
 
 
