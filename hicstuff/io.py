@@ -243,7 +243,7 @@ def _check_cooler(fun):
                     fun.__name__
                 )
             )
-            raise
+            raise ImportError('The cooler package is required.')
         return fun(*args, **kwargs)
 
     return wrapped
@@ -980,7 +980,7 @@ def get_hic_format(mat):
 
 
 def flexible_hic_saver(
-    mat, out_prefix, frags=None, chroms=None, hic_fmt="graal"
+    mat, out_prefix, frags=None, chroms=None, hic_fmt="graal", quiet=False,
 ):
     """
     Saves objects to the desired Hi-C file format. 
@@ -1004,15 +1004,17 @@ def flexible_hic_saver(
         try:
             frags.to_csv(out_prefix + ".frag.tsv", sep="\t", index=False)
         except AttributeError:
-            logger.warning(
-                "Could not create fragments_list.txt from input files"
-            )
+            if not quiet:
+                logger.warning(
+                    "Could not create fragments_list.txt from input files"
+                )
         try:
             chroms.to_csv(out_prefix + ".chr.tsv", sep="\t", index=False)
         except AttributeError:
-            logger.warning(
-                "Could not create info_contigs.txt from input files"
-            )
+            if not quiet:
+                logger.warning(
+                    "Could not create info_contigs.txt from input files"
+                )
     elif hic_fmt == "cool":
         frag_sizes = frags.end_pos - frags.start_pos
         size_mad = np.median(frag_sizes - np.median(frag_sizes))
