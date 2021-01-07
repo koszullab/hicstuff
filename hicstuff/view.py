@@ -70,7 +70,7 @@ def sparse_to_dense(M, remove_diag=True):
 
 
 def plot_matrix(
-    array, filename=None, vmin=0, vmax=None, title=None, dpi=500, cmap="Reds",
+    array, ax=None, filename=None, vmin=0, vmax=None, title=None, dpi=500, cmap="Reds", chrom_starts=None
 ):
     """A function that performs all the tedious matplotlib
     magic to draw a 2D array with as few parameters and
@@ -82,6 +82,8 @@ def plot_matrix(
     ----------
     array : numpy.array
         The input (dense) matrix that must be plotted.
+    ax : matplotlib.AxesSubplot
+        An optional axis on which to draw the plot. Useful for multipanel images.
     filename : str
         The filename where the image should be stored. If None, the
         image is shown interactively.
@@ -96,6 +98,8 @@ def plot_matrix(
         The DPI (i.e. resolution in dots per inch) of the output image.
     cmap : str
         The name of the matplotlib colormap to use when plotting the matrix.
+    chrom_starts : numpy.array
+        Array of bin positions where to draw chromosome starts as dotted lines.
     """
 
     if vmax is None:
@@ -105,16 +109,32 @@ def plot_matrix(
     # plt.margins(0, 0)
     # plt.gca().xaxis.set_major_locator(plt.NullLocator())
     # plt.gca().yaxis.set_major_locator(plt.NullLocator())
-    plt.figure()
-    plt.imshow(array, vmin=vmin, vmax=vmax, cmap=cmap, interpolation="none")
+    im_kwargs = {'vmin': vmin, 'vmax': vmax, 'cmap': cmap, 'interpolation': "none"}
+    li_kwargs = {'ls': ':', 'alpha': 0.5, 'c': 'black'}
+    if ax is None:
+        plt.figure()
+        plt.imshow(array, **im_kwargs)
+        plt.colorbar()
+        plt.axis("off")
+    else:
+        ax.imshow(array, **im_kwargs)
+
+    if chrom_starts is not None:
+        targ = plt if ax is None else ax
+        for pos in chrom_starts:
+            targ.axvline(pos, **li_kwargs)
+            targ.axhline(pos, **li_kwargs)
+    
     if title is not None:
-        plt.title(title)
-    plt.colorbar()
-    plt.axis("off")
+        if ax is None:
+            plt.title(title)
+        else:
+            ax.set_title(title)
     if filename:
         plt.savefig(filename, bbox_inches="tight", pad_inches=0.0, dpi=dpi)
     else:
-        plt.show()
+        if ax is None:
+            plt.show()
 
 
 def normalize(M, norm="SCN"):
