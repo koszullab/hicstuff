@@ -1070,13 +1070,16 @@ class Rebin(AbstractCommand):
         positions.reset_index(inplace=True)
         # Compute mean for all added features in each index bin
         # Normally only other feature is GC content
-        features = frags.agg("mean")
-        features.reset_index(inplace=True)
-        # set new bins positions
-        frags = features
-        frags["start_pos"] = 0
-        frags["end_pos"] = 0
-        frags.loc[:, positions.columns] = positions
+        try:
+            features = frags.agg("mean")
+            features.reset_index(inplace=True)
+            # set new bins positions
+            frags = features
+            frags["start_pos"] = 0
+            frags["end_pos"] = 0
+            frags.loc[:, positions.columns] = positions
+        except pd.core.base.DataError:
+            frags = positions
         frags["size"] = frags.end_pos - frags.start_pos
         cumul_bins = 0
         for chrom in chromnames:
