@@ -33,6 +33,7 @@ def _gen_matrices(size, full_dense=False):
     m_s : scipy.sparse.coo_matrix
         Random sparse matrix of size X size.
     """
+    # pylint: disable=no-member
     m_d = np.array(np.triu(np.random.random((size, size))))
     m_s = coo_matrix(m_d)
     if full_dense:

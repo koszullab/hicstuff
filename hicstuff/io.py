@@ -17,7 +17,7 @@ import re
 from os.path import join, exists
 from random import getrandbits
 from scipy.sparse import coo_matrix
-from Bio import SeqIO
+from Bio import SeqIO, SeqUtils
 import hicstuff.hicstuff as hcs
 from hicstuff.log import logger
 from hicstuff.version import __version__
@@ -1081,6 +1081,86 @@ def save_bedgraph2d(mat, frags, out_path):
         :, ["chr1", "start1", "end1", "chr2", "start2", "end2", "data"]
     ]
     bg2.to_csv(out_path, header=None, index=False, sep="\t")
+
+
+def get_pos_cols(df):
+    """Get column names representing chromosome, start and end column
+    from a dataframe. Allows flexible names.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+
+    Returns
+    -------
+    tuple of str:
+        Tuple containing the names of the chromosome, start and end
+        columns in the input dataframe.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> d = [1, 2, 3]
+    >>> df = pd.DataFrame(
+    ...     {'Chromosome': d, 'Start': d, 'End': d, 'species': d}
+    ... )
+    >>> get_pos_cols(df)
+    ('Chromosome', 'Start', 'End')
+    >>> df = pd.DataFrame(
+    ...     {'id': d, 'chr': d, 'start_bp': d, 'end_bp': d}
+    ... )
+    >>> get_pos_cols(df)
+    ('chr', 'start_bp', 'end_bp')
+    """
+
+    # Get case insensitive column names
+    cnames = df.columns
+    inames= cnames.str.lower()
+
+    def _col_getter(cols, pat):
+        """Helper to get column index from the start of its name"""
+        mask = cols.str.startswith(pat)
+        idx = np.flatnonzero(mask)[0]
+        return idx
+
+    chrom_col = cnames[_col_getter(inames, 'chr')]
+    start_col = cnames[_col_getter(inames, 'start')]
+    end_col = cnames[_col_getter(inames, 'end')]
+    return chrom_col, start_col, end_col
+
+
+def gc_bins(genome_path, frags):
+    """Generate GC content annotation for bins using input genome.
+
+    Parameters
+    ----------
+    genome_path : str
+        Path the the genome file in FASTA format.
+    frags : pandas.DataFrame
+        Table containing bin segmentation of the genome.
+        Required columns: chrom, start, end.
+
+    Returns
+    -------
+    numpy.ndarray of floats:
+        GC content per bin, in the range [0.0, 1.0].
+    """
+    # Grab columns by name (catch start, Start, star_pos, etc)
+    chrom_col, start_col, end_col = get_pos_cols(frags)
+    # Fill the gc array by chromosome
+    gc_bins = np.zeros(frags.shape[0], dtype=float)
+    for rec in SeqIO.parse(genome_path, 'fasta'):
+        mask = frags[chrom_col] == rec.id
+        # Define coordinates of each bin
+        starts = frags.loc[mask, start_col]
+        ends = frags.loc[mask, end_col]
+        # Slice chromosome sequence based on bins
+        seqs = [str(rec.seq)[s: e] for s, e in zip(starts, ends)]
+        # Fill GC values for bins in the chromosome
+        idx = np.flatnonzero(mask)
+        gc_bins[idx] = np.array(list(map(SeqUtils.GC, seqs))) / 100.0
+
+    return gc_bins
 
 
 def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):

@@ -430,7 +430,7 @@ class View(AbstractCommand):
                 binned_frags = pd.DataFrame(
                         {'chrom': binned_chrom, 'start_pos': binned_pos[:, 0]}
                 )
-                binned_frags['end_pos'] = binned_frags.groupby('chrom').start_pos.shift(-1)
+                binned_frags['end_pos'] = binned_frags.groupby('chrom')['start_pos'].shift(-1)
                 chrom_ends = self.frags.groupby('chrom').end_pos.max()
                 # Fill ends of chromosome bins with actual chromosome length
                 for cn in chrom_ends.index:
@@ -1144,7 +1144,7 @@ class Convert(AbstractCommand):
     bedgraph2D (bg2) and cooler (cool). Input format is automatically inferred.
 
     usage:
-        convert [--frags=FILE] [--chroms=FILE] [--force]
+        convert [--frags=FILE] [--chroms=FILE] [--force] [--genome=FILE]
                 [--to=FORMAT] <contact_map> <prefix>
 
     arguments:
@@ -1161,6 +1161,10 @@ class Convert(AbstractCommand):
                                   hicstuff pipeline. Required for graal
                                   matrices and recommended for bg2.
         -F, --force               Write even if the output file already exists.
+        -g, --genome=FILE         Optional genome file used to add a GC content
+                                  column to the fragments table. This is
+                                  required to generate instagraal-compatible
+                                  files.
         -c, --chroms=FILE         Tab-separated with headers, containing
                                   columns contig, length, n_frags, cumul_length.
                                   This is the file "info_contigs.txt" generated
@@ -1173,6 +1177,7 @@ class Convert(AbstractCommand):
         out_fmt = self.args["--to"]
         mat_path = self.args["<contact_map>"]
         frags_path = self.args["--frags"]
+        genome_path = self.args["--genome"]
         chroms_path = self.args["--chroms"]
         prefix = self.args["<prefix>"]
 
@@ -1187,7 +1192,20 @@ class Convert(AbstractCommand):
             chroms_file=chroms_path,
             quiet=True,
         )
+
+        # Modify fragments for instagraal compatibility
+        # Add fragments size column
+        chrom_col, start_col, end_col = hio.get_pos_cols(frags)
+        size = frags[end_col] - frags[start_col]
+        if 'size' not in frags.columns:
+            frags = frags.join(pd.DataFrame({'size': size}))
+        # If genome was provided, add gc_content column
+        if genome_path:
+            gc = hio.gc_bins(genome_path, frags)
+            frags = frags.join(pd.DataFrame({'gc_content': gc}))
+
         # Write
+        mat = mat.astype(int)
         hio.flexible_hic_saver(
             mat=mat,
             out_prefix=prefix,
