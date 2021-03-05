@@ -2,6 +2,7 @@
 # 20190402
 from tempfile import NamedTemporaryFile
 import os
+import re
 import gzip
 import zipfile
 import bz2
@@ -11,12 +12,15 @@ import numpy as np
 import hicstuff.io as hio
 import cooler
 import pytest
+from Bio import SeqIO
 from pathlib import Path
 
+GENOME = "test_data/genome/seq.fa"
 MAT_GRAAL = hio.load_sparse_matrix(
     "test_data/abs_fragments_contacts_weighted.txt"
 )
 FRAGS_GRAAL = pd.read_csv("test_data/fragments_list.txt", delimiter="\t")
+
 
 def test_compress():
     """Test reading and checking of compressed files"""
@@ -93,26 +97,65 @@ def test_cooler_io():
     hio.save_cool(f.name, MAT_GRAAL, FRAGS_GRAAL)
     c = cooler.Cooler(f.name)
     # Just copy the start column and write it as a new one
-    dummycol = c.bins()[:].loc[:,'start'] #pylint: disable=no-member
-    hio.add_cool_column(c, dummycol, 'dummy', dtype=np.int64)
+    dummycol = c.bins()[:].loc[:, "start"]  # pylint: disable=no-member
+    hio.add_cool_column(c, dummycol, "dummy", dtype=np.int64)
     # Read custom cool into GRAAL objects
     mat, frags, chroms = hio.load_cool(f.name)
     os.unlink(f.name)
 
+
 def test_hic_format():
-    assert hio.get_hic_format("test_data/mat_5kb.bg2") == 'bg2'
-    assert hio.get_hic_format("test_data/abs_fragments_contacts_weighted.txt") == 'graal'
+    assert hio.get_hic_format("test_data/mat_5kb.bg2") == "bg2"
+    assert (
+        hio.get_hic_format("test_data/abs_fragments_contacts_weighted.txt")
+        == "graal"
+    )
     with pytest.raises(ValueError):
         assert hio.get_hic_format("test_data/valid.pairs")
+
 
 def test_check_fasta_index():
     f = NamedTemporaryFile("w", delete=False)
     f.close
-    assert hio.check_fasta_index(f.name, mode='minimap2') == f.name
+    assert hio.check_fasta_index(f.name, mode="minimap2") == f.name
     for i in range(6):
         Path(f.name + ".{}.bt2".format(i)).touch()
-    assert hio.check_fasta_index(f.name, mode='bowtie2') == f.name
-    assert hio.check_fasta_index(f.name, mode='bwa') == None
+    assert hio.check_fasta_index(f.name, mode="bowtie2") == f.name
+    assert hio.check_fasta_index(f.name, mode="bwa") == None
     os.unlink(f.name)
     for i in range(6):
-        os.unlink(f.name+".{}.bt2".format(i))
+        os.unlink(f.name + ".{}.bt2".format(i))
+
+
+def test_gc_bins():
+    """Test function to compute GC content per bin in genome"""
+    bins = FRAGS_GRAAL
+    gc = hio.gc_bins(GENOME, bins)
+    assert gc.shape[0] == bins.shape[0]
+    assert gc.min() >= 0.0
+    assert gc.max() <= 1.0
+
+    # Check values correctness on first chromosome
+    first_record = next(SeqIO.parse(GENOME, "fasta"))
+    seq = str(first_record.seq)
+    starts = bins.start_pos[bins.chrom == first_record.id].values
+    ends = bins.end_pos[bins.chrom == first_record.id].values
+    for i, (start, end) in enumerate(zip(starts, ends)):
+        bin_seq = seq[start:end]
+        gc_count = len(re.findall(r"[GgCc]", bin_seq))
+        gc_prop = gc_count / len(bin_seq)
+        assert np.isclose(gc_prop, gc[i])
+
+
+def test_get_pos_col():
+    """Test function to guess chrom, start, end columns"""
+    dummy = np.random.random((10, 5))
+    chrom, start, end = "CHROMOSOME", "sTaRt", "EnD"
+    df = pd.DataFrame(
+        dummy, columns=["something", "different", start, end, chrom]
+    )
+    cols = hio.get_pos_cols(df)
+    assert len(cols) == 3
+    assert cols == (chrom, start, end)
+
+    bad_df = pd.DataFrame(dummy, columns=[l for l in "abcde"])
