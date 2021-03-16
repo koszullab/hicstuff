@@ -445,9 +445,9 @@ def gen_enzyme_religation_regex(enzyme):
         enzyme.
     Examples:
     ---------
-    >>> process_enzyme('DpnII')
+    >>> gen_enzyme_religation_regex('DpnII')
     'GATCGATC'
-    >>> process_enzyme('DpnII,HinfI')
+    >>> gen_enzyme_religation_regex('DpnII,HinfI')
     'GA.TA.TC|GA.TGATC|GATCA.TC|GATCGATC'
     """
 
