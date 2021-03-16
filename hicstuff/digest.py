@@ -432,12 +432,12 @@ def frag_len(
 
 
 def gen_enzyme_religation_regex(enzyme):
-    """Return a regex which corresponds to all possible religation
-    sites given a set of enzyme.
+    """Return a regex which corresponds to all possible religation sites given a
+    set of enzyme.    
     Parameters:
     -----------
     enzyme : str
-        String that contains the names of the enzyme separated by a comma.
+        String that contains the names of the enzyme separated by a comma.  
     Returns:
     --------
     str :

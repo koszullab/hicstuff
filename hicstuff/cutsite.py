@@ -5,19 +5,20 @@
 
 The module will cut at ligation sites of the given enzyme. It will from the
 original fastq (gzipped or not) files create new gzipped fastq files with
-combinations of the fragaments of reads obtains by cutting at the ligation sites
+combinations of the fragments of reads obtains by cutting at the ligation sites
 of the reads.
 
 There are three choices to how combine the fragments. 1. "for_vs_rev": All the
-combinations are made between one forward fragment and one reverse fragment. 2.
-"all": All 2-combinations are made. 3. "pile": Only combinations between
-adjacent fragments in the initial reads are made.
+combinations are made between one forward fragment and one reverse fragment.
+It's the most releveant one for usual workflow. 2. "all": All 2-combinations are
+made. 3. "pile": Only combinations between adjacent fragments in the initial
+reads are made.
 
-This module contains the following functions:
-    - cut_liagtion_sites
-    - cutsite_read
-    - write_pair
-    - writer    
+This module contains the following functions: 
+    - cut_liagtion_sites 
+    - cutsite_read 
+    - write_pair 
+    - _writer    
 """
 
 
@@ -28,7 +29,7 @@ import re
 import sys
 import hicstuff.digest as hcd
 from hicstuff.log import logger
-from os.path import join, basename
+from os.path import join
 
 
 def cut_ligation_sites(
@@ -38,13 +39,12 @@ def cut_ligation_sites(
     pairs to take into account all the contact present.
 
     The function write two files for both the forward and reverse fastq with the
-    new reads. The new reads have at the end of the ID ":1" added to
+    new reads. The new reads have at the end of the ID ":[0-9]" added to
     differentiate the different pairs created from one read.
-
-    To make the function faster, for each reads only the first site of ligation
-    is kept and the algorithm stop to search for others sites as the probability
-    is very low. We already have very few pairs with ligation sites in both
-    reads.
+    
+    The function will look for all the sites present and create new pairs of
+    reads according to the mode given to retreive as much as possible of the HiC
+    signal.
 
     Parameters
     ----------
@@ -167,7 +167,8 @@ def cut_ligation_sites(
 
 
 def cutsite_read(ligation_sites, seq, qual):
-    """Find ligation sites in a given sequence.
+    """Find ligation sites in a given sequence and return list of the fragmented
+    sequence and quality.
 
     Parameters:
     -----------

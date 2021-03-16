@@ -257,23 +257,24 @@ class Cutsite(AbstractCommand):
         [--threads=1] [--mode=for_vs_rev]
 
     options:
-        -1, --forward=FILE      Fastq file containing the forward reads to digest.
-        -2, --reverse=FILE      Fastq file containing the reverse reads to digest.
-        -p, --prefix=STR        Prefix of the path where to write the digested gzipped
-                                fastq files. Filenames will be added the
+        -1, --forward=FILE      Fastq file containing the forward reads to 
+                                digest.
+        -2, --reverse=FILE      Fastq file containing the reverse reads to 
+                                digest.
+        -p, --prefix=STR        Prefix of the path where to write the digested 
+                                gzipped fastq files. Filenames will be added the
                                 suffix "_{1,2}.fq.gz".
         -e, --enzyme=STR        The list of restriction enzyme used to digest
                                 the genome separated by a comma. Example:
                                 DpnII,HinfI.
         -m, --mode=STR          Digestion mode. There are three possibilities:
-                                "for_vs_rev", "all" and "pile".
-                                The first one "for_vs_rev" makes all possible
-                                contact between fragments from forward read
-                                versus the fragments of the reverse reads.
-                                The second one "all" consist two make all pairs
-                                of fragments possible.
-                                The third one "pile" will make the contacts only
-                                with the adjacent fragments.
+                                "for_vs_rev", "all" and "pile". The first one
+                                "for_vs_rev" makes all possible contact between
+                                fragments from forward read versus the fragments
+                                of the reverse reads. The second one "all"
+                                consist two make all pairs of fragments 
+                                possible. The third one "pile" will make the
+                                contacts only with the adjacent fragments.
                                 [Default: for_vs_rev]
         -t, --threads=INT       Number of parallel threads allocated for the
                                 alignement. [Default: 1]
