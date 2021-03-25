@@ -11,6 +11,7 @@ from Bio import SeqIO, SeqUtils
 from Bio.Seq import Seq
 from Bio.Restriction import RestrictionBatch, Analysis
 import os, sys, csv
+import re
 import collections
 import copy
 import matplotlib.pyplot as plt
@@ -433,22 +434,22 @@ def frag_len(
 
 def gen_enzyme_religation_regex(enzyme):
     """Return a regex which corresponds to all possible religation sites given a
-    set of enzyme.    
+    set of enzyme.
     Parameters:
     -----------
     enzyme : str
-        String that contains the names of the enzyme separated by a comma.  
+        String that contains the names of the enzyme separated by a comma.
     Returns:
     --------
-    str :
+    re.Pattern :
         Regex that corresponds to all possible ligation sites given a set of
         enzyme.
     Examples:
     ---------
     >>> gen_enzyme_religation_regex('DpnII')
-    'GATCGATC'
+    re.compile(r'GATCGATC', re.UNICODE)
     >>> gen_enzyme_religation_regex('DpnII,HinfI')
-    'GA.TA.TC|GA.TGATC|GATCA.TC|GATCGATC'
+    re.compile(r'GA.TA.TC|GA.TGATC|GATCA.TC|GATCGATC', re.UNICODE)
     """
 
     # Split the str on the comma to separate the different enzymes.
@@ -495,4 +496,4 @@ def gen_enzyme_religation_regex(enzyme):
 
     # Build the regex for any ligation sites.
     pattern = "|".join(sorted(list(set(ligation_list))))
-    return pattern
+    return re.compile(pattern)

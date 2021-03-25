@@ -41,7 +41,7 @@ def cut_ligation_sites(
     The function write two files for both the forward and reverse fastq with the
     new reads. The new reads have at the end of the ID ":[0-9]" added to
     differentiate the different pairs created from one read.
-    
+
     The function will look for all the sites present and create new pairs of
     reads according to the mode given to retreive as much as possible of the HiC
     signal.
@@ -68,12 +68,12 @@ def cut_ligation_sites(
     n_cpu : int
         Number of CPUs.
     """
-
     # Process the ligation sites given
     ligation_sites = hcd.gen_enzyme_religation_regex(enzyme)
 
-    # Defined stop_token and stack_size for processing
+    # Defined stop_token which is used to mark the end of input file
     stop_token = "STOP"
+    # A stack is a string cointaining multiple read pairs
     max_stack_size = 1000
 
     # Create count to have an idea of the digested pairs repartition.
@@ -84,8 +84,8 @@ def cut_ligation_sites(
     current_stack = 0
 
     # Start parallel threading to compute the
-    ctx = multiprocessing.get_context("spawn")
-    queue = multiprocessing.Queue(n_cpu - 1)
+    # ctx = multiprocessing.get_context("spawn")
+    queue = multiprocessing.Queue(max(1, n_cpu - 1))
     writer_process = multiprocessing.Process(
         target=_writer, args=(digest_for, digest_rev, queue, stop_token)
     )
@@ -172,7 +172,7 @@ def cutsite_read(ligation_sites, seq, qual):
 
     Parameters:
     -----------
-    ligation_sites : str
+    ligation_sites : re.Pattern
         Regex of all possible ligations according to the given enzymes.
     seq : str
         Sequence where to search for ligation_sites.
@@ -195,9 +195,9 @@ def cutsite_read(ligation_sites, seq, qual):
 
     # Find the ligation sites.
     ligation_sites_list = []
-    if re.search(ligation_sites, seq):
+    if ligation_sites.search(seq):
         ligation_sites_list = [
-            site.start() for site in re.finditer(ligation_sites, seq)
+            site.start() for site in ligation_sites.finditer(seq)
         ]
     ligation_sites_list.append(len(seq))
 

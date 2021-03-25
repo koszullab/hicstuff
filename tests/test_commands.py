@@ -15,7 +15,7 @@ FRAG = "test_data/fragments_list.txt"
 CHROM = "test_data/info_contigs.txt"
 OUT = "test_cli"
 os.makedirs(OUT, exist_ok=True)
-MATS = ('mat', [GRAAL, BG2, COOL])
+MATS = ("mat", [GRAAL, BG2, COOL])
 
 
 @pytest.mark.parametrize(*MATS)
@@ -33,18 +33,19 @@ def test_pipeline():
         "-e DpnII -t 1 -f -D -d -i -n -P test -o {0} -g test_data/genome/seq "
         + "test_data/sample.reads_for.fastq.gz test_data/sample.reads_rev.fastq.gz"
     ).format(OUT)
-    proc = hcmd.Pipeline(args.split(" ") + ['-F'], {})
+    proc = hcmd.Pipeline(args.split(" ") + ["-F"], {})
     proc.execute()
     with pytest.raises(IOError):
         proc = hcmd.Pipeline(args.split(" "), {})
         proc.execute()
 
 
-
 @pytest.mark.parametrize(*MATS)
 def test_rebin(mat):
-    args = "-b 1kb -f {0} -c {1} {2} {3}".format(FRAG, CHROM, mat, str(Path(OUT) / 'rebinned'))
-    proc = hcmd.Rebin(args.split(" ") + ['-F'], {})
+    args = "-b 1kb -f {0} -c {1} {2} {3}".format(
+        FRAG, CHROM, mat, str(Path(OUT) / "rebinned")
+    )
+    proc = hcmd.Rebin(args.split(" ") + ["-F"], {})
     proc.execute()
     with pytest.raises(IOError):
         proc = hcmd.Rebin(args.split(" "), {})
@@ -52,8 +53,10 @@ def test_rebin(mat):
 
 
 def test_convert():
-    args = "-f {0} -c {1} {2} {3}".format(FRAG, CHROM, GRAAL, str(Path(OUT) / 'converted'))
-    proc = hcmd.Convert(args.split(" ") + ['-F'], {})
+    args = "-f {0} -c {1} {2} {3}".format(
+        FRAG, CHROM, GRAAL, str(Path(OUT) / "converted")
+    )
+    proc = hcmd.Convert(args.split(" ") + ["-F"], {})
     proc.execute()
     with pytest.raises(IOError):
         proc = hcmd.Convert(args.split(" "), {})
@@ -97,7 +100,7 @@ def test_digest():
         proc = hcmd.Digest(args.split(" "), {})
         proc.execute()
     # Should succeed with --force flag
-    args =  '-F ' + args
+    args = "-F " + args
     proc = hcmd.Digest(args.split(" "), {})
     proc.execute()
 
@@ -118,10 +121,23 @@ def test_scalogram():
 
 @pytest.mark.parametrize(*MATS)
 def test_subsample(mat):
-    args = "-p 0.5 {0} {1}".format(mat, str(Path(OUT) / 'subsampled'))
-    proc = hcmd.Subsample(args.split(" ") + ['-F'], {})
+    args = "-p 0.5 {0} {1}".format(mat, str(Path(OUT) / "subsampled"))
+    proc = hcmd.Subsample(args.split(" ") + ["-F"], {})
     proc.execute()
     with pytest.raises(IOError):
         proc = hcmd.Subsample(args.split(" "), {})
         proc.execute()
 
+
+@pytest.mark.parametrize("mode", ["for_vs_rev", "all", "pile"])
+def test_cutsite(mode):
+    arg_vals = {
+        "FASTQ_FOR": "test_data/sample.reads_for.fastq.gz",
+        "FASTQ_REV": "test_data/sample.reads_rev.fastq.gz",
+        "OUT": "test_data/digested",
+    }
+    args = (
+        "-1 {FASTQ_FOR} -2 {FASTQ_REV} -e DpnII,HinfI -m {0} -p {OUT} -t 8"
+    ).format(mode, **arg_vals)
+    proc = hcmd.Cutsite(args.split(" "), {})
+    proc.execute()
