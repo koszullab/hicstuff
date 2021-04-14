@@ -30,7 +30,7 @@ def test_view(mat):
 
 def test_pipeline():
     args = (
-        "-e DpnII -t 1 -f -D -d -i -n -P test -o {0} -g test_data/genome/seq "
+        "-e DpnII -t 1 -f -D -d -m iterative -n -P test -o {0} -g test_data/genome/seq "
         + "test_data/sample.reads_for.fastq.gz test_data/sample.reads_rev.fastq.gz"
     ).format(OUT)
     proc = hcmd.Pipeline(args.split(" ") + ["-F"], {})

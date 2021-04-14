@@ -20,6 +20,7 @@ import hicstuff.iteralign as hci
 import hicstuff.filter as hcf
 import hicstuff.io as hio
 import hicstuff.distance_law as hcdl
+import hicstuff.cutsite as hcc
 import matplotlib
 import pathlib
 from hicstuff.version import __version__
@@ -465,7 +466,7 @@ def full_pipeline(
     enzyme=5000,
     filter_events=False,
     force=False,
-    iterative=False,
+    mapping="normal",
     mat_fmt="graal",
     min_qual=30,
     min_size=0,
@@ -517,9 +518,11 @@ def full_pipeline(
         Number of threads to use for parallel operations.
     no_cleanup : bool
         Whether temporary files should be deleted at the end of the pipeline.
-    iterative : bool
-        Use iterative mapping. Truncates and extends reads until unambiguous
-        alignment.
+    mapping : str
+        normal|iterative|cutsite. Use normal, iterative or cutsite mapping. 
+        "normal": Normal alignement. "iterative": Truncates and extends reads 
+        until unambiguous alignment. "cutsite": Digest reads at religation sites 
+        and build new pairs from the fragments created.
     filter_events : bool
         Filter spurious or uninformative 3C events. Requires a restriction enzyme.
     force : bool
@@ -758,6 +761,33 @@ def full_pipeline(
     # Detect if multiple enzymes are given
     if re.search(",", enzyme):
         enzyme = enzyme.split(",")
+        
+    # Define mapping choice (default normal):
+    iterative = False
+    if mapping == "iterative":
+        iterative = True   
+    elif mapping == "cutsite":
+        # If no enzyme given use iterative alignment.
+        try:
+            int(enzyme)
+            logger.warning("No enzyme has been given. Can't map using cutsite, iterative mapping will be used instead.")
+            iterative = True
+        # If cutsite enabled and enzyme given, cut the reads before making a 
+        # normal alignment.
+        except ValueError:
+            digest_for = _tmp_file("digest_for.fq.gz")
+            digest_rev = _tmp_file("digest_rev.fq.gz")
+            hcc.cut_ligation_sites(
+                fq_for=reads1,
+                fq_rev=reads2,
+                digest_for=digest_for,
+                digest_rev=digest_rev,
+                enzyme=enzyme,
+                mode="for_vs_rev",
+                n_cpu=threads,
+            )
+            reads1, reads2 = digest_for, digest_rev
+       
     # Perform genome alignment
     if start_stage == 0:
         align_reads(
