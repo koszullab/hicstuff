@@ -447,9 +447,9 @@ def gen_enzyme_religation_regex(enzyme):
     Examples:
     ---------
     >>> gen_enzyme_religation_regex('DpnII')
-    re.compile(r'GATCGATC', re.UNICODE)
+    re.compile('GATCGATC')
     >>> gen_enzyme_religation_regex('DpnII,HinfI')
-    re.compile(r'GA.TA.TC|GA.TGATC|GATCA.TC|GATCGATC', re.UNICODE)
+    re.compile('GA.TA.TC|GA.TGATC|GATCA.TC|GATCGATC')
     """
 
     # Split the str on the comma to separate the different enzymes.

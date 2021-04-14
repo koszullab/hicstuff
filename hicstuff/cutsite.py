@@ -15,7 +15,7 @@ made. 3. "pile": Only combinations between adjacent fragments in the initial
 reads are made.
 
 This module contains the following functions: 
-    - cut_liagtion_sites 
+    - cut_ligation_sites 
     - cutsite_read 
     - write_pair 
     - _writer    
@@ -29,7 +29,6 @@ import re
 import sys
 import hicstuff.digest as hcd
 from hicstuff.log import logger
-from os.path import join
 
 
 def cut_ligation_sites(
@@ -189,7 +188,7 @@ def cutsite_read(ligation_sites, seq, qual):
 
     Examples:
     ---------
-    >>> cutsite_read("GA.TA.TC", "AAGAGTATTC", "FFF--FAFAF")
+    >>> cutsite_read(re.compile(r'GA.TA.TC'), "AAGAGTATTC", "FFF--FAFAF")
     (['AA', 'GAGTATTC'], ['FF', 'F--FAFAF'])
     """
 
@@ -235,14 +234,14 @@ def write_pair(
         Stack of the new reverse reads ready to be written.
     name : str
         Name of the fastq read.
-    for_seq : str
-        Forward sequence of the fastq read.
-    for_qual : str
-        Forward quality of the fastq read.
-    rev_seq : str
-        Reverse sequence of the fastq read.
-    rev_qual : str
-        Reverse quality of the fastq read.
+    for_seq_list : list
+        List of forward sequences of the fastq read.
+    for_qual_list : list
+        List of forward qualities of the fastq read.
+    rev_seq_list : list
+        List of reverse sequencs of the fastq read.
+    rev_qual_list : list
+        List of reverse qualities of the fastq read.
     mode : str
         Mode to use to make the digestion. Three values possible: "all",
         "for_vs_rev", "pile".

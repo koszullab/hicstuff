@@ -244,8 +244,7 @@ class Cutsite(AbstractCommand):
 
     Generates new gzipped fastq files from original fastq. The function will cut
     the reads at their religation sites and creates new pairs of reads with the
-    different fragments obtained after cutting at the digestion sites. New files
-    have the prefix "digested_".
+    different fragments obtained after cutting at the digestion sites.
 
     There are three choices to how combine the fragments. 1. "for_vs_rev": All
     the combinations are made between one forward fragment and one reverse
@@ -733,7 +732,7 @@ class Pipeline(AbstractCommand):
 
     usage:
         pipeline [--aligner=bowtie2] [--centromeres=FILE] [--circular] [--distance-law]
-                 [--duplicates] [--enzyme=ENZ] [--filter] [--force] [--iterative]
+                 [--duplicates] [--enzyme=ENZ] [--filter] [--force] [--mapping=STR]
                  [--matfmt=FMT] [--no-cleanup] [--outdir=DIR] [--plot] [--prefix=PREFIX]
                  [--quality-min=INT] [--read-len=INT] [--remove-centromeres=INT] [--size=INT]
                  [--start-stage=STAGE] [--threads=INT] [--tmpdir=DIR] --genome=FILE <input1> [<input2>]
@@ -776,13 +775,19 @@ class Pipeline(AbstractCommand):
                                       chunk size. For more informations, see
                                       Cournac et al. BMC Genomics, 2012.
         -F, --force                   Write even if the output file already exists.
-        -i, --iterative               Map reads iteratively using hicstuff
-                                      iteralign, by truncating reads to 20bp
-                                      and then repeatedly extending and
-                                      aligning them.
         -g, --genome=FILE             Reference genome to map against. Path to
                                       the bowtie2/bwa index if using bowtie2/bwa,
                                       or to a FASTA file if using minimap2.
+        -m, --mapping=STR             normal|iterative|cutsite. Parameter of 
+                                      mapping. "normal": Directly map reads 
+                                      without any process. "iterative": Map 
+                                      reads iteratively using iteralign, by 
+                                      truncating reads to 20bp and then 
+                                      repeatedly extending to align them.
+                                      "cutsite": Cut reads at the religation 
+                                      sites of the given enzyme using cutsite, 
+                                      create new pairs of reads and then align 
+                                      them ; enzyme is required.
         -M, --matfmt=FMT              The format of the output sparse matrix.
                                       Can be "bg2" for 2D Bedgraph format,
                                       "cool" for Mirnylab's cooler software, or
@@ -857,7 +862,7 @@ class Pipeline(AbstractCommand):
             enzyme=self.args["--enzyme"],
             filter_events=self.args["--filter"],
             force=self.args["--force"],
-            iterative=self.args["--iterative"],
+            mapping=self.args["--mapping"],
             mat_fmt=self.args["--matfmt"],
             min_qual=int(self.args["--quality-min"]),
             min_size=int(self.args["--size"]),
