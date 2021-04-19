@@ -496,10 +496,7 @@ def full_pipeline(
     input2 : str
         Path to the Hi-C reads in fastq format (forward), the aligned Hi-C reads
         in BAM format, or None, depending on the value of start_stage.
-    enzyme : int or str
-        Name of the enzyme used for the digestion (e.g "DpnII"). If an integer
-        is used instead, the fragment attribution will be done directly using a
-        fixed chunk size.
+    enzyme : int or strtest_data/genome/seq.fa
     circular : bool
         Use if the genome is circular.
     out_dir : str or None
@@ -763,8 +760,9 @@ def full_pipeline(
         enzyme = enzyme.split(",")
         
     # Define mapping choice (default normal):
-    iterative = False
-    if mapping == "iterative":
+    if mapping == "normal":
+        iterative = False
+    elif mapping == "iterative":
         iterative = True   
     elif mapping == "cutsite":
         # If no enzyme given use iterative alignment.
@@ -775,6 +773,7 @@ def full_pipeline(
         # If cutsite enabled and enzyme given, cut the reads before making a 
         # normal alignment.
         except ValueError:
+            itertative = False
             digest_for = _tmp_file("digest_for.fq.gz")
             digest_rev = _tmp_file("digest_rev.fq.gz")
             hcc.cut_ligation_sites(
@@ -787,6 +786,9 @@ def full_pipeline(
                 n_cpu=threads,
             )
             reads1, reads2 = digest_for, digest_rev
+    else:
+        logger.error("mapping must be either normal, iterative or cutsite.")
+        raise ValueError
        
     # Perform genome alignment
     if start_stage == 0:

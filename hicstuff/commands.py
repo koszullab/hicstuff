@@ -732,7 +732,7 @@ class Pipeline(AbstractCommand):
 
     usage:
         pipeline [--aligner=bowtie2] [--centromeres=FILE] [--circular] [--distance-law]
-                 [--duplicates] [--enzyme=ENZ] [--filter] [--force] [--mapping=STR]
+                 [--duplicates] [--enzyme=ENZ] [--filter] [--force] [--mapping=normal]
                  [--matfmt=FMT] [--no-cleanup] [--outdir=DIR] [--plot] [--prefix=PREFIX]
                  [--quality-min=INT] [--read-len=INT] [--remove-centromeres=INT] [--size=INT]
                  [--start-stage=STAGE] [--threads=INT] [--tmpdir=DIR] --genome=FILE <input1> [<input2>]
@@ -778,7 +778,7 @@ class Pipeline(AbstractCommand):
         -g, --genome=FILE             Reference genome to map against. Path to
                                       the bowtie2/bwa index if using bowtie2/bwa,
                                       or to a FASTA file if using minimap2.
-        -m, --mapping=STR             normal|iterative|cutsite. Parameter of 
+        -m, --mapping=normal          normal|iterative|cutsite. Parameter of 
                                       mapping. "normal": Directly map reads 
                                       without any process. "iterative": Map 
                                       reads iteratively using iteralign, by 
