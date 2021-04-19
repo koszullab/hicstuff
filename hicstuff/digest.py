@@ -8,8 +8,10 @@ sparse matrices.
 """
 
 from Bio import SeqIO, SeqUtils
+from Bio.Seq import Seq
 from Bio.Restriction import RestrictionBatch, Analysis
 import os, sys, csv
+import re
 import collections
 import copy
 import matplotlib.pyplot as plt
@@ -272,7 +274,7 @@ def get_restriction_table(seq, enzyme, circular=False):
     -------
     numpy.array:
         List of restriction fragment boundary positions for the input sequence.
-    
+
     >>> from Bio.Seq import Seq
     >>> get_restriction_table(Seq("AAGATCGATCGG"),"DpnII")
     array([ 0,  2,  6, 12])
@@ -428,3 +430,70 @@ def frag_len(
             "Genome digested into {0} fragments with a median "
             "length of {1}".format(nfrags, med_len)
         )
+
+
+def gen_enzyme_religation_regex(enzyme):
+    """Return a regex which corresponds to all possible religation sites given a
+    set of enzyme.
+    Parameters:
+    -----------
+    enzyme : str
+        String that contains the names of the enzyme separated by a comma.
+    Returns:
+    --------
+    re.Pattern :
+        Regex that corresponds to all possible ligation sites given a set of
+        enzyme.
+    Examples:
+    ---------
+    >>> gen_enzyme_religation_regex('DpnII')
+    re.compile('GATCGATC')
+    >>> gen_enzyme_religation_regex('DpnII,HinfI')
+    re.compile('GA.TA.TC|GA.TGATC|GATCA.TC|GATCGATC')
+    """
+
+    # Split the str on the comma to separate the different enzymes.
+    enzyme = enzyme.split(",")
+
+    # Check on Biopython dictionnary the enzyme.
+    rb = RestrictionBatch(enzyme)
+
+    # Initiation:
+    give_list = []
+    accept_list = []
+    ligation_list = []
+
+    # Iterates on the enzymes.
+    for enz in rb:
+
+        # Extract restriction sites and look for cut sites.
+        site = enz.elucidate()
+        fw_cut = site.find("^")
+        rev_cut = site.find("_")
+
+        # Process "give" site. Remove N on the left (useless).
+        give_site = site[:rev_cut].replace("^", "")
+        while give_site[0] == "N":
+            give_site = give_site[1:]
+        give_list.append(give_site)
+
+        # Process "accept" site. Remove N on the rigth (useless).
+        accept_site = site[fw_cut + 1 :].replace("_", "")
+        while accept_site[-1] == "N":
+            accept_site = accept_site[:-1]
+        accept_list.append(accept_site)
+
+    # Iterates on the two list to build all the possible HiC ligation sites.
+    for give_site in give_list:
+        for accept_site in accept_list:
+            # Replace "N" by "." for regex searching of the sites
+            ligation_list.append((give_site + accept_site).replace("N", "."))
+            ligation_list.append(
+                str(Seq(give_site + accept_site).reverse_complement()).replace(
+                    "N", "."
+                )
+            )
+
+    # Build the regex for any ligation sites.
+    pattern = "|".join(sorted(list(set(ligation_list))))
+    return re.compile(pattern)

@@ -149,7 +149,7 @@ def test_gc_bins():
 
 def test_get_pos_col():
     """Test function to guess chrom, start, end columns"""
-    dummy = np.random.random((10, 5))
+    dummy = np.random.random((10, 5)) # pylint: disable=no-member
     chrom, start, end = "CHROMOSOME", "sTaRt", "EnD"
     df = pd.DataFrame(
         dummy, columns=["something", "different", start, end, chrom]

@@ -15,6 +15,7 @@ options:
 The subcommands are:
     convert         Convert Hi-C data between different formats.
     digest          Digest genome into a list of fragments.
+    cutsite         Preprocess fastq files by digesting reads at religation site.
     distancelaw     Analyse and plot distance law.
     filter          Filters Hi-C pairs to exclude spurious events.
     iteralign       Iteratively aligns reads to a reference genome.
