@@ -20,13 +20,13 @@
 # -- Project information -----------------------------------------------------
 
 project = "hicstuff"
-copyright = "2018, Lyam Baudry"
-author = "Lyam Baudry"
+copyright = "2018, Cyril Matthey-Doret"
+author = "Cyril Matthey-Doret"
 
 # The short X.Y version
-version = ""
+version = "3.0"
 # The full version, including alpha/beta/rc tags
-release = ""
+release = "3.0.1"
 
 
 # -- General configuration ---------------------------------------------------
