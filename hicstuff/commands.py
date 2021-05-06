@@ -708,7 +708,7 @@ class View(AbstractCommand):
             else:
                 chrom_starts = None
             # Display NA values in white
-            current_cmap = cm.get_cmap()
+            current_cmap = cm.get_cmap().copy()
             current_cmap.set_bad(color=current_cmap(0))
 
             hcv.plot_matrix(
