@@ -297,7 +297,7 @@ hpi.pairs2matrix("output_filtered.pairs", "abs_fragments_contacts_weighted.txt",
 
 ### File formats
 
-* pairs files: This format is used for all intermediate files in the pipeline and is also used by `hicstuff filter`. It is a space-separated format holding informations about Hi-C pairs. It has an [official specification](https://github.com/4dn-dcic/pairix/blob/master/pairs_format_specification.md) defined by the 4D Nucleome data coordination and integration center.
+* pairs files: This format is used for all intermediate files in the pipeline and is also used by `hicstuff filter`. It is a tab-separated format holding informations about Hi-C pairs. It has an [official specification](https://github.com/4dn-dcic/pairix/blob/master/pairs_format_specification.md) defined by the 4D Nucleome data coordination and integration center.
 * 2D bedgraph: This is an optional output format of `hicstuff pipeline` for the sparse matrix. It has two fragment per line, and the number of times they are found together. It has the following fields: **chr1, start1, end1, chr2, start2, end2, occurences**
     - Those files can be [loaded by cooler](https://cooler.readthedocs.io/en/latest/cli.html?highlight=load#cooler-load) using `cooler load -f bg2 <chrom.sizes>:<binsize> in.bg2.gz out.cool` where chrom.sizes is a tab delimited file with chromosome names and length on each line, and binsize is the size of bins in the matrix.
 * GRAAL sparse matrix: This is a simple tab-separated file with 3 columns: **frag1, frag2, contacts**. The id columns correspond to the absolute id of the restriction fragments (0-indexed). The first row is a header containing the number of rows, number of columns and number of nonzero entries in the matrix. Example:
