@@ -78,20 +78,20 @@ def test_full_pipeline():
             # read alignment software
             for aligner in ['bowtie2', 'bwa', 'minimap2']:
                 # Indexed or non-indexed genome
-                for genome in ['test_data/genome/seq', 'test_data/genome/seq.fa']:
-                    hpi.full_pipeline(
-                        input1=in1,
-                        input2=in2,
-                        genome="test_data/genome/seq.fa",
-                        enzyme=5000,
-                        out_dir="test_out2",
-                        aligner=aligner,
-                        mapping=mapping,
-                        prefix="test",
-                        distance_law=True,
-                        start_stage=stage,
-                        mat_fmt="cooler",
-                        force=True,
-                    )
+                #for genome in ['test_data/genome/seq', 'test_data/genome/seq.fa']:
+                hpi.full_pipeline(
+                    input1=in1,
+                    input2=in2,
+                    genome="test_data/genome/seq.fa",
+                    enzyme=5000,
+                    out_dir="test_out2",
+                    aligner=aligner,
+                    mapping=mapping,
+                    prefix="test",
+                    distance_law=True,
+                    start_stage=stage,
+                    mat_fmt="cooler",
+                    force=True,
+                )
     shutil.rmtree("test_out/")
     shutil.rmtree("test_out2/")
