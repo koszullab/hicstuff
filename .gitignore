@@ -141,6 +141,12 @@ coverage.xml
 .hypothesis/
 .pytest_cache/
 
+# test output
+test.png
+test_cli/
+test_data/digested_1.fq.gz
+test_data/digested_2.fq.gz
+
 # Translations
 *.mo
 *.pot

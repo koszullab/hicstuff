@@ -276,15 +276,15 @@ def get_restriction_table(seq, enzyme, circular=False):
         List of restriction fragment boundary positions for the input sequence.
 
     >>> from Bio.Seq import Seq
-    >>> get_restriction_table(Seq("AAGATCGATCGG"),"DpnII")
-    array([ 0,  2,  6, 12])
-    >>> get_restriction_table(Seq("AA"),["DpnII", "HinfI"])
+    >>> get_restriction_table(Seq("AAGCCGGATCGG"),"HpaII")
+    array([ 0,  4, 12])
+    >>> get_restriction_table(Seq("AA"),["HpaII", "MluCI"])
     array([0, 2])
     >>> get_restriction_table(Seq("AA"),"aeiou1")
     Traceback (most recent call last):
         ...
     ValueError: aeiou1 is not a valid restriction enzyme.
-    >>> get_restriction_table("AA","DpnII")
+    >>> get_restriction_table("AA","HpaII")
     Traceback (most recent call last):
         ...
     TypeError: Expected Seq or MutableSeq instance, got <class 'str'> instead
@@ -446,10 +446,10 @@ def gen_enzyme_religation_regex(enzyme):
         enzyme.
     Examples:
     ---------
-    >>> gen_enzyme_religation_regex('DpnII')
-    re.compile('GATCGATC')
-    >>> gen_enzyme_religation_regex('DpnII,HinfI')
-    re.compile('GA.TA.TC|GA.TGATC|GATCA.TC|GATCGATC')
+    >>> gen_enzyme_religation_regex('HpaII')
+    re.compile('CCGCGG')
+    >>> gen_enzyme_religation_regex('HpaII,MluCI')
+    re.compile('AATTAATT|AATTCGG|CCGAATT|CCGCGG')
     """
 
     # Split the str on the comma to separate the different enzymes.
