@@ -265,7 +265,7 @@ class Cutsite(AbstractCommand):
                                 suffix "_{1,2}.fq.gz".
         -e, --enzyme=STR        The list of restriction enzyme used to digest
                                 the genome separated by a comma. Example:
-                                DpnII,HinfI.
+                                HpaII,MluCI.
         -m, --mode=STR          Digestion mode. There are three possibilities:
                                 "for_vs_rev", "all" and "pile". The first one
                                 "for_vs_rev" makes all possible contact between
@@ -519,22 +519,25 @@ class View(AbstractCommand):
                 # are merged with the first few of the next
                 binned_map = hcs.bin_sparse(
                     M=sparse_map, subsampling_factor=self.binning
-                )
-                binned_frags = self.frags.iloc[:: self.binning, :]
-                binned_frags = binned_frags.reset_index(drop=True)
-                # Since matrix binning ignores chromosomes, we
-                # have to do the same procedure with fragments
-                # we just correct the coordinates to start at 0
-                def shift_min(x):
-                    try:
-                        x[x == min(x)] = 0
-                    except ValueError:
-                        pass
-                    return x
+                ) 
+                if self.frags:
+                    binned_frags = self.frags.iloc[:: self.binning, :]
+                    binned_frags = binned_frags.reset_index(drop=True)
+                    # Since matrix binning ignores chromosomes, we
+                    # have to do the same procedure with fragments
+                    # we just correct the coordinates to start at 0
+                    def shift_min(x):
+                        try:
+                            x[x == min(x)] = 0
+                        except ValueError:
+                            pass
+                        return x
 
-                binned_frags.start_pos = binned_frags.groupby(
-                    "chrom", sort=False
-                ).start_pos.apply(shift_min)
+                    binned_frags.start_pos = binned_frags.groupby(
+                        "chrom", sort=False
+                    ).start_pos.apply(shift_min)
+                else:
+                    binned_frags = self.frags
 
         else:
             binned_map = sparse_map

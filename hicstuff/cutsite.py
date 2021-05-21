@@ -57,7 +57,7 @@ def cut_ligation_sites(
         Path to the output digested reverse fatsq file to write.
     enzyme : str
         The list of restriction enzyme used to digest the genome separated by a
-        comma. Example: DpnII,HinfI
+        comma. Example: HpaII,MluCI.
     mode : str
         Mode to use to make the digestion. Three values possible: "all",
         "for_vs_rev", "pile".
