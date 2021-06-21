@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import collections
 import subprocess as sp
+import scipy.sparse as sp
 import pathlib
 import re
 from os.path import join, exists
@@ -945,6 +946,12 @@ def flexible_hic_loader(
                 )
 
             chroms = None
+
+    # Ensure the matrix is upper triangle symmetric
+    if mat.shape[0] == mat.shape[1]:
+        if (abs(mat - mat.T) > 1e-10).nnz > 0:
+            mat = mat + sp.tril(mat, k=-1).T
+        mat = sp.triu(mat, format='coo')
 
     return mat, frags, chroms
 
