@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import collections
 import subprocess as sp
-import scipy.sparse as sp
+from scipy.sparse import tril, triu
 import pathlib
 import re
 from os.path import join, exists
@@ -244,7 +244,7 @@ def _check_cooler(fun):
                     fun.__name__
                 )
             )
-            raise ImportError('The cooler package is required.')
+            raise ImportError("The cooler package is required.")
         return fun(*args, **kwargs)
 
     return wrapped
@@ -950,8 +950,8 @@ def flexible_hic_loader(
     # Ensure the matrix is upper triangle symmetric
     if mat.shape[0] == mat.shape[1]:
         if (abs(mat - mat.T) > 1e-10).nnz > 0:
-            mat = mat + sp.tril(mat, k=-1).T
-        mat = sp.triu(mat, format='coo')
+            mat = mat + tril(mat, k=-1).T
+        mat = triu(mat, format="coo")
 
     return mat, frags, chroms
 
@@ -1122,7 +1122,7 @@ def get_pos_cols(df):
 
     # Get case insensitive column names
     cnames = df.columns
-    inames= cnames.str.lower()
+    inames = cnames.str.lower()
 
     def _col_getter(cols, pat):
         """Helper to get column index from the start of its name"""
@@ -1130,9 +1130,9 @@ def get_pos_cols(df):
         idx = np.flatnonzero(mask)[0]
         return idx
 
-    chrom_col = cnames[_col_getter(inames, 'chr')]
-    start_col = cnames[_col_getter(inames, 'start')]
-    end_col = cnames[_col_getter(inames, 'end')]
+    chrom_col = cnames[_col_getter(inames, "chr")]
+    start_col = cnames[_col_getter(inames, "start")]
+    end_col = cnames[_col_getter(inames, "end")]
     return chrom_col, start_col, end_col
 
 
@@ -1156,13 +1156,13 @@ def gc_bins(genome_path, frags):
     chrom_col, start_col, end_col = get_pos_cols(frags)
     # Fill the gc array by chromosome
     gc_bins = np.zeros(frags.shape[0], dtype=float)
-    for rec in SeqIO.parse(genome_path, 'fasta'):
+    for rec in SeqIO.parse(genome_path, "fasta"):
         mask = frags[chrom_col] == rec.id
         # Define coordinates of each bin
         starts = frags.loc[mask, start_col]
         ends = frags.loc[mask, end_col]
         # Slice chromosome sequence based on bins
-        seqs = [str(rec.seq)[s: e] for s, e in zip(starts, ends)]
+        seqs = [str(rec.seq)[s:e] for s, e in zip(starts, ends)]
         # Fill GC values for bins in the chromosome
         idx = np.flatnonzero(mask)
         gc_bins[idx] = np.array(list(map(SeqUtils.GC, seqs))) / 100.0
