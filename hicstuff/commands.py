@@ -574,7 +574,7 @@ class View(AbstractCommand):
                 )
                 sys.exit(1)
             # Load chromosomes and positions from fragments list
-            reg_pos = binned_frags.iloc[:, [0, 1]]
+            reg_pos = binned_frags[['chrom', 'start_pos']]
             region = self.args["--region"]
             if ";" in region:
                 # 2 input regions: zoom anywhere in matrix
