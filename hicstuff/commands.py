@@ -1463,10 +1463,10 @@ class Distancelaw(AbstractCommand):
             ps = ps[0]
         # Normalize and make the derivative
         ps = hcdl.normalize_distance_law(xs, ps, inf, arm_sup)
+
         # Gave new names for the different samples.
         if self.args["--labels"]:
-            labels = self.args["--labels"]
-            labels = labels.split(",")
+            labels = self.args["--labels"].split(",")
         else:
             if length_files == 1 and not self.args["--average"]:
                 labels = []
@@ -1479,10 +1479,20 @@ class Distancelaw(AbstractCommand):
                 labels = []
                 for i in range(length_files):
                     labels.append("Sample " + str(i))
+                    
         # Make the plot if enabled, if not average plot the different arms or
         # chromosomes with the initial names else plot the different conditions
         # with the names labels.
         hcdl.plot_ps_slope(xs, ps, labels, output_file_img, inf, sup)
+
+        # Export the new table if required.
+        if self.args["--outputfile-tabl"]:
+            hcdl.export_distance_law(
+                xs,
+                ps,
+                labels, 
+                self.args["--outputfile-tabl"]
+            )
 
 
 class Missview(AbstractCommand):

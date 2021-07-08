@@ -14,12 +14,12 @@ import hicstuff.io as hio
 from hicstuff.log import logger
 
 
-def export_distance_law(xs, ps, names, out_dir=None):
+def export_distance_law(xs, ps, names, out_file=None):
     """ Export the x(s) and p(s) from two list of numpy.ndarrays to a table
     in txt file with three columns separated by a tabulation. The first column
     contains the x(s), the second the p(s) and the third the name of the arm or
-    chromosome. The file is createin the directory given by outdir or the
-    current directory if no directory given.
+    chromosome. The file is created in the directory given by outdir or the
+    current file if no file is given.
 
     Parameters
     ----------
@@ -30,27 +30,26 @@ def export_distance_law(xs, ps, names, out_dir=None):
     names : list of string
         List containing the names of the chromosomes/arms/conditions of the p(s)
         values given.
-    out_dir : str or None
-        Path where output files should be written. Current directory by
-        default.
+    out_file : str or None
+        Path where output file should be written. ./distance_law.txt by default.
 
     Return
     ------
     txt file:
-         File with three coulumns separated by a tabulation. The first column
-         contains the x(s), the second the p(s) and the third the name of the arm
-         or chromosome. The file is createin the directory given by outdir or
-         the current directory if no directory given.
+        File with three columns separated by a tabulation. The first column
+        contains the x(s), the second the p(s) and the third the name of the arm
+        or chromosome. The file is creates in the output file given or the 
+        default one if none given.
     """
-    # Give the current directory as out_dir if no out_dir is given.
-    if out_dir is None:
-        out_dir = os.getcwd() + "/distance_law.txt"
+    # ./distance_law.txt as out_file if no out_file is given.
+    if out_file is None:
+        out_file = os.getcwd() + "/distance_law.txt"
     # Sanity check: as many chromosomes/arms as ps
     if len(xs) != len(names):
         logger.error("Number of chromosomes/arms and number of p(s) list differ.")
         sys.exit(1)
     # Create the file and write it
-    f = open(out_dir, "w")
+    f = open(out_file, "w")
     for i in range(len(xs)):
         for j in range(len(xs[i])):
             line = (
