@@ -773,7 +773,7 @@ def full_pipeline(
         # If cutsite enabled and enzyme given, cut the reads before making a 
         # normal alignment.
         except ValueError:
-            itertative = False
+            iterative = False
             digest_for = _tmp_file("digest_for.fq.gz")
             digest_rev = _tmp_file("digest_rev.fq.gz")
             hcc.cut_ligation_sites(

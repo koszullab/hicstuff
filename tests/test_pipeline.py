@@ -79,11 +79,15 @@ def test_full_pipeline():
             for aligner in ['bowtie2', 'bwa', 'minimap2']:
                 # Indexed or non-indexed genome
                 #for genome in ['test_data/genome/seq', 'test_data/genome/seq.fa']:
+                if mapping == 'cutsite':
+                    enzyme = 'HpaII'
+                else:
+                    enzyme = 5000
                 hpi.full_pipeline(
                     input1=in1,
                     input2=in2,
                     genome="test_data/genome/seq.fa",
-                    enzyme=5000,
+                    enzyme=enzyme,
                     out_dir="test_out2",
                     aligner=aligner,
                     mapping=mapping,
