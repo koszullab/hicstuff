@@ -759,39 +759,41 @@ def full_pipeline(
     if re.search(",", enzyme):
         enzyme = enzyme.split(",")
         
-    # Define mapping choice (default normal):
-    if mapping == "normal":
-        iterative = False
-    elif mapping == "iterative":
-        iterative = True   
-    elif mapping == "cutsite":
-        # If no enzyme given use iterative alignment.
-        try:
-            int(enzyme)
-            logger.warning("No enzyme has been given. Can't map using cutsite, iterative mapping will be used instead.")
-            iterative = True
-        # If cutsite enabled and enzyme given, cut the reads before making a 
-        # normal alignment.
-        except ValueError:
-            iterative = False
-            digest_for = _tmp_file("digest_for.fq.gz")
-            digest_rev = _tmp_file("digest_rev.fq.gz")
-            hcc.cut_ligation_sites(
-                fq_for=reads1,
-                fq_rev=reads2,
-                digest_for=digest_for,
-                digest_rev=digest_rev,
-                enzyme=enzyme,
-                mode="for_vs_rev",
-                n_cpu=threads,
-            )
-            reads1, reads2 = digest_for, digest_rev
-    else:
-        logger.error("mapping must be either normal, iterative or cutsite.")
-        raise ValueError
-       
+      
     # Perform genome alignment
     if start_stage == 0:
+        
+        # Define mapping choice (default normal):
+        if mapping == "normal":
+            iterative = False
+        elif mapping == "iterative":
+            iterative = True   
+        elif mapping == "cutsite":
+            # If no enzyme given use iterative alignment.
+            try:
+                int(enzyme)
+                logger.warning("No enzyme has been given. Can't map using cutsite, iterative mapping will be used instead.")
+                iterative = True
+            # If cutsite enabled and enzyme given, cut the reads before making a 
+            # normal alignment.
+            except ValueError:
+                iterative = False
+                digest_for = _tmp_file("digest_for.fq.gz")
+                digest_rev = _tmp_file("digest_rev.fq.gz")
+                hcc.cut_ligation_sites(
+                    fq_for=reads1,
+                    fq_rev=reads2,
+                    digest_for=digest_for,
+                    digest_rev=digest_rev,
+                    enzyme=enzyme,
+                    mode="for_vs_rev",
+                    n_cpu=threads,
+                )
+                reads1, reads2 = digest_for, digest_rev
+        else:
+            logger.error("mapping must be either normal, iterative or cutsite.")
+            raise ValueError
+        
         align_reads(
             reads1,
             genome,
