@@ -42,6 +42,7 @@ def distance_law_from_mat(matrix, indices=None, log_bins=True, base=1.1):
     """Compute distance law as a function of the genomic coordinate aka P(s).
     Bin length increases exponentially with distance if log_bins is True. Works
     on dense and sparse matrices. Less precise than the one from the pairs.
+
     Parameters
     ----------
     matrix : numpy.array or scipy.sparse.coo_matrix
@@ -53,12 +54,23 @@ def distance_law_from_mat(matrix, indices=None, log_bins=True, base=1.1):
     log_bins : bool
         Whether the distance law should be computed on exponentially larger
         bins.
+
     Returns
     -------
     numpy array of floats :
         The start index of each bin.
     numpy array of floats :
         The distance law computed per bin on the diagonal
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> mat = np.array([[3, 2, 1], [2, 3, 2], [1, 2, 3]])
+    >>> idx, avg = distance_law_from_mat(mat, log_bins=False)
+    >>> idx
+    array([0, 1, 2])
+    >>> avg
+    array([3., 2., 1.])
     """
 
     n = min(matrix.shape)
@@ -326,11 +338,10 @@ def bin_bp_sparse(M, positions, bin_len=10000):
     Perform binning with a fixed genomic length in
     base pairs on a sparse matrix. Fragments will be binned such
     that their total length is closest to the specified input.
-    If a contig list is specified, binning will be performed
-    such that fragments never overlap two contigs. Fragments longer
-    than bin size will not be split, which can result in larger bins.
-    The last smaller bin of the chromosome will be merged with the
-    previous one.
+    Binning will be performed such that fragments never overlap two
+    contigs. Fragments longer than bin size will not be split, which
+    can result in larger bins. The last smaller bin of the chromosome
+    will be merged with the previous one.
 
     Parameters
     ----------
