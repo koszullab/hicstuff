@@ -32,7 +32,7 @@ from hicstuff.log import logger
 
 
 def cut_ligation_sites(
-    fq_for, fq_rev, digest_for, digest_rev, enzyme, mode, n_cpu
+    fq_for, fq_rev, digest_for, digest_rev, enzyme, mode, seed_size, n_cpu
 ):
     """Create new reads to manage pairs with a digestion and create multiple
     pairs to take into account all the contact present.
@@ -61,9 +61,9 @@ def cut_ligation_sites(
     mode : str
         Mode to use to make the digestion. Three values possible: "all",
         "for_vs_rev", "pile".
-    outdir : str
-        Path for the ouput directory. The fastq will have their initial names
-        with a "_digested".
+    seed_size : int
+        Minimum size of a fragment (i.e. seed size used in mapping as reads 
+        smaller won't be mapped.)
     n_cpu : int
         Number of CPUs.
     """
@@ -117,10 +117,10 @@ def cut_ligation_sites(
 
         # Cut the forward and reverse reads at the ligation sites.
         for_seq_list, for_qual_list = cutsite_read(
-            ligation_sites, for_seq, for_qual
+            ligation_sites, for_seq, for_qual, seed_size,
         )
         rev_seq_list, rev_qual_list = cutsite_read(
-            ligation_sites, rev_seq, rev_qual
+            ligation_sites, rev_seq, rev_qual, seed_size,
         )
 
         # Write the new combinations of fragments.
@@ -165,7 +165,7 @@ def cut_ligation_sites(
     )
 
 
-def cutsite_read(ligation_sites, seq, qual):
+def cutsite_read(ligation_sites, seq, qual, seed_size=0):
     """Find ligation sites in a given sequence and return list of the fragmented
     sequence and quality.
 
@@ -177,6 +177,9 @@ def cutsite_read(ligation_sites, seq, qual):
         Sequence where to search for ligation_sites.
     qual : str
         Quality values of the sequence given.
+    seed_size : int
+        Minimum size of a fragment (i.e. seed size used in mapping as reads 
+        smaller won't be mapped.)
 
     Returns:
     --------
@@ -205,9 +208,10 @@ def cutsite_read(ligation_sites, seq, qual):
     qual_list = []
     left_site = 0
     for right_site in ligation_sites_list:
-        seq_list.append(seq[left_site:right_site])
-        qual_list.append(qual[left_site:right_site])
-        left_site = right_site
+        if right_site - left_site > seed_size:
+            seq_list.append(seq[left_site:right_site])
+            qual_list.append(qual[left_site:right_site])
+            left_site = right_site
 
     return seq_list, qual_list
 

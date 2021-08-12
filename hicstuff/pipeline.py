@@ -787,6 +787,7 @@ def full_pipeline(
                     digest_rev=digest_rev,
                     enzyme=enzyme,
                     mode="for_vs_rev",
+                    seed_size=20,
                     n_cpu=threads,
                 )
                 reads1, reads2 = digest_for, digest_rev

@@ -38,7 +38,7 @@ def export_distance_law(xs, ps, names, out_file=None):
     txt file:
         File with three columns separated by a tabulation. The first column
         contains the x(s), the second the p(s) and the third the name of the arm
-        or chromosome. The file is creates in the output file given or the 
+        or chromosome. The file is creates in the output file given or the
         default one if none given.
     """
     # ./distance_law.txt as out_file if no out_file is given.

@@ -253,7 +253,7 @@ class Cutsite(AbstractCommand):
 
     usage:
         cutsite --forward=FILE --reverse=FILE  --prefix=STR --enzyme=STR
-        [--threads=1] [--mode=for_vs_rev]
+        [--mode=for_vs_rev] [--seed-size=20] [--threads=1]
 
     options:
         -1, --forward=FILE      Fastq file containing the forward reads to 
@@ -275,6 +275,9 @@ class Cutsite(AbstractCommand):
                                 possible. The third one "pile" will make the
                                 contacts only with the adjacent fragments.
                                 [Default: for_vs_rev]
+        -s, --seed-size=INT     Minimum size of a read. (i.e. seed size used 
+                                in mapping as reads smaller won't be mapped.)
+                                [Default: 20]
         -t, --threads=INT       Number of parallel threads allocated for the
                                 alignement. [Default: 1]
     """
@@ -305,6 +308,7 @@ class Cutsite(AbstractCommand):
             output_rev,
             enzyme=self.args["--enzyme"],
             mode=self.args["--mode"],
+            seed_size=int(self.args["--seed-size"]),
             n_cpu=int(self.args["--threads"]),
         )
 
