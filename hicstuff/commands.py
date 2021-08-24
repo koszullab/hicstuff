@@ -772,14 +772,14 @@ class Pipeline(AbstractCommand):
                                       are not normalized, or averaged.
         -D, --duplicates              Filter out PCR duplicates based on read
                                       positions.
-        -e, --enzyme={STR|INT}        Restriction enzyme if a string, or chunk
-                                      size (i.e. resolution) if a number. Can
-                                      also be multiple comma-separated enzymes.
-                                      [default: 5000]
+        -e, --enzyme={STR|INT}        Restriction enzyme or "mnase" if a string,
+                                      or chunk size (i.e. resolution) if a number.
+                                      Can also be multiple comma-separated
+                                      enzymes. [default: 5000]
         -f, --filter                  Filter out spurious 3C events (loops and
                                       uncuts) using hicstuff filter. Requires
-                                      "-e" to be a restriction enzyme, not a
-                                      chunk size. For more informations, see
+                                      "-e" to be a restriction enzyme or mnase,
+                                      not a chunk size. For more informations, see
                                       Cournac et al. BMC Genomics, 2012.
         -F, --force                   Write even if the output file already exists.
         -g, --genome=FILE             Reference genome to map against. Path to
@@ -847,6 +847,10 @@ class Pipeline(AbstractCommand):
             raise ValueError(
                 "You cannot filter without specifying a restriction enzyme."
             )
+        elif self.args["--enzyme"] in ("mnase", "dnase"):
+            logger.info("## Enzyme provided is 'mnase', setting bin-size to 100bp")
+            self.args["--enzyme"] = 100
+
         if not self.args["--outdir"]:
             self.args["--outdir"] = os.getcwd()
 
