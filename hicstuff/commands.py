@@ -1175,12 +1175,19 @@ class Rebin(AbstractCommand):
         frags["size"] = frags.end_pos - frags.start_pos
         cumul_bins = 0
         for chrom in chromnames:
-            n_bins = frags.start_pos[frags.chrom == chrom].shape[0]
+            # Update cumulative length column in chromlist
+            chrom_frags = frags.chrom == chrom
+            n_bins = frags.start_pos[chrom_frags].shape[0]
             chromlist.loc[chromlist.contig == chrom, "n_frags"] = n_bins
             chromlist.loc[
                 chromlist.contig == chrom, "cumul_length"
             ] = cumul_bins
             cumul_bins += n_bins
+            # Adjust each chromosome's last bin end to match chromsize
+            last_frag_end = frags.loc[chrom_frags, 'end_pos'].max()
+            chromlen = chromlist.loc[chromlist.contig == chrom, 'length'].values[0]
+            frags.loc[chrom_frags & (frags.end_pos == last_frag_end), 'end_pos'] = chromlen
+
 
         # Keep original column order
         frags = frags.reindex(columns=col_ordered)
