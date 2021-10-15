@@ -1,4 +1,5 @@
 .PHONY: build install test clean deploy apidoc
+TAG = $(shell git describe --tags)
 
 install:
 	pip install -e .
@@ -21,3 +22,6 @@ apidoc:
 test:
 	pytest --doctest-modules --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc hicstuff tests
 
+dockerhub:
+	docker build -t "koszullab/hicstuff:$(TAG)" .
+	docker push "koszullab/hicstuff:$(TAG)"
