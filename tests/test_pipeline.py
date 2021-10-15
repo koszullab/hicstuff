@@ -3,9 +3,14 @@
 from tempfile import NamedTemporaryFile
 import os, shutil
 import pandas as pd
+import pytest
 import filecmp
 import numpy as np
 import hicstuff.pipeline as hpi
+
+
+MAPPING_PARAMETERS = ("mapping", ['normal', 'iterative'])
+ALIGNER_PARAMETERS = ("aligner", ['bowtie2', 'bwa', 'minimap2'])
 
 
 def test_sam2pairs():
@@ -47,21 +52,31 @@ def test_filter_pcr_dup():
     os.unlink(test_rm.name)
 
 
-def test_full_pipeline():
+def test_full_pipeline_frags():
+    mapping_to_enzyme = {
+        'normal': "DpnII",
+        'cutsite': "DpnII,HpaII"
+    }
+    for mapping, enzyme in mapping_to_enzyme.items():
+        hpi.full_pipeline(
+            input1="test_data/sample.reads_for.fastq.gz",
+            input2="test_data/sample.reads_rev.fastq.gz",
+            genome="test_data/genome/seq",
+            enzyme=enzyme,
+            mapping=mapping,
+            out_dir="test_out",
+            plot=True,
+            pcr_duplicates=True,
+            filter_events=True,
+            no_cleanup=True,
+            force=True,
+        )
+
+
+@pytest.mark.parametrize(*MAPPING_PARAMETERS)
+@pytest.mark.parametrize(*ALIGNER_PARAMETERS)
+def test_full_pipeline_bin(mapping, aligner):
     """Crash Test for the whole pipeline"""
-    # Set of parameters #1
-    hpi.full_pipeline(
-        input1="test_data/sample.reads_for.fastq.gz",
-        input2="test_data/sample.reads_rev.fastq.gz",
-        genome="test_data/genome/seq",
-        enzyme="DpnII",
-        out_dir="test_out",
-        plot=True,
-        pcr_duplicates=True,
-        filter_events=True,
-        no_cleanup=True,
-        force=True,
-    )
     start_input = {
         'fastq': [
             "test_data/sample.reads_for.fastq.gz",
@@ -71,31 +86,23 @@ def test_full_pipeline():
         'pairs': ['test_out/tmp/valid.pairs', None],
         'pairs_idx': ['test_out/tmp/valid_idx.pairs', None]
     }
-    # Test all (48) combinations of:
     for stage, [in1, in2] in start_input.items():
-        # Iterative alignment or not
-        for  mapping in ['normal', 'iterative', 'cutsite']:
-            # read alignment software
-            for aligner in ['bowtie2', 'bwa', 'minimap2']:
-                # Indexed or non-indexed genome
-                #for genome in ['test_data/genome/seq', 'test_data/genome/seq.fa']:
-                if mapping == 'cutsite':
-                    enzyme = 'HpaII'
-                else:
-                    enzyme = 5000
-                hpi.full_pipeline(
-                    input1=in1,
-                    input2=in2,
-                    genome="test_data/genome/seq.fa",
-                    enzyme=enzyme,
-                    out_dir="test_out2",
-                    aligner=aligner,
-                    mapping=mapping,
-                    prefix="test",
-                    distance_law=True,
-                    start_stage=stage,
-                    mat_fmt="cooler",
-                    force=True,
-                )
-    shutil.rmtree("test_out/")
+        # Indexed or non-indexed genome
+        # for genome in ['test_data/genome/seq', 'test_data/genome/seq.fa']:
+        hpi.full_pipeline(
+            input1=in1,
+            input2=in2,
+            genome="test_data/genome/seq.fa",
+            enzyme=5000,
+            out_dir="test_out2",
+            aligner=aligner,
+            mapping=mapping,
+            prefix="test",
+            distance_law=True,
+            start_stage=stage,
+            mat_fmt="cooler",
+            force=True,
+        )
     shutil.rmtree("test_out2/")
+    if mapping == 'iterative' and aligner == 'minimap2':
+        shutil.rmtree("test_out/")

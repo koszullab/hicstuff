@@ -754,12 +754,7 @@ def full_pipeline(
         pairs = input1
     elif start_stage == 3:
         pairs_idx = input1
-
-    # Detect if multiple enzymes are given
-    if re.search(",", enzyme):
-        enzyme = enzyme.split(",")
-        
-      
+ 
     # Perform genome alignment
     if start_stage == 0:
         
@@ -818,6 +813,10 @@ def full_pipeline(
             read_len=read_len,
         )
 
+    # Detect if multiple enzymes are given
+    if re.search(",", enzyme):
+        enzyme = enzyme.split(",")
+        
     # Starting from bam files
     if start_stage <= 1:
 
