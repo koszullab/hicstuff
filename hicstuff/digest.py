@@ -69,7 +69,7 @@ def write_frag_info(
         existing. Default is the current directory.
     """
 
-    records = SeqIO.parse(fasta, "fasta")
+    records = SeqIO.parse(hio.read_compressed(fasta), "fasta")
 
     try:
         info_contigs_path = os.path.join(output_dir, output_contigs)

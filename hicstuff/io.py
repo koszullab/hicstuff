@@ -376,7 +376,7 @@ def save_cool(cool_out, mat, frags, metadata={}):
     )
 
 
-def read_compressed(filename):
+def read_compressed(filename, mode='r'):
     """Read compressed file
 
     Opens the file in read mode with appropriate decompression algorithm.
@@ -415,23 +415,24 @@ def read_compressed(filename):
         return "uncompressed"
 
     # Open file with appropriate function
+    mode_map = {'r': 'rt', 'rb': 'rb'}
     comp = file_type(filename)
     if comp == "gz":
-        return gzip.open(filename, "rt")
+        return gzip.open(filename, mode_map[mode])
     elif comp == "bz2":
-        return bz2.open(filename, "rt")
+        return bz2.open(filename, mode_map[mode])
     elif comp == "zip":
-        zip_arch = zipfile.ZipFile(filename, "r")
+        zip_arch = zipfile.ZipFile(filename, mode)
         if len(zip_arch.namelist()) > 1:
             raise IOError(
                 "Only a single fastq file must be in the zip archive."
             )
         else:
             # ZipFile opens as bytes by default, using io to read as text
-            zip_content = zip_arch.open(zip_arch.namelist()[0], "r")
+            zip_content = zip_arch.open(zip_arch.namelist()[0], mode)
             return io.TextIOWrapper(zip_content, encoding="utf-8")
     else:
-        return open(filename, "r")
+        return open(filename, mode)
 
 
 def is_compressed(filename):
@@ -1424,7 +1425,7 @@ def check_is_fasta(in_file):
         True if the input is in fasta format, False otherwise
     """
     try:
-        with open(in_file, "r") as handle:
+        with read_compressed(in_file) as handle:
             fasta = any(SeqIO.parse(handle, "fasta"))
     except FileNotFoundError:
         fasta = False

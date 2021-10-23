@@ -11,6 +11,7 @@ from shutil import which
 import logging
 from os.path import join
 import subprocess as sp
+import gzip
 from Bio import SeqIO
 import pandas as pd
 import numpy as np
@@ -647,7 +648,7 @@ def full_pipeline(
 
     # Define temporary file names
     log_file = _out_file("hicstuff_" + now + ".log")
-    tmp_genome = _tmp_file("genome.fasta")
+    tmp_genome = _tmp_file("genome.fa.gz")
     bam1 = _tmp_file("for.bam")
     bam2 = _tmp_file("rev.bam")
     pairs = _tmp_file("valid.pairs")
@@ -676,26 +677,28 @@ def full_pipeline(
     if not sane_input[aligner]:
         logger.error("You must provide either a fasta or bowtie2 index prefix as genome")
 
-    # Just use the input genome is it is indexed
+    # Just use the input genome if it is indexed
     if is_fasta and idx:
         fasta = genome
-    # Otherwise copy it in tmpdir for indexing, unless the input is a bt2 index, in which
-    # case fasta will be extracted later from it.
+    # Otherwise copy it in tmpdir (in compressed format) for indexing, unless the input is a
+    # bt2 index, in which case fasta will be extracted later from it.
     else:
         if is_fasta:
-            st.copy(genome, tmp_genome)
+            with hio.read_compressed(genome, 'rb') as src, gzip.open(tmp_genome, 'wb') as dst:
+                dst.writelines(src)
             genome = tmp_genome
         fasta = tmp_genome
         
 
     # Bowtie2-specific feature: extract fasta from the index
     if aligner == 'bowtie2' and not is_fasta:
-        # Index is present, extract fasta file from it
+        # Index is present, extract fasta file from it and compress it
         bt2fa = sp.Popen(
             ["bowtie2-inspect", genome],
-            stdout=open(tmp_genome, "w"),
+            stdout=sp.PIPE,
             stderr=sp.PIPE,
         )
+        _ = sp.run(['gzip', '-c'], stdin=bt2fa.stdout, stdout=open(tmp_genome, "w"))
         _, bt2err = bt2fa.communicate()
         # bowtie2-inspect still has return code 0 when crashing, need to
         # actively look for error in stderr
@@ -725,7 +728,7 @@ def full_pipeline(
             sp.run(index_cmd, stderr=sp.PIPE)
 
     # Check for spaces in fasta headers and issue error if found
-    for record in SeqIO.parse(fasta, "fasta"):
+    for record in SeqIO.parse(hio.read_compressed(fasta), "fasta"):
         if " " in record.id:
             logger.error(
                 "Sequence identifiers contain spaces. Please clean the input genome."
@@ -840,7 +843,7 @@ def full_pipeline(
     # Starting from pairs file
     if start_stage <= 2:
         restrict_table = {}
-        for record in SeqIO.parse(fasta, "fasta"):
+        for record in SeqIO.parse(hio.read_compressed(fasta), "fasta"):
             # Get chromosome restriction table
             restrict_table[record.id] = hcd.get_restriction_table(
                 record.seq, enzyme, circular=circular

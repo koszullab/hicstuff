@@ -73,6 +73,28 @@ def test_full_pipeline_frags():
         )
 
 
+
+def test_full_pipeline_frags_gzipped_genome():
+    mapping_to_enzyme = {
+        'normal': "DpnII",
+        'cutsite': "DpnII,HpaII"
+    }
+    for mapping, enzyme in mapping_to_enzyme.items():
+        hpi.full_pipeline(
+            input1="test_data/sample.reads_for.fastq.gz",
+            input2="test_data/sample.reads_rev.fastq.gz",
+            genome="test_data/genome/seq.fa.gz",
+            enzyme=enzyme,
+            mapping=mapping,
+            out_dir="test_out",
+            plot=True,
+            pcr_duplicates=True,
+            filter_events=True,
+            no_cleanup=True,
+            force=True,
+        )
+
+
 @pytest.mark.parametrize(*MAPPING_PARAMETERS)
 @pytest.mark.parametrize(*ALIGNER_PARAMETERS)
 def test_full_pipeline_bin(mapping, aligner):
