@@ -455,7 +455,7 @@ def filter_events(
     # Visualize summary if requested by user
     if plot_events:
         try:
-            # Plot: make a square figure and axes to plot a pieChart:
+        # Plot: make a square figure and axes to plot a pieChart:
             plt.figure(2, figsize=(6, 6))
             # The slices will be ordered and plotted counter-clockwise.
             fracs = [n_uncuts, n_loops, n_weirds, lrange_intra, lrange_inter]
@@ -474,7 +474,12 @@ def filter_events(
             )
             colors = ["salmon", "lightskyblue", "yellow", "palegreen", "plum"]
             patches, _ = plt.pie(fracs, colors=colors, startangle=90)
-            plt.legend(patches, labels, loc=2)
+            plt.legend(
+                patches,
+                labels,
+                loc='upper left',
+                bbox_to_anchor=(-0.1, 1.),
+            )
             if prefix:
                 plt.title(
                     "Distribution of library events in {}".format(prefix),
@@ -483,31 +488,27 @@ def filter_events(
             plt.text(
                 0.3,
                 1.15,
-                "Threshold Uncuts =" + str(thr_uncut),
+                "Threshold Uncuts = " + str(thr_uncut),
                 fontdict=None,
-                withdash=False,
             )
             plt.text(
                 0.3,
                 1.05,
-                "Threshold Loops =" + str(thr_loop),
+                "Threshold Loops = " + str(thr_loop),
                 fontdict=None,
-                withdash=False,
             )
 
             plt.text(
                 -1.5,
                 -1.2,
-                "Total number of reads =" + str(total),
+                "Total number of reads = " + str(total),
                 fontdict=None,
-                withdash=False,
             )
             plt.text(
                 -1.5,
                 -1.3,
-                "Ratio inter/(intra+inter) =" + str(ratio_inter) + "%",
+                "Ratio inter/(intra+inter) = " + str(ratio_inter) + "%",
                 fontdict=None,
-                withdash=False,
             )
             percentage = round(
                 100
@@ -517,9 +518,8 @@ def filter_events(
             plt.text(
                 -1.5,
                 -1.4,
-                "selected reads = {0}%".format(percentage),
+                "Selected reads = {0}%".format(percentage),
                 fontdict=None,
-                withdash=False,
             )
             if fig_path:
                 plt.savefig(fig_path)
