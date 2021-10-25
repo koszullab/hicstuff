@@ -1,7 +1,7 @@
 numpy
 scipy
 pandas
-matplotlib
+matplotlib >= 3.4.0
 docopt
 biopython
 requests
