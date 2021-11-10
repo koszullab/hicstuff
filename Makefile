@@ -16,8 +16,9 @@ build: clean
 deploy: build
 	twine upload dist/*
 
-apidoc:
+doc:
 	sphinx-apidoc -f -o docs/api hicstuff
+	sphinx-build docs/ docs/build
 
 test:
 	pytest --doctest-modules --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc hicstuff tests
