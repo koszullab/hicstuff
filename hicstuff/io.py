@@ -927,8 +927,8 @@ def flexible_hic_loader(
                 )
 
     elif hic_format == "graal":
+        mat = load_sparse_matrix(mat)
         try:
-            mat = load_sparse_matrix(mat)
             frags = pd.read_csv(fragments_file, sep="\t")
         except ValueError:
             if not quiet:
