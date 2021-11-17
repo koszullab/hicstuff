@@ -6,15 +6,14 @@
 A bunch of handy functions for processing Hi-C data
 (mainly in the form of matrices):
 
-    -Normalizations
-    -Interpolations
-    -Filters
-    -Removing artifacts
-    -Quick sum-pooling (aka 'binning') in sparse and dense form
-    -Simple models with parameter estimation
-    -Computing best-matching 3D structures
-    -Various metrics in use among Hi-C people for eyecandy purposes
-     (directional index, domainograms, etc.)
+* Normalizations
+* Interpolations
+* Filters
+* Removing artifacts
+* Quick sum-pooling (aka 'binning') in sparse and dense form
+* Simple models with parameter estimation
+* Computing best-matching 3D structures
+* Various metrics in use among Hi-C people for eyecandy purposes (directional index, domainograms, etc.)
 
 These functions are meant to be simple and relatively quick
 as-is implementations of procedures described in Hi-C papers.

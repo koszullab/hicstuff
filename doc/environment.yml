@@ -5,3 +5,4 @@ dependencies:
   - nbsphinx
   - recommonmark
   - hicstuff
+  - docutils < 0.18

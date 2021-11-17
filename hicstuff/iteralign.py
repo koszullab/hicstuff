@@ -45,6 +45,7 @@ def iterative_align(
 
     Parameters
     ----------
+
     fq_in : str
         Path to input fastq file to align iteratively.
     tmp_dir : str
@@ -69,6 +70,7 @@ def iterative_align(
         
     Examples
     --------
+
     iterative_align(fq_in='example_for.fastq', ref='example_bt2_index', bam_out='example_for.bam', aligner="bowtie2")
     iterative_align(fq_in='example_for.fastq', ref='example_genome.fa', bam_out='example_for.bam', aligner="minimap2")
     """
@@ -244,8 +246,10 @@ def truncate_reads(tmp_dir, infile, unaligned_set, trunc_len, first_round):
 
     Writes the n first nucleotids of each sequence in infile to an auxiliary.
     file in the temporary folder.
+
     Parameters
     ----------
+
     tmp_dir : str
         Path to the temporary folder.
     infile : str
@@ -260,6 +264,7 @@ def truncate_reads(tmp_dir, infile, unaligned_set, trunc_len, first_round):
     
     Returns
     -------
+
     str :
         Path to the output fastq file containing truncated reads.
     """
