@@ -910,7 +910,7 @@ def flexible_hic_loader(
             # Guess if bin size is fixed based on MAD
             bg2 = pd.read_csv(mat, sep="\t")
             sizes = np.array(bg2.iloc[:, 2] - bg2.iloc[:, 1])
-            size_mad = ss.median_absolute_deviation(sizes)
+            size_mad = ss.median_abs_deviation(sizes, scale='normal')
             # Use only the bg2
             if size_mad > 0:
                 mat, frags, chroms = load_bedgraph2d(mat)

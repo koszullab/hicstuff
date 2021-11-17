@@ -123,6 +123,7 @@ def test_full_pipeline_bin(mapping, aligner):
             distance_law=True,
             start_stage=stage,
             mat_fmt="cooler",
+            no_cleanup=True,
             force=True,
         )
     shutil.rmtree("test_out2/")

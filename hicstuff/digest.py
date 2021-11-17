@@ -401,7 +401,7 @@ def frag_len(
         ax.set_xlabel("Fragment length [bp]")
         ax.set_ylabel("Log10 number of fragments")
         ax.set_title("Distribution of restriction fragment length")
-        ax.set_yscale("log", basey=10)
+        ax.set_yscale("log", base=10)
         ax.annotate(
             "Total fragments: {}".format(nfrags),
             xy=(0.95, 0.95),

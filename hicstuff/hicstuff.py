@@ -89,7 +89,7 @@ def distance_law_from_mat(matrix, indices=None, log_bins=True, base=1.1):
     else:
         n_bins = int(np.log(n) / np.log(base) + 1)
         logbin = np.unique(
-            np.logspace(0, n_bins - 1, num=n_bins, base=base, dtype=np.int)
+            np.logspace(0, n_bins - 1, num=n_bins, base=base, dtype=int)
         )
         logbin = np.insert(logbin, 0, 0)
         logbin[-1] = min(n, logbin[-1])
@@ -512,7 +512,7 @@ def mad(M, axis=None):
     else:
         if axis < 0:
             axis += 2
-        dist = np.array(M.sum(axis=axis, dtype=np.float)).flatten()
+        dist = np.array(M.sum(axis=axis, dtype=float)).flatten()
 
     return np.median(np.absolute(dist - np.median(dist)))
 

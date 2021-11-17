@@ -255,7 +255,7 @@ def logbins_xs(fragments, chr_segment_length, base=1.1, circular=False):
         # For each chromosome/arm compute a logspace to have the logbin
         # equivalent to the size of the arms and increasing size of bins
         xs[i] = np.unique(
-            np.logspace(0, n_bins, num=n_bins + 1, base=base, dtype=np.int)
+            np.logspace(0, n_bins, num=n_bins + 1, base=base, dtype=int)
         )
     return xs
 
@@ -787,7 +787,7 @@ def plot_ps_slope(xs, ps, labels, fig_path=None, inf=3000, sup=None):
     for i in range(len(slope)):
         xs2[i] = xs[i][:-1]
         col = next(cols)
-        ax2.semilogx(xs2[i], slope[i], label=labels[i], subsx=[2, 3, 4, 5, 6, 7, 8, 9])
+        ax2.semilogx(xs2[i], slope[i], label=labels[i], subs=[2, 3, 4, 5, 6, 7, 8, 9])
     ax2.legend(loc="upper left", bbox_to_anchor=(1.02, 1.00), ncol=1, fontsize="large")
     # Save the figure in svg
     if fig_path is not None:

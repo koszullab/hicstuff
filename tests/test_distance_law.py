@@ -81,17 +81,17 @@ def test_logbins_xs():
     xs = hcdl.logbins_xs(fragments, [60000, 20000])
     assert len(xs) == 2
     assert np.all(
-        xs[0] == np.unique(np.logspace(0, 115, num=116, base=1.1, dtype=np.int))
+        xs[0] == np.unique(np.logspace(0, 115, num=116, base=1.1, dtype=int))
     )
     # Test changing base.
     xs = hcdl.logbins_xs(fragments, [60000, 20000], base=1.5)
     assert np.all(
-        xs[0] == np.unique(np.logspace(0, 27, num=28, base=1.5, dtype=np.int))
+        xs[0] == np.unique(np.logspace(0, 27, num=28, base=1.5, dtype=int))
     )
     # Test with the circular option.
     xs = hcdl.logbins_xs(fragments, [60000, 20000], circular=True)
     assert np.all(
-        xs[0] == np.unique(np.logspace(0, 108, num=109, base=1.1, dtype=np.int))
+        xs[0] == np.unique(np.logspace(0, 108, num=109, base=1.1, dtype=int))
     )
 
 
