@@ -2,7 +2,7 @@
 
 [![PyPI version](https://badge.fury.io/py/hicstuff.svg)](https://badge.fury.io/py/hicstuff)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/hicstuff.svg)
-[![Build Status](https://api.travis-ci.com/koszullab/hicstuff.svg)](https://app.travis-ci.com/github/koszullab/hicstuff)
+[![Build Status](https://github.com/koszullab/hicstuff/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/koszullab/hicstuff/actions/workflows/build.yml)
 [![Docker Cloud Build Status](https://img.shields.io/docker/cloud/build/koszullab/hicstuff)](https://hub.docker.com/r/koszullab/hicstuff)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.2620608.svg)](https://doi.org/10.5281/zenodo.2620608)
 [![codecov](https://codecov.io/gh/koszullab/hicstuff/branch/master/graph/badge.svg)](https://codecov.io/gh/koszullab/hicstuff)
