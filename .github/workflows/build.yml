@@ -20,12 +20,8 @@ jobs:
         echo $CONDA/bin >> $GITHUB_PATH
     - name: Install dependencies
       run: |
-        conda config --set always_yes yes
         conda config --add channels bioconda
-        conda update -q conda
-        conda info -a
-        conda create --name build-env -q -c conda-forge python=3.9 minimap2  bowtie2  bwa samtools  htslib  pysam  pytest  pytest-cov  pylint  codecov  cooler  mappy
-        conda activate build-env
+        conda install -c conda-forge python=3.9 minimap2  bowtie2  bwa samtools  htslib  pysam  pytest  pytest-cov  pylint  codecov  cooler  mappy
         pip install -Ur requirements.txt
         pip install pytest-pylint
     - name: Lint and test
