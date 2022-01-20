@@ -1,0 +1,34 @@
+name: Test and lint python Package using Conda
+
+on: [push]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      max-parallel: 5
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up Python 3.9
+      uses: actions/setup-python@v2
+      with:
+        python-version: 3.9
+    - name: Add conda to system path
+      run: |
+        # $CONDA is an environment variable pointing to the root of the miniconda directory
+        echo $CONDA/bin >> $GITHUB_PATH
+    - name: Install dependencies
+      run: |
+        conda config --set always_yes yes
+        conda config --add channels bioconda
+        conda update -q conda
+        conda info -a
+        conda create --name build-env -q -c conda-forge python=3.9 minimap2  bowtie2  bwa samtools  htslib  pysam  pytest  pytest-cov  pylint  codecov  cooler  mappy
+        conda activate build-env
+        pip install -Ur requirements.txt
+        pip install pytest-pylint
+    - name: Lint and test
+      run: |
+        pytest --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc --doctest-modules --doctest-modules hicstuff
+        pytest --cov=hicstuff
