@@ -1,4 +1,4 @@
-name: Test and lint python Package using Conda
+name: build
 
 on: [push]
 
