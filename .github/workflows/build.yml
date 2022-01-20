@@ -28,3 +28,4 @@ jobs:
       run: |
         pytest --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc --doctest-modules --doctest-modules hicstuff
         pytest --cov=hicstuff
+        codecov
