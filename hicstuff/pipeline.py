@@ -607,7 +607,10 @@ def full_pipeline(
 
     # Define figures output paths
     if plot:
-        fig_dir = join(out_dir, "plots")
+        if prefix:
+            fig_dir = join(out_dir, prefix + "_plots")
+        else:
+            fig_dir = join(out_dir, "plots")
         os.makedirs(fig_dir, exist_ok=True)
         frag_plot = join(fig_dir, "frags_hist.pdf")
         dist_plot = join(fig_dir, "event_distance.pdf")
