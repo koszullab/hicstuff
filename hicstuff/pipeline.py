@@ -609,10 +609,16 @@ def full_pipeline(
     if plot:
         fig_dir = join(out_dir, "plots")
         os.makedirs(fig_dir, exist_ok=True)
-        frag_plot = join(fig_dir, "frags_hist.pdf")
-        dist_plot = join(fig_dir, "event_distance.pdf")
-        pie_plot = join(fig_dir, "event_distribution.pdf")
-        distance_law_plot = join(fig_dir, "distance_law.pdf")
+        if prefix:
+            frag_plot = join(fig_dir, prefix + "_frags_hist.pdf")
+            dist_plot = join(fig_dir, prefix + "_event_distance.pdf")
+            pie_plot = join(fig_dir, prefix + "_event_distribution.pdf")
+            distance_law_plot = join(fig_dir, prefix + "_distance_law.pdf")
+        else:
+            frag_plot = join(fig_dir, "frags_hist.pdf")
+            dist_plot = join(fig_dir, "event_distance.pdf")
+            pie_plot = join(fig_dir, "event_distribution.pdf")
+            distance_law_plot = join(fig_dir, "distance_law.pdf")
         matplotlib.use("Agg")
     else:
         fig_dir = None
