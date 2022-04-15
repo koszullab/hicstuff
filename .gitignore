@@ -144,8 +144,8 @@ coverage.xml
 # test output
 test.png
 test_cli/
-test_data/digested_1.fq.gz
-test_data/digested_2.fq.gz
+test_data/digested_R1.fq.gz
+test_data/digested_R2.fq.gz
 
 # Translations
 *.mo

@@ -562,15 +562,23 @@ def full_pipeline(
     """
     # Check if third parties can be run
     if aligner in ("bowtie2", "minimap2", "bwa"):
-        if check_tool(aligner) is None:
+        if (not check_tool(aligner)) | (check_tool(aligner) is None):
             logger.error("%s is not installed or not on PATH", aligner)
-            sys.exit(1)
+            raise ImportError(f"{aligner} is required.")
     else:
-        logger.error("Incompatible aligner software, choose bowtie2, minimap2 or bwa")
-        sys.exit(1)
-    if check_tool("samtools") is None:
-        logger.error("Samtools is not installed or not on PATH")
-        sys.exit(1)
+        logger.error("Incompatible aligner software, choose bowtie2, minimap2 or bwa.")
+        raise ValueError("aligner should be either bowtie2, minimap2 or bwa.")
+    if (not check_tool("samtools")) | (check_tool("samtools") is None):
+        logger.error("samtools is not installed or not on PATH")
+        raise ImportError("samtools is required.")
+    if mat_fmt == 'cool':
+        try:
+            import cooler
+        except ImportError:
+            logger.error(
+                "The cooler package is require to return matrix in cool format, please install it first."
+            )
+            raise ImportError("The cooler package is required.")
 
     # Pipeline can start from 3 input types
     start_time = datetime.now()
