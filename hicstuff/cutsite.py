@@ -286,16 +286,32 @@ def write_pair(
         for i in range(len(seq_list)):
             for j in range(i + 1, len(seq_list)):
                 final_number_of_pairs += 1
-                new_reads_for += "@%s\n%s\n+\n%s\n" % (
-                    name + ":" + str(i) + str(j),
-                    seq_list[i],
-                    qual_list[i],
-                )
-                new_reads_rev += "@%s\n%s\n+\n%s\n" % (
-                    name + ":" + str(i) + str(j),
-                    seq_list[j],
-                    qual_list[j],
-                )
+                if i < len(for_seq_list):
+                    new_reads_for += "@%s\n%s\n+\n%s\n" % (
+                        name + ":" + str(i) + str(j),
+                        seq_list[i],
+                        qual_list[i],
+                    )
+                # Reverse the forward read if comes from reverse.
+                else:
+                    new_reads_for += "@%s\n%s\n+\n%s\n" % (
+                        name + ":" + str(i) + str(j),
+                        seq_list[i][::-1],
+                        qual_list[i][::-1],
+                    )
+                # Reverse the reverse read if comes from forward.
+                if j < len(for_seq_list):
+                    new_reads_rev += "@%s\n%s\n+\n%s\n" % (
+                        name + ":" + str(i) + str(j),
+                        seq_list[j][::-1],
+                        qual_list[j][::-1],
+                    )
+                else:
+                    new_reads_rev += "@%s\n%s\n+\n%s\n" % (
+                        name + ":" + str(i) + str(j),
+                        seq_list[j],
+                        qual_list[j],
+                    )
 
     # Mode "pile": Only make contacts bewteen two adjacent fragments.
     elif mode == "pile":
@@ -303,16 +319,39 @@ def write_pair(
         qual_list = for_qual_list + rev_qual_list
         for i in range(len(seq_list) - 1):
             final_number_of_pairs += 1
-            new_reads_for += "@%s\n%s\n+\n%s\n" % (
-                name + ":" + str(i) + str(i + 1),
-                seq_list[i],
-                qual_list[i],
-            )
-            new_reads_rev += "@%s\n%s\n+\n%s\n" % (
-                name + ":" + str(i) + str(i + 1),
-                seq_list[i + 1],
-                qual_list[i + 1],
-            )
+            if i < len(for_seq_list) - 1:
+                new_reads_for += "@%s\n%s\n+\n%s\n" % (
+                    name + ":" + str(i) + str(i + 1),
+                    seq_list[i],
+                    qual_list[i],
+                )
+                new_reads_rev += "@%s\n%s\n+\n%s\n" % (
+                    name + ":" + str(i) + str(i + 1),
+                    seq_list[i + 1][::-1],
+                    qual_list[i + 1][::-1],
+                )
+            elif i == len(for_seq_list) - 1:
+                new_reads_for += "@%s\n%s\n+\n%s\n" % (
+                    name + ":" + str(i) + str(i + 1),
+                    seq_list[i],
+                    qual_list[i],
+                )
+                new_reads_rev += "@%s\n%s\n+\n%s\n" % (
+                    name + ":" + str(i) + str(i + 1),
+                    seq_list[i + 1],
+                    qual_list[i + 1],
+                )
+            else:
+                new_reads_for += "@%s\n%s\n+\n%s\n" % (
+                    name + ":" + str(i) + str(i + 1),
+                    seq_list[i][::-1],
+                    qual_list[i][::-1],
+                )
+                new_reads_rev += "@%s\n%s\n+\n%s\n" % (
+                    name + ":" + str(i) + str(i + 1),
+                    seq_list[i + 1],
+                    qual_list[i + 1],
+                )
 
     return new_reads_for, new_reads_rev, final_number_of_pairs
 

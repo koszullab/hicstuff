@@ -34,7 +34,7 @@ DEFAULT_SPARSE_MATRIX_FILE_NAME = "abs_fragments_contacts_weighted.txt"
 def _cols_to_sparse(sparse_array, shape=None, dtype=np.float64):
     """
     Make a coordinate based sparse matrix from columns.
-    Convert (3, n) shaped arrays to a sparse matrix. The fist
+    Convert (3, n) shaped arrays to a sparse matrix. The first
     one acts as the row coordinates, the second one as the
     column coordinates, the third one as the data points
     for each pair. If duplicates are found, the data points are
