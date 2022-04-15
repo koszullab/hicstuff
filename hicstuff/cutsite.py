@@ -155,13 +155,12 @@ def cut_ligation_sites(
     writer_process.join()
 
     # Return information on the different pairs created
+    logger.info(f"Library used: {fq_for} - {fq_rev}")
     logger.info(
-        "Number of pairs before digestion: {0}".format(
-            original_number_of_pairs
-        )
+        f"Number of pairs before digestion: {original_number_of_pairs}"
     )
     logger.info(
-        "Number of pairs after digestion: {0}".format(final_number_of_pairs)
+        f"Number of pairs after digestion: {final_number_of_pairs}"
     )
 
 

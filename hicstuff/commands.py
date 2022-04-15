@@ -293,8 +293,8 @@ class Cutsite(AbstractCommand):
         # Create output directory if it does not exist
         if dirname(prefix):
             os.makedirs(dirname(prefix), exist_ok=True)
-        output_for = prefix + "_1.fq.gz"
-        output_rev = prefix + "_2.fq.gz"
+        output_for = prefix + "_R1.fq.gz"
+        output_rev = prefix + "_R2.fq.gz"
         # Digestion of the reads.
         logger.info("Digestion of the reads:")
         logger.info("Enzyme used: {0}".format(self.args["--enzyme"]))
