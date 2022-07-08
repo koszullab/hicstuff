@@ -21,9 +21,9 @@ jobs:
     - name: Install dependencies
       run: |
         conda config --add channels bioconda
-        conda install -c conda-forge python=3.9 minimap2  bowtie2  bwa samtools  htslib  pysam  pytest  pytest-cov  pylint  codecov  cooler  mappy
+        conda install -c conda-forge python=3.9 minimap2 bowtie2 bwa samtools htslib pysam pytest  pytest-cov pylint codecov mappy
         pip install -Ur requirements.txt
-        pip install pytest-pylint
+        pip install cooler pytest-pylint
     - name: Lint and test
       run: |
         pytest --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc --doctest-modules --doctest-modules hicstuff
