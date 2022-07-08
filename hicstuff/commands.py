@@ -1157,7 +1157,7 @@ class Rebin(AbstractCommand):
         # Save original columns order
         col_ordered = list(frags.columns)
         # Get new start and end position for each bin
-        frags = frags.groupby(["chrom", "id"], sort=False)
+        frags = frags.groupby(["chrom", "id"], sort=False, observed=True)
         positions = frags.agg({"start_pos": "min", "end_pos": "max"})
         positions.reset_index(inplace=True)
         # Compute mean for all added features in each index bin
