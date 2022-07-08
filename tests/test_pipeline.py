@@ -99,19 +99,6 @@ def test_full_pipeline_frags_gzipped_genome():
 @pytest.mark.parametrize(*ALIGNER_PARAMETERS)
 def test_full_pipeline_bin(mapping, aligner):
     """Crash Test for the whole pipeline"""
-    hpi.full_pipeline(
-            input1="test_data/sample.reads_for.fastq.gz",
-            input2="test_data/sample.reads_rev.fastq.gz",
-            genome="test_data/genome/seq.fa.gz",
-            enzyme="DpnII",
-            mapping='normal',
-            out_dir="test_out",
-            plot=True,
-            pcr_duplicates=True,
-            filter_events=True,
-            no_cleanup=True,
-            force=True,
-        )
     start_input = {
         'fastq': [
             "test_data/sample.reads_for.fastq.gz",
@@ -129,7 +116,7 @@ def test_full_pipeline_bin(mapping, aligner):
             input2=in2,
             genome="test_data/genome/seq.fa",
             enzyme=5000,
-            out_dir="test_out2",
+            out_dir=f"test_out_{aligner}_{mapping}",
             aligner=aligner,
             mapping=mapping,
             prefix="test",
@@ -139,6 +126,6 @@ def test_full_pipeline_bin(mapping, aligner):
             no_cleanup=True,
             force=True,
         )
-    shutil.rmtree("test_out2/")
+    shutil.rmtree(f"test_out_{aligner}_{mapping}")
     if mapping == 'iterative' and aligner == 'minimap2':
         shutil.rmtree("test_out/")
