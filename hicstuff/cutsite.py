@@ -110,7 +110,7 @@ def cut_ligation_sites(
         if for_name != rev_name:
             logger.error(
                 "The fastq files contains reads not sorted :\n{0}\n{1}".format(
-                    read_for.id, read_rev.id
+                    for_name, rev_name
                 )
             )
             sys.exit(1)
