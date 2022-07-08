@@ -114,7 +114,7 @@ def test_full_pipeline_bin(mapping, aligner):
         hpi.full_pipeline(
             input1=in1,
             input2=in2,
-            genome="test_data/genome/seq.fa",
+            genome="test_data/genome/seq.fa.gz",
             enzyme=5000,
             out_dir=f"test_out_{aligner}_{mapping}",
             aligner=aligner,
