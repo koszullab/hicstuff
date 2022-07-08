@@ -102,8 +102,7 @@ def iterative_align(
     index = hio.check_fasta_index(ref, mode=aligner)
     if index is None:
         logger.error(
-            "Reference index is missing, please build the {} ".format(aligner), 
-            "index first."
+            f"Reference index is missing, please build the {aligner} index first." 
         )
         sys.exit(1)
     # Counting reads

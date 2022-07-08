@@ -99,6 +99,19 @@ def test_full_pipeline_frags_gzipped_genome():
 @pytest.mark.parametrize(*ALIGNER_PARAMETERS)
 def test_full_pipeline_bin(mapping, aligner):
     """Crash Test for the whole pipeline"""
+    hpi.full_pipeline(
+            input1="test_data/sample.reads_for.fastq.gz",
+            input2="test_data/sample.reads_rev.fastq.gz",
+            genome="test_data/genome/seq.fa.gz",
+            enzyme="DpnII",
+            mapping='normal',
+            out_dir="test_out",
+            plot=True,
+            pcr_duplicates=True,
+            filter_events=True,
+            no_cleanup=True,
+            force=True,
+        )
     start_input = {
         'fastq': [
             "test_data/sample.reads_for.fastq.gz",
