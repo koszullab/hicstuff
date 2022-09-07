@@ -33,7 +33,7 @@ MINOR = 1
 MAINTENANCE = 4
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
-LICENSE = "GPLv3"
+LICENSE = "BSD-3-Clause"
 URL = "https://github.com/koszullab/hicstuff"
 
 DESCRIPTION = __doc__.strip("\n")
