@@ -1657,9 +1657,12 @@ def parse_bin_str(bin_str):
     try:
         binning = int(bin_str)
     except ValueError:
-        bin_str = bin_str.upper()
-        binsuffix = {"B": 1, "K": 1000, "M": 1e6, "G": 1e9}
-        unit_pos = re.search(r"[KMG]?B[P]?$", bin_str).start()
+        bin_str = bin_str.upper().strip("P").strip("B")
+    try:
+        binning = int(bin_str)
+    except ValueError:
+        binsuffix = {"K": 1000, "M": 1e6, "G": 1e9}
+        unit_pos = re.search(r"[KMG]?$", bin_str).start()
         bp_unit = bin_str[unit_pos:]
         # Extract unit and multiply accordingly for fixed bp binning
         binning = int(float(bin_str[:unit_pos]) * binsuffix[bp_unit[0]])
