@@ -1170,7 +1170,7 @@ class Rebin(AbstractCommand):
             frags["start_pos"] = 0
             frags["end_pos"] = 0
             frags.loc[:, positions.columns] = positions
-        except pd.core.base.DataError:
+        except pd.errors.DataError:
             frags = positions
         frags["size"] = frags.end_pos - frags.start_pos
         cumul_bins = 0
