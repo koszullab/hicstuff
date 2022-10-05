@@ -1010,7 +1010,7 @@ def flexible_hic_saver(
     if hic_fmt == "graal":
         save_sparse_matrix(mat, out_prefix + ".mat.tsv")
         try:
-            frags.to_csv(out_prefix + ".frag.tsv", sep="\t", index=False)
+            frags.to_csv(out_prefix + ".frags.tsv", sep="\t", index=False)
         except AttributeError:
             if not quiet:
                 logger.warning(
