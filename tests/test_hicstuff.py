@@ -105,7 +105,9 @@ def test_norm(matrix_size):
     N_d = hcs.normalize_dense(M_d, "SCN", iterations=50)
     N_s = hcs.normalize_sparse(M_s, "ICE", iterations=50, n_mad=1000)
     assert np.isclose(N_d.sum(axis=1), np.ones(matrix_size), rtol=0.0001).all()
-    assert np.isclose(hcs.sum_mat_bins(N_s), np.ones(matrix_size), rtol=0.0001).all()
+    assert np.isclose(
+        hcs.sum_mat_bins(N_s), np.ones(matrix_size), rtol=0.0001
+    ).all()
     assert np.isclose(triu(coo_matrix(N_d)).data, N_s.data, rtol=0.000001).all()
 
 
@@ -117,7 +119,7 @@ def test_trim(matrix_size):
     number of bins are trimmed.
     """
     M_d, _ = _gen_matrices(matrix_size)
-    
+
     # Compute thresholds
     sums = M_d.sum(axis=1)
     mad_sums = hcs.mad(M_d, axis=1)
@@ -144,7 +146,7 @@ def test_trim(matrix_size):
     M_s = coo_matrix(M_d)
     T_d = hcs.trim_dense(M_d, s_min=min_val, s_max=max_val)
     assert T_d.shape[0] == trim_shape
-    T_s = hcs.trim_sparse(M_s, s_min=min_val, s_max=max_val)
+    T_s, _ = hcs.trim_sparse(M_s, s_min=min_val, s_max=max_val)
     assert T_s.shape[0] == trim_shape
 
 

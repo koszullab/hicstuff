@@ -256,11 +256,11 @@ class Cutsite(AbstractCommand):
         [--mode=for_vs_rev] [--seed-size=20] [--threads=1]
 
     options:
-        -1, --forward=FILE      Fastq file containing the forward reads to 
+        -1, --forward=FILE      Fastq file containing the forward reads to
                                 digest.
-        -2, --reverse=FILE      Fastq file containing the reverse reads to 
+        -2, --reverse=FILE      Fastq file containing the reverse reads to
                                 digest.
-        -p, --prefix=STR        Prefix of the path where to write the digested 
+        -p, --prefix=STR        Prefix of the path where to write the digested
                                 gzipped fastq files. Filenames will be added the
                                 suffix "_{1,2}.fq.gz".
         -e, --enzyme=STR        The list of restriction enzyme used to digest
@@ -271,11 +271,11 @@ class Cutsite(AbstractCommand):
                                 "for_vs_rev" makes all possible contact between
                                 fragments from forward read versus the fragments
                                 of the reverse reads. The second one "all"
-                                consist two make all pairs of fragments 
+                                consist two make all pairs of fragments
                                 possible. The third one "pile" will make the
                                 contacts only with the adjacent fragments.
                                 [Default: for_vs_rev]
-        -s, --seed-size=INT     Minimum size of a read. (i.e. seed size used 
+        -s, --seed-size=INT     Minimum size of a read. (i.e. seed size used
                                 in mapping as reads smaller won't be mapped.)
                                 [Default: 20]
         -t, --threads=INT       Number of parallel threads allocated for the
@@ -468,7 +468,7 @@ class View(AbstractCommand):
         elif re.match(r"exp", operation):
             splitop = operation.split("exp")
             exp_val = float(splitop[1])
-            return dense_map ** exp_val
+            return dense_map**exp_val
         elif hasattr(np, operation) and callable(np.__dict__[operation]):
             logger.warning("Using built-in numpy callable: %s", operation)
             return np.__dict__[operation](dense_map)
@@ -499,8 +499,7 @@ class View(AbstractCommand):
                     self.frags.iloc[:, 1], return_index=True
                 )[1]
                 chr_names = [
-                    self.frags.iloc[index, 1]
-                    for index in sorted(chr_names_idx)
+                    self.frags.iloc[index, 1] for index in sorted(chr_names_idx)
                 ]
                 binned_chrom = np.repeat(chr_names, num_binned)
                 binned_frags = pd.DataFrame(
@@ -523,7 +522,7 @@ class View(AbstractCommand):
                 # are merged with the first few of the next
                 binned_map = hcs.bin_sparse(
                     M=sparse_map, subsampling_factor=self.binning
-                ) 
+                )
                 if self.frags:
                     binned_frags = self.frags.iloc[:: self.binning, :]
                     binned_frags = binned_frags.reset_index(drop=True)
@@ -547,6 +546,12 @@ class View(AbstractCommand):
             binned_map = sparse_map
             binned_frags = self.frags
 
+        # Get chromosome coordinates if required
+        if self.args["--lines"]:
+            chrom_starts = np.where(np.diff(binned_frags.start_pos) < 0)[0] + 1
+        else:
+            chrom_starts = None
+
         # TRIMMING
         if self.args["--trim"]:
             try:
@@ -557,7 +562,9 @@ class View(AbstractCommand):
                     "trimming"
                 )
                 raise
-            binned_map = hcs.trim_sparse(binned_map, n_mad=trim_std)
+            binned_map, chrom_starts = hcs.trim_sparse(
+                binned_map, n_mad=trim_std, chrom_start=chrom_starts
+            )
 
         # NORMALIZATION
         if self.args["--normalize"]:
@@ -578,7 +585,7 @@ class View(AbstractCommand):
                 )
                 sys.exit(1)
             # Load chromosomes and positions from fragments list
-            reg_pos = binned_frags[['chrom', 'start_pos']]
+            reg_pos = binned_frags[["chrom", "start_pos"]]
             region = self.args["--region"]
             if ";" in region:
                 # 2 input regions: zoom anywhere in matrix
@@ -594,7 +601,7 @@ class View(AbstractCommand):
             binned_map = binned_map[reg1[0] : reg1[1], reg2[0] : reg2[1]]
             binned_map = binned_map.tocoo()
 
-        return binned_map, binned_frags
+        return binned_map, chrom_starts
 
     def execute(self):
 
@@ -644,7 +651,7 @@ class View(AbstractCommand):
             input_map, fragments_file=self.args["--frags"], quiet=True
         )
         output_file = self.args["--output"]
-        processed_map, frags = self.process_matrix(sparse_map)
+        processed_map, chrom_starts = self.process_matrix(sparse_map)
         # If 2 matrices given compute log ratio
         if self.args["<contact_map2>"]:
             sparse_map2, _, _ = hio.flexible_hic_loader(
@@ -652,7 +659,7 @@ class View(AbstractCommand):
                 fragments_file=self.args["--frags"],
                 quiet=True,
             )
-            processed_map2, _ = self.process_matrix(sparse_map2)
+            processed_map2, chrom_starts = self.process_matrix(sparse_map2)
             if sparse_map2.shape != sparse_map.shape:
                 logger.error(
                     "You cannot compute the ratio of matrices with "
@@ -709,11 +716,6 @@ class View(AbstractCommand):
             else:
                 # Set 0 values in matrix to NA
                 dense_map[dense_map == 0] = np.inf
-            # Get chromosome coordinates if required
-            if self.args["--lines"]:
-                chrom_starts = np.where(np.diff(frags.start_pos) < 0)[0] + 1
-            else:
-                chrom_starts = None
             # Display NA values in white
             current_cmap = cm.get_cmap().copy()
             current_cmap.set_bad(color=current_cmap(0))
@@ -785,15 +787,15 @@ class Pipeline(AbstractCommand):
         -g, --genome=FILE             Reference genome to map against. Path to
                                       the bowtie2/bwa index if using bowtie2/bwa,
                                       or to a FASTA file if using minimap2.
-        -m, --mapping=STR             normal|iterative|cutsite. Parameter of 
-                                      mapping. "normal": Directly map reads 
-                                      without any process. "iterative": Map 
-                                      reads iteratively using iteralign, by 
-                                      truncating reads to 20bp and then 
+        -m, --mapping=STR             normal|iterative|cutsite. Parameter of
+                                      mapping. "normal": Directly map reads
+                                      without any process. "iterative": Map
+                                      reads iteratively using iteralign, by
+                                      truncating reads to 20bp and then
                                       repeatedly extending to align them.
-                                      "cutsite": Cut reads at the religation 
-                                      sites of the given enzyme using cutsite, 
-                                      create new pairs of reads and then align 
+                                      "cutsite": Cut reads at the religation
+                                      sites of the given enzyme using cutsite,
+                                      create new pairs of reads and then align
                                       them ; enzyme is required [default: normal].
         -M, --matfmt=STR              The format of the output sparse matrix.
                                       Can be "bg2" for 2D Bedgraph format,
@@ -848,7 +850,9 @@ class Pipeline(AbstractCommand):
                 "You cannot filter without specifying a restriction enzyme."
             )
         elif self.args["--enzyme"] in ("mnase", "dnase"):
-            logger.info("## Enzyme provided is 'mnase', setting bin-size to 100bp")
+            logger.info(
+                "## Enzyme provided is 'mnase', setting bin-size to 100bp"
+            )
             self.args["--enzyme"] = 100
 
         if not self.args["--outdir"]:
@@ -1184,10 +1188,13 @@ class Rebin(AbstractCommand):
             ] = cumul_bins
             cumul_bins += n_bins
             # Adjust each chromosome's last bin end to match chromsize
-            last_frag_end = frags.loc[chrom_frags, 'end_pos'].max()
-            chromlen = chromlist.loc[chromlist.contig == chrom, 'length'].values[0]
-            frags.loc[chrom_frags & (frags.end_pos == last_frag_end), 'end_pos'] = chromlen
-
+            last_frag_end = frags.loc[chrom_frags, "end_pos"].max()
+            chromlen = chromlist.loc[
+                chromlist.contig == chrom, "length"
+            ].values[0]
+            frags.loc[
+                chrom_frags & (frags.end_pos == last_frag_end), "end_pos"
+            ] = chromlen
 
         # Keep original column order
         frags = frags.reindex(columns=col_ordered)
@@ -1494,7 +1501,7 @@ class Distancelaw(AbstractCommand):
                 labels = []
                 for i in range(length_files):
                     labels.append("Sample " + str(i))
-                    
+
         # Make the plot if enabled, if not average plot the different arms or
         # chromosomes with the initial names else plot the different conditions
         # with the names labels.
@@ -1503,10 +1510,7 @@ class Distancelaw(AbstractCommand):
         # Export the new table if required.
         if self.args["--outputfile-tabl"]:
             hcdl.export_distance_law(
-                xs,
-                ps,
-                labels, 
-                self.args["--outputfile-tabl"]
+                xs, ps, labels, self.args["--outputfile-tabl"]
             )
 
 
@@ -1602,8 +1606,7 @@ class Missview(AbstractCommand):
         log_content = open(glob.glob(join(tmp_dir, "*.log"))[0]).read()
         # Get (int rounded) percentage of reads mapped and convert to proportion
         prop_mapped = (
-            int(re.search(r".*INFO :: ([0-9]*)% reads.*", log_content)[1])
-            / 100
+            int(re.search(r".*INFO :: ([0-9]*)% reads.*", log_content)[1]) / 100
         )
         logger.info(
             "Bins with less than %s mapped reads will be considered undetectable",

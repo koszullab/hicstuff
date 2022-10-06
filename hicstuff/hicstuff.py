@@ -210,7 +210,7 @@ def bin_sparse(M, subsampling_factor=3):
     -------
     scipy.sparse.coo_matrix
         The subsamples matrix, with a resolution lower than the input by a defined factor.
-        
+
     """
 
     N = M.tocoo()
@@ -235,8 +235,7 @@ def bin_sparse(M, subsampling_factor=3):
 
 
 def bin_matrix(M, subsampling_factor=3):
-    """Bin either sparse or dense matrices.
-    """
+    """Bin either sparse or dense matrices."""
 
     try:
         from scipy.sparse import issparse
@@ -463,9 +462,7 @@ def bin_exact_bp_dense(M, positions, bin_len=10000):
     """
     units = positions / bin_len
     n = len(positions)
-    idx = [
-        i for i in range(n - 1) if np.ceil(units[i]) < np.ceil(units[i + 1])
-    ]
+    idx = [i for i in range(n - 1) if np.ceil(units[i]) < np.ceil(units[i + 1])]
     m = len(idx) - 1
     N = np.zeros((m, m))
     remainders = [0] + [np.abs(units[i] - units[i + 1]) for i in range(m)]
@@ -600,12 +597,12 @@ def trim_dense(M, n_mad=3, s_min=None, s_max=None):
     """
 
     S = coo_matrix(M)
-    S_out = trim_sparse(S, n_mad=n_mad, s_min=s_min, s_max=s_max)
+    S_out, _ = trim_sparse(S, n_mad=n_mad, s_min=s_min, s_max=s_max)
     M_out = S_out.todense()
     return M_out
 
 
-def trim_sparse(M, n_mad=3, s_min=None, s_max=None):
+def trim_sparse(M, n_mad=3, s_min=None, s_max=None, chrom_start=None):
     """Apply the trimming procedure to a sparse matrix.
 
     Parameters
@@ -622,6 +619,8 @@ def trim_sparse(M, n_mad=3, s_min=None, s_max=None):
     s_max : float
         Fixed maximum value above which the component vectors will
         be trimmed.
+    lines : bool
+        Either to return the offset of the chromosomes for lines plotting.
 
     Returns
     -------
@@ -634,6 +633,9 @@ def trim_sparse(M, n_mad=3, s_min=None, s_max=None):
     # Mapping pre- and post- trimming indices of bins, post = -1 means delete
     # Note: There is probably a more efficient way than a dictionary for that
     miss_map = {old: old - offset for old, offset in enumerate(miss_bins)}
+    chrom_start_offset = None
+    if chrom_start is not None:
+        chrom_start_offset = [miss_map[start] for start in chrom_start]
     # Indices of cells that will be kept
     indices = np.where(f[r.row] & f[r.col])
     # Remove sparse rows and shift indices accordingly
@@ -642,7 +644,7 @@ def trim_sparse(M, n_mad=3, s_min=None, s_max=None):
     data = r.data[indices]
     size = max(max(rows, default=-1), max(cols, default=-1)) + 1
     N = coo_matrix((data, (rows, cols)), shape=(size, size))
-    return N
+    return N, chrom_start_offset
 
 
 def normalize_dense(M, norm="SCN", order=1, iterations=40):
@@ -733,7 +735,7 @@ def normalize_sparse(M, norm="SCN", iterations=40, n_mad=3.0):
         Iterations parameter when using an iterative normalization
         procedure.
     n_mad : float
-        Maximum number of median absolute deviations of bin sums to allow for 
+        Maximum number of median absolute deviations of bin sums to allow for
         including bins in the normalization procedure. Bins more than `n_mad`
         mads below the median are excluded. Bins excluded from normalisation
         are set to 0.
@@ -801,7 +803,7 @@ def sum_mat_bins(mat):
     mat : scipy.sparse.csr_matrix
         Contact map in sparse format, either in upper triangle or
         full matrix.
-    
+
     Returns
     -------
     numpy.array :
@@ -867,8 +869,7 @@ def GC_wide(genome: str, window=1000):
 
 
 def split_genome(genome, chunk_size=10000):
-    """Split genome into chunks of fixed size (save the last one).
-    """
+    """Split genome into chunks of fixed size (save the last one)."""
 
     chunks = []
     from Bio import SeqIO
@@ -1034,8 +1035,7 @@ def domainogram(M, window=None, circ=False, extrapolate=True):
 
 
 def from_structure(structure):
-    """Return contact data from a 3D structure (in pdb format).
-    """
+    """Return contact data from a 3D structure (in pdb format)."""
 
     try:
         from Bio import PDB
@@ -1046,8 +1046,7 @@ def from_structure(structure):
         if isinstance(structure, PDB.Structure.Structure):
             for _ in structure.get_chains():
                 atoms = [
-                    np.array(atom.get_coord())
-                    for atom in structure.get_atoms()
+                    np.array(atom.get_coord()) for atom in structure.get_atoms()
                 ]
     except ImportError:
         print("Biopython not found.")
@@ -1107,14 +1106,14 @@ def to_structure(matrix, alpha=1):
 
     The alpha parameter influences the weighting of contacts: if alpha < 1
     long-range interactions are prioritized; if alpha >> 1 short-range
-    interactions have more weight wahen computing the distance matrix.
+    interactions have more weight when computing the distance matrix.
     """
 
     connected = largest_connected_component(matrix)
     distances = to_distance(connected, alpha)
     n, m = connected.shape
-    bary = np.sum(np.triu(distances, 1)) / (n ** 2)  # barycenters
-    d = np.array(np.sum(distances ** 2, 0) / n - bary)  # distances to origin
+    bary = np.sum(np.triu(distances, 1)) / (n**2)  # barycenters
+    d = np.array(np.sum(distances**2, 0) / n - bary)  # distances to origin
     gram = np.array(
         [
             (d[i] + d[j] - distances[i][j] ** 2) / 2
@@ -1191,6 +1190,7 @@ def to_pdb(
         special_bins = np.zeros(n + 1, dtype=int)
 
     structure_shapes_match = structure.shape[0] == structure.shape[1]
+    print(structure)
     if isinstance(structure, np.ndarray) and structure_shapes_match:
         structure = to_structure(structure)
 
@@ -1199,7 +1199,6 @@ def to_pdb(
     X *= 100.0 / Xmax
     Y *= 100.0 / Ymax
     Z *= 100.0 / Zmax
-
     X = np.around(X, 3)
     Y = np.around(Y, 3)
     Z = np.around(Z, 3)
@@ -1207,7 +1206,6 @@ def to_pdb(
     reference = ["OW", "OW", "CE", "TE", "tR"]
     with open(filename, "w") as f:
         for i in range(1, n):
-
             line = "ATOM"  # 1-4 "ATOM"
             line += "  "  # 5-6 unused
             line += str(i).rjust(5)  # 7-11 atom serial number
@@ -1216,9 +1214,7 @@ def to_pdb(
             line += " "  # 17 alternate location indicator
             line += "SOL"  # 18-20 residue name
             line += " "  # 21 unused
-            line += letters[
-                int(contigs[indices[i]] - 1)
-            ]  # 22 chain identifier
+            line += letters[int(contigs[indices[i]] - 1)]  # 22 chain identifier
             line += str(i).rjust(4)  # 23-26 residue sequence number
             line += " "  # 27 code for insertion of residues
             line += "   "  # 28-30 unused
@@ -1395,8 +1391,7 @@ def shortest_path_interpolation(matrix, alpha=1, strict=True):
 
 
 def pdb_to_structure(filename):
-    """Import a structure object from a PDB file.
-    """
+    """Import a structure object from a PDB file."""
 
     try:
         from Bio import PDB
@@ -1484,8 +1479,7 @@ def distance_diagonal_law(matrix, positions=None, circular=False):
 
     intra_contacts = []
     inter_contacts = [
-        np.average(np.diagonal(matrix, j))
-        for j in range(max_intra_distance, n)
+        np.average(np.diagonal(matrix, j)) for j in range(max_intra_distance, n)
     ]
     for j in range(max_intra_distance):
         D = np.diagonal(matrix, j)
@@ -1504,8 +1498,7 @@ def distance_diagonal_law(matrix, positions=None, circular=False):
 
 
 def rippe_parameters(matrix, positions, lengths=None, init=None, circ=False):
-    """Estimate parameters from the model described in Rippe et al., 2001.
-    """
+    """Estimate parameters from the model described in Rippe et al., 2001."""
 
     n, _ = matrix.shape
 
@@ -1533,8 +1526,7 @@ def rippe_parameters(matrix, positions, lengths=None, init=None, circ=False):
 
 
 def estimate_param_rippe(measurements, bins, init=None, circ=False):
-    """Perform least square optimization needed for the rippe_parameters function.
-    """
+    """Perform least square optimization needed for the rippe_parameters function."""
 
     # Init values
     DEFAULT_INIT_RIPPE_PARAMETERS = [1.0, 9.6, -1.5]
@@ -1692,12 +1684,12 @@ def null_model(
         kuhn, lm, slope, d, A = rippe_parameters(matrix, positions, circ=circ)
 
         def jc(s, frag):
-            dist = s - circ * (s ** 2) / lengths[frag]
+            dist = s - circ * (s**2) / lengths[frag]
             computed_contacts = (
                 0.53
                 * A
                 * (kuhn ** (-3.0))
-                * (dist ** slope)
+                * (dist**slope)
                 * np.exp((d - 2) / (dist + d))
             )
             return np.maximum(computed_contacts, mean_trans_contacts)
@@ -1755,13 +1747,12 @@ def model_norm(
 
 
 def trim_structure(struct, filtering="cube", n=2):
-    """Remove outlier 'atoms' (aka bins) from a structure.
-    """
+    """Remove outlier 'atoms' (aka bins) from a structure."""
 
     X, Y, Z = (struct[:, i] for i in range(3))
 
     if filtering == "sphere":
-        R = (np.std(X) ** 2 + np.std(Y) ** 2 + np.std(Z) ** 2) * (n ** 2)
+        R = (np.std(X) ** 2 + np.std(Y) ** 2 + np.std(Z) ** 2) * (n**2)
         f = (X - np.mean(X)) ** 2 + (Y - np.mean(Y)) ** 2 + (
             Z - np.mean(Z)
         ) ** 2 < R
@@ -1927,7 +1918,7 @@ def compartments(M, normalize=True):
 
 def corrcoef_sparse(A, B=None):
     """
-    Computes correlation coefficient on sparse matrices 
+    Computes correlation coefficient on sparse matrices
 
     Parameters
     ----------
@@ -2178,7 +2169,7 @@ def distance_law(
 
     Parameters
     ----------
-    size : int 
+    size : int
         Size of the matrix (which will be of shape (size, size))
     prefactor : float
         Prefactor that's analogous to the coverage, by default 10000
@@ -2204,7 +2195,7 @@ def distance_law(
         transition = size // 10
 
     def P(s, A=10000, gamma=-0.5, inter=0.01):
-        return np.fmax(inter, A * (s ** gamma))
+        return np.fmax(inter, A * (s**gamma))
 
     P1 = functools.partial(P, gamma=gamma1)
     P2 = functools.partial(P, gamma=gamma2)
@@ -2212,8 +2203,6 @@ def distance_law(
     def sigmoid(s, a=transition):  # ad hoc function to smoothen the transition
         return 1.0 / (1 + np.exp(-(s - transition) / a))
 
-    s = np.arange(
-        1, size + 1
-    )  # Don't start from 0 to avoid weirdness and NaNs
+    s = np.arange(1, size + 1)  # Don't start from 0 to avoid weirdness and NaNs
 
     return toeplitz((1 - sigmoid(s)) * P1(s) + sigmoid(s) * P2(s))
