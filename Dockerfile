@@ -1,6 +1,6 @@
 FROM continuumio/miniconda3:4.9.2
 
-LABEL Name=hicstuff Version=3.1.4
+LABEL Name=hicstuff Version=3.1.5
 
 COPY * ./ /app/
 WORKDIR /app
