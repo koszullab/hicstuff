@@ -2,8 +2,8 @@
 
 [![PyPI version](https://badge.fury.io/py/hicstuff.svg)](https://badge.fury.io/py/hicstuff)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/hicstuff.svg)
+[![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/hicstuff/README.html)
 [![Build Status](https://github.com/koszullab/hicstuff/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/koszullab/hicstuff/actions/workflows/build.yml)
-[![Docker Cloud Build Status](https://img.shields.io/docker/cloud/build/koszullab/hicstuff)](https://hub.docker.com/r/koszullab/hicstuff)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.2620608.svg)](https://doi.org/10.5281/zenodo.2620608)
 [![codecov](https://codecov.io/gh/koszullab/hicstuff/branch/master/graph/badge.svg)](https://codecov.io/gh/koszullab/hicstuff)
 [![Read the docs](https://readthedocs.org/projects/hicstuff/badge)](https://hicstuff.readthedocs.io)
@@ -16,16 +16,21 @@ The goal is to make generation and manipulation of Hi-C matrices as simple as po
 
 ## Table of contents
 
-* [Installation](#Installation)
-* [Usage](#Usage)
-  * [Full pipeline](#Full-pipeline)
-  * [Individual components](#Individual-components)
-* [Library](#Library)
-* [Connecting the modules](#Connecting-the-modules)
-* [File formats](#File-formats)
-* [Contributing](#Contributing)
+* [Installation](#installation)
+  * [pip](#pip)
+  * [conda](#conda)
+  * [docker](#docker)
+* [Usage](#usage)
+  * [Full pipeline](#full-pipeline)
+  * [Individual components](#individual-components)
+* [Library](#library)
+* [Connecting the modules](#connecting-the-modules)
+* [File formats](#file-formats)
+* [Contributing](#contributing)
 
 ## Installation
+
+### pip
 
 To install a stable version:
 ```sh
@@ -38,9 +43,7 @@ or, for the latest development version:
     pip3 install -e git+https://github.com/koszullab/hicstuff.git@master#egg=hicstuff
 ```
 
-### External dependencies
-
-Bowtie2 and/or minimap2 as well as samtools are required for the `pipeline` utility.
+`bowtie2` and/or `minimap2` as well as `samtools` are required by the `pipeline` command.
 
 You can install them via the conda package manager:
 ```bash
@@ -51,11 +54,20 @@ Alternatively, on ubuntu you can also install them along with additional depende
 apt-get install samtools bowtie2 minimap2 libbz2-dev liblzma-dev
 ```
 
-### Docker installation
+### Conda
 
-A pre-built docker image is available on dockerhub and can be ran using:
+hicstuff is available as a bioconda package. It can be installed, along with all dependencies using:
+
 ```bash
-docker run koszullab/hicstuff
+conda install -c biocconda hicstuff
+```
+
+### Docker
+
+A pre-built docker image is made available on quay.io via [biocontainers](https://biocontainers.pro/) and can be ran using:
+
+```bash
+docker pull quay.io/biocontainers/hicstuff:<tag>
 ```
 
 ## Usage
