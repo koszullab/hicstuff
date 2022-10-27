@@ -43,15 +43,15 @@ or, for the latest development version:
     pip3 install -e git+https://github.com/koszullab/hicstuff.git@master#egg=hicstuff
 ```
 
-`bowtie2` and/or `minimap2` as well as `samtools` are required by the `pipeline` command.
+`bowtie2`, `bwa` and/or `minimap2` as well as `samtools` are required by the `pipeline` command.
 
 You can install them via the conda package manager:
 ```bash
-conda install -c bioconda minimap2 bowtie2 samtools
+conda install -c bioconda bowtie2 bwa minimap2 samtools
 ```
 Alternatively, on ubuntu you can also install them along with additional dependencies through APT:
 ```bash
-apt-get install samtools bowtie2 minimap2 libbz2-dev liblzma-dev
+apt-get install bowtie2 bwa minimap2 samtools libbz2-dev liblzma-dev
 ```
 
 ### Conda
@@ -87,14 +87,17 @@ options:
     -v, --version               shows the version
 
 The subcommands are:
+    convert         Convert Hi-C data between different formats.
     digest          Digest genome into a list of fragments.
+    cutsite         Preprocess fastq files by digesting reads at religation site.
     distancelaw     Analyse and plot distance law.
     filter          Filters Hi-C pairs to exclude spurious events.
     iteralign       Iteratively aligns reads to a reference genome.
+    missview        Preview missing Hi-C bins in based on the genome and read length.
     pipeline        Hi-C pipeline to generate contact matrix from fastq files.
     rebin           Bin the matrix and regenerate files accordingly.
     subsample       Bootstrap subsampling of contacts from a Hi-C map.
-    view            Visualize a Hi-C matrix.  
+    view            Visualize a Hi-C matrix.
 ```
 
 ### Full pipeline
@@ -102,11 +105,11 @@ The subcommands are:
 All components of the pipeline can be run at once using the `hicstuff pipeline` command. This allows to generate a contact matrix from reads in a single command. By default, the output is in GRAAL compatible COO sparse matrix format, but it can be a 2D bedgraph or cool file instead using the `--matfmt` option. More detailed documentation can be found on the readthedocs website: https://hicstuff.readthedocs.io/en/latest/index.html
 
     usage:
-        pipeline [--quality-min=INT] [--size=INT] [--no-cleanup] [--start-stage=STAGE]
-                 [--threads=INT] [--aligner=bowtie2] [--matfmt=FMT] [--prefix=PREFIX]
-                 [--tmpdir=DIR] [--iterative] [--outdir=DIR] [--filter] [--enzyme=ENZ]
-                 [--plot] [--circular] [--distance-law] [--duplicates] [--read-len=INT]
-                 [--centromeres=FILE] [--remove-centromeres=INT] --genome=FILE <input1> [<input2>]
+        pipeline [--aligner=bowtie2] [--centromeres=FILE] [--circular] [--distance-law]
+                 [--duplicates] [--enzyme=5000] [--filter] [--force] [--mapping=normal]
+                 [--matfmt=graal] [--no-cleanup] [--outdir=DIR] [--plot] [--prefix=PREFIX]
+                 [--quality-min=30] [--read-len=INT] [--remove-centromeres=0] [--size=0]
+                 [--start-stage=fastq] [--threads=1] [--tmpdir=DIR] --genome=FILE <input1> [<input2>]
 
     arguments:
         input1:             Forward fastq file, if start_stage is "fastq", sam
@@ -133,7 +136,7 @@ hicstuff pipeline -S bam -e 5000 -M cool -o out/ -g genome.fa namesorted_for.bam
 ```
 
 
-The pipeline can also be run from python, using the `hicstuff.pipeline` submodule. For example, this would run the pipeline with bowtie2 (default) using iterative alignment and keep all intermediate files. For more examples using the API, see the [API demo](https://hicstuff.readthedocs.io/en/latest/notebooks/demo_api.html)
+The pipeline can also be run from python, using the `hicstuff.pipeline` submodule. For example, this would run the pipeline with bowtie2 (default) using cutsiste alignment and keep all intermediate files. For more examples using the API, see the [API demo](https://hicstuff.readthedocs.io/en/latest/notebooks/demo_api.html)
 
 ```python
 from hicstuff import pipeline as hpi
@@ -143,7 +146,7 @@ hpi.full_pipeline(
     'end1.fq', 
     'end2.fq', 
     no_cleanup=True
-    iterative=True
+    mapping='cutsite',
     out_dir='out', 
     enzyme="DpnII")
 ```
@@ -156,13 +159,21 @@ The general steps of the pipeline are as follows:
 
 For more advanced usage, different scripts can be used independently on the command line to perform individual parts of the pipeline. This readme contains quick descriptions and example usages. To obtain detailed instructions on any subcommand, one can use `hicstuff <subcommand> --help`.
 
+### Digestion of the reads
+ 
+Generates new gzipped fastq files from original fastq. The function will cut the reads at their religation sites and creates new pairs of reads with the different fragments obtained after cutting at the digestion sites.
+
+    usage:
+        cutsite --forward=FILE --reverse=FILE  --prefix=STR --enzyme=STR
+        [--mode=for_vs_rev] [--seed-size=20] [--threads=1]
+
 #### Iterative alignment
 
 Truncate reads from a fastq file to 20 basepairs and iteratively extend and re-align the unmapped reads to optimize the proportion of uniquely aligned reads in a 3C library.
 
     usage:
-        iteralign [--aligner=bowtie2] [--threads=1] [--min_len=20]
-                  [--tempdir DIR] --out_sam=FILE --genome=FILE <reads.fq>
+        iteralign [--aligner=bowtie2] [--threads=1] [--min-len=20] [--read-len=INT]
+                  [--tempdir=DIR] --out-bam=FILE --genome=FILE <reads.fq>
 
 #### Digestion of the genome
 
@@ -171,7 +182,7 @@ fixed chunk size. Generates two output files into the target directory
 named "info_contigs.txt" and "fragments_list.txt"
 
     usage:
-        digest [--plot] [--figdir=FILE] [--circular] [--size=INT]
+        digest [--plot] [--figdir=FILE] [--force] [--circular] [--size=0]
                [--outdir=DIR] --enzyme=ENZ <fasta>
 
  
@@ -185,16 +196,18 @@ Filters spurious 3C events such as loops and uncuts from the library based on a 
 
     usage:
         filter [--interactive | --thresholds INT-INT] [--plot]
-               [--figdir FILE] <input.pairs> <output.pairs>
+               [--figdir FILE] [--prefix STR] <input> <output>
 
 #### Viewing the contact map
 
-Visualize a Hi-C matrix file as a heatmap of contact frequencies. Allows to tune visualisation by binning and normalizing the matrix, and to save the output image to disk. If no output is specified, the output is displayed interactively. If two contact maps are provided, the log ratio of the first divided by the second will be shown.
+Visualize a Hi-C matrix file as a heatmap of contact frequencies. Allows to
+tune visualisation by binning and normalizing the matrix, and to save the
+output image to disk. If no output is specified, the output is displayed.
 
     usage:
-        view [--binning=1] [--despeckle] [--frags FILE] [--trim INT] [--n-mad FLOAT]
-             [--normalize] [--max=99] [--output=IMG] [--cmap=CMAP] [--dpi=INT]
-             [--transform=FUN] [--circular] [--region=STR] <contact_map> [<contact_map2>]
+        view [--binning=1] [--despeckle] [--frags FILE] [--trim INT] [--n-mad 3.0] [--lines]
+             [--normalize] [--min=0] [--max=99%] [--output=IMG] [--cmap=Reds] [--dpi=300]
+             [--transform=STR] [--circular] [--region=STR] <contact_map> [<contact_map2>]
 
     arguments:
         contact_map             Sparse contact matrix in bg2, cool or graal format
@@ -212,6 +225,7 @@ For example, to view a 1Mb region of chromosome 1 from a full genome Hi-C matrix
 All components of the hicstuff program can be used as python modules. See the documentation on [reathedocs](https://hicstuff.readthedocs.io). The expected contact map format for the library is a simple CSV file, and the objects handled by the library are simple ```numpy``` arrays. The various submodules of hicstuff contain various utilities.
 
 ```python
+import hicstuff.cutsite # Functions to digest fastq librairies
 import hicstuff.digest # Functions to work with restriction fragments
 import hicstuff.iteralign # Functions related to iterative alignment
 import hicstuff.hicstuff # Contains utilities to modify and operate on contact maps as numpy arrays
@@ -227,33 +241,32 @@ All the steps described here are handled automatically when running the `hicstuf
 
 #### Aligning the reads
 
-You can generate SAM files independently using your favorite read mapping software, use the command line utility `hicstuff iteralign`, or use the helper function `align_reads` in the submodule `hicstuff.pipeline`. For example, to perform iterative alignment using minimap2 (instead of bowtie2 by default):
+You can generate SAM files independently using your favorite read mapping software, use the command line utility `hicstuff iteralign`, or use the helper function `align_reads` in the submodule `hicstuff.pipeline`. For example, to perform iterative alignment using bwa (instead of bowtie2 by default):
 
 **Using the python function:**
 
 ```python
 from hicstuff import pipeline as hpi
 
-hpi.align_reads("end1.fastq", "genome.fasta", "end1.bam", iterative=True, minimap2=True)
+hpi.align_reads("end1.fastq", "genome.fasta", "end1.bam", iterative=True, aligner='bwa')
 ```
 
 **Using the command line tool:**
 
 ```bash
-hicstuff iteralign --minimap2 --iterative -f genome.fasta -o end1.sam end1.fastq
+hicstuff iteralign --aligner bwa --genome genome.fasta --out-bam end1.bam end1.fastq
 ```
-
 
 #### Extracting contacts from the alignment
 
-The output from `hicstuff iteralign` is a SAM file. In order to retrieve Hi-C pairs, you need to run iteralign separately on the two fastq files and process the resulting alignment files into a name-sorted BAM file as follows using the `pipeline` submodules of hicstuff.
+The output from `hicstuff iteralign` is a BAM file. In order to retrieve Hi-C pairs, you need to run iteralign separately on the two fastq files and process the resulting alignment files into a name-sorted BAM file as follows using the `pipeline` submodules of hicstuff.
 
 ```python
 from hicstuff import pipeline as hpi
 import pysam as ps
 # Sort alignments by read names and get into BAM format
-ps.sort("-n", "-O", "BAM", "-o", "end1.bam.sorted", "end1.sam")
-ps.sort("-n", "-O", "BAM", "-o", "end2.bam.sorted", "end2.sam")
+ps.sort("-n", "-O", "BAM", "-o", "end1.bam.sorted", "end1.bam")
+ps.sort("-n", "-O", "BAM", "-o", "end2.bam.sorted", "end2.bam")
 # Combine BAM files
 hpi.bam2pairs("end1.sorted.bam", "end2.sorted.bam", "output.pairs", "info_contigs.txt", min_qual=30)
 
