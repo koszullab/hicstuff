@@ -24,8 +24,6 @@ from hicstuff.log import logger
 from os.path import join
 
 
-
-
 def iterative_align(
     fq_in,
     tmp_dir,
@@ -52,7 +50,7 @@ def iterative_align(
         Path where temporary files should be written.
     ref : str
         Path to the reference genome if Minimap2 is used for alignment.
-        Path to the index genome if Bowtie2/bwa is used for alignment. 
+        Path to the index genome if Bowtie2/bwa is used for alignment.
     n_cpu : int
         The number of CPUs to use for the iterative alignment.
     bam_out : str
@@ -67,7 +65,7 @@ def iterative_align(
         Read length in the fasta file. If set to None, the length of the first read
         is used. Set this value to the longest read length in the file if you have
         different read lengths.
-        
+
     Examples
     --------
 
@@ -102,7 +100,7 @@ def iterative_align(
     index = hio.check_fasta_index(ref, mode=aligner)
     if index is None:
         logger.error(
-            f"Reference index is missing, please build the {aligner} index first." 
+            f"Reference index is missing, please build the {aligner} index first."
         )
         sys.exit(1)
     # Counting reads
@@ -160,10 +158,12 @@ def iterative_align(
             cmd = "bwa mem -t {cpus} -v 1 {idx} {fq}".format(**map_args)
         elif re.match(r"^(bowtie[2]?|bt[2]?)$", aligner, flags=re.IGNORECASE):
             cmd = (
-                "bowtie2 -x {idx} -p {cpus}" " --quiet --very-sensitive {fq}"
+                "bowtie2 -x {idx} -p {cpus} --quiet --very-sensitive-local -U {fq}"
             ).format(**map_args)
         else:
-            raise ValueError("Unknown aligner. Select bowtie2, minimap2 or bwa.")
+            raise ValueError(
+                "Unknown aligner. Select bowtie2, minimap2 or bwa."
+            )
 
         map_process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
         sort_process = sp.Popen(
@@ -183,7 +183,9 @@ def iterative_align(
 
     # one last round without trimming
     logger.info(
-        "Trying to map unaligned reads at full length ({0}bp).".format(int(read_len))
+        "Trying to map unaligned reads at full length ({0}bp).".format(
+            int(read_len)
+        )
     )
 
     truncated_reads = truncate_reads(
@@ -202,9 +204,9 @@ def iterative_align(
             idx=index, cpus=n_cpu, fq=truncated_reads
         )
     else:
-        cmd = ("bowtie2 -x {idx} -p {cpus} --quiet " "--very-sensitive {fq}").format(
-            idx=index, cpus=n_cpu, fq=truncated_reads
-        )
+        cmd = (
+            "bowtie2 -x {idx} -p {cpus} --quiet " "--very-sensitive {fq}"
+        ).format(idx=index, cpus=n_cpu, fq=truncated_reads)
     map_process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
     # Keep reads sorted by name
     sort_process = sp.Popen(
@@ -260,7 +262,7 @@ def truncate_reads(tmp_dir, infile, unaligned_set, trunc_len, first_round):
         The number of basepairs to keep in each truncated sequence.
     first_round : bool
         If this is the first round, truncate all reads without checking mapping.
-    
+
     Returns
     -------
 
@@ -295,7 +297,7 @@ def filter_bamfile(temp_alignment, filtered_out, min_qual=30):
         Path to the output filtered temporary alignment.
     min_qual : int
         Minimum mapping quality required to keep a Hi-C pair.
-    
+
     Returns
     -------
     set:
