@@ -59,7 +59,7 @@ apt-get install bowtie2 bwa minimap2 samtools libbz2-dev liblzma-dev
 hicstuff is available as a bioconda package. It can be installed, along with all dependencies using:
 
 ```bash
-conda install -c biocconda hicstuff
+conda install -c bioconda hicstuff
 ```
 
 ### Docker
