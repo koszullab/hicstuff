@@ -262,7 +262,7 @@ class Cutsite(AbstractCommand):
                                 digest.
         -p, --prefix=STR        Prefix of the path where to write the digested
                                 gzipped fastq files. Filenames will be added the
-                                suffix "_{1,2}.fq.gz".
+                                suffix "_R{1,2}.fq.gz".
         -e, --enzyme=STR        The list of restriction enzyme used to digest
                                 the genome separated by a comma. Example:
                                 HpaII,MluCI.
