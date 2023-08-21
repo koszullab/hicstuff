@@ -373,7 +373,7 @@ def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs):
     os.remove(chroms_tmp)
 
 
-def cool2mcool(cool_file, output_file, balance_args = ""):
+def cool2mcool(cool_file, output_file, balance_args):
     """
     Zoomify a *binned* cooler file. See: https://github.com/mirnylab/cooler/ for more informations.
     
@@ -397,11 +397,11 @@ def cool2mcool(cool_file, output_file, balance_args = ""):
     cooler.zoomify_cooler(clr.filename, output_file, multires, chunksize=10000000)
 
     # Balance 
-    if balance_args is not None:
-        for res in multires: 
-            cooler_cmd = "cooler balance {args} {cooler_file}::/resolutions/{resolution}"
-            cool_args = {"cooler_file": output_file, "args": balance_args, "resolution": res}
-            sp.call(cooler_cmd.format(**cool_args), shell=True)
+    print(balance_args)
+    for res in multires: 
+        cooler_cmd = "cooler balance {args} {cooler_file}::/resolutions/{resolution}"
+        cool_args = {"cooler_file": output_file, "args": balance_args, "resolution": res}
+        sp.call(cooler_cmd.format(**cool_args), shell=True)
 
 
 def pairs2matrix(
@@ -532,7 +532,7 @@ def full_pipeline(
     enzyme=5000,
     binning=0,
     zoomify=True,
-    balancing=None,
+    balancing="",
     filter_events=False,
     force=False,
     mapping="normal",
