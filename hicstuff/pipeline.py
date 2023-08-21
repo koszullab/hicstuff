@@ -13,7 +13,6 @@ from os.path import join
 import subprocess as sp
 import gzip
 from Bio import SeqIO
-import pyfaidx
 import cooler
 import pandas as pd
 import numpy as np
