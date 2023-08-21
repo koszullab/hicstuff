@@ -341,7 +341,7 @@ def pairs2cool(pairs_file, cool_file, bins_file):
     os.remove(bins_tmp)
 
 
-def pairs2binnedcool(pairs_file, cool_file, binning, fasta):
+def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs):
     """
     Make a *binned* cooler file from the pairs file. See: https://github.com/mirnylab/cooler/ for more informations.
     
@@ -355,17 +355,16 @@ def pairs2binnedcool(pairs_file, cool_file, binning, fasta):
     binning : int or None
         If mat_fmt is set to "cool", the cool file will be further binned to 
         this resolution.
-    fasta : pathlib.Path or str
-        The path to the reference genome
+    info_contigs : pathlib.Path or str
+        The path to the contigs info file
     """
 
     # Get chrom sizes
-    chroms = {}
-    for record in pyfaidx.Fasta(fasta):
-        chroms[record.name] = len(record)
+    contigs = pd.read_csv(info_contigs, sep="\t")
+    chroms = dict(zip(contigs.contig, contigs.length))
 
     # Save chrom sizes as separate file
-    chroms_tmp = fasta + ".chroms"
+    chroms_tmp = info_contigs + ".chroms"
     pd.Series(chroms).to_csv(chroms_tmp, index=True, sep='\t', header=None)
 
     # Run `cooler cload pairs`
