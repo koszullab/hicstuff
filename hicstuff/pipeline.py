@@ -397,7 +397,6 @@ def cool2mcool(cool_file, output_file, balance_args):
     cooler.zoomify_cooler(clr.filename, output_file, multires, chunksize=10000000)
 
     # Balance 
-    print(balance_args)
     for res in multires: 
         cooler_cmd = "cooler balance {args} {cooler_file}::/resolutions/{resolution}"
         cool_args = {"cooler_file": output_file, "args": balance_args, "resolution": res}
