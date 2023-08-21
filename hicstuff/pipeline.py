@@ -398,10 +398,11 @@ def cool2mcool(cool_file, output_file, balance_args = ""):
     cooler.zoomify_cooler(clr.filename, output_file, multires, chunksize=10000000)
 
     # Balance 
-    for res in multires: 
-        cooler_cmd = "cooler balance {cooler_file}::/resolutions/{resolution} {args}"
-        cool_args = {"cooler_file": output_file, "resolution": res, "args": balance_args}
-        sp.call(cooler_cmd.format(**cool_args), shell=True)
+    if balance_args is not None:
+        for res in multires: 
+            cooler_cmd = "cooler balance {args} {cooler_file}::/resolutions/{resolution}"
+            cool_args = {"cooler_file": output_file, "args": balance_args, "resolution": res}
+            sp.call(cooler_cmd.format(**cool_args), shell=True)
 
 
 def pairs2matrix(
@@ -532,7 +533,7 @@ def full_pipeline(
     enzyme=5000,
     binning=None,
     zoomify=True,
-    balancing_args="",
+    balancing=None,
     filter_events=False,
     force=False,
     mapping="normal",
@@ -570,8 +571,8 @@ def full_pipeline(
         this resolution.
     zoomify : bool
         Whether to zoomify binned cool matrix (only used if mat_fmt == "cool" and binning is set)
-    balancing_args : str
-        Arguments to pass to `chromosight balance` (default: "") (only used if zoomify == True)
+    balancing : str
+        Arguments to pass to `chromosight balance` (default: None) (only used if zoomify == True)
     enzyme : int or strtest_data/genome/seq.fa
     circular : bool
         Use if the genome is circular.
@@ -1018,10 +1019,10 @@ def full_pipeline(
         
         if (binning is not None):
             binned_cool_file = os.path.splitext(mat)[0] + "_" + str(binning) + ".cool"
-            pairs2binnedcool(use_pairs, binned_cool_file, binning, fasta)
+            pairs2binnedcool(use_pairs, binned_cool_file, binning, info_contigs)
             if (zoomify is True):
                 mcool_file = os.path.splitext(mat)[0] + ".mcool"
-                cool2mcool(binned_cool_file, mcool_file, balancing_args)
+                cool2mcool(binned_cool_file, mcool_file, balancing)
                 
     else:
         pairs2matrix(
