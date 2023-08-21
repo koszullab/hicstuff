@@ -8,3 +8,5 @@ requests
 scikit-learn
 pysam
 pyfastx
+pyfaidx
+cooler
