@@ -352,7 +352,7 @@ def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs):
         Path to the pairs file containing input contact data.
     cool_file : str
         Path to the output cool file name to generate.
-    binning : int or None
+    binning : int
         If mat_fmt is set to "cool", the cool file will be further binned to 
         this resolution.
     info_contigs : pathlib.Path or str
@@ -531,7 +531,7 @@ def full_pipeline(
     circular=False,
     distance_law=False,
     enzyme=5000,
-    binning=None,
+    binning=0,
     zoomify=True,
     balancing=None,
     filter_events=False,
@@ -566,7 +566,7 @@ def full_pipeline(
     input2 : str
         Path to the Hi-C reads in fastq format (forward), the aligned Hi-C reads
         in BAM format, or None, depending on the value of start_stage.
-    binning : int or None
+    binning : int
         If mat_fmt is set to "cool", the cool file will be further binned to 
         this resolution.
     zoomify : bool
@@ -1017,7 +1017,7 @@ def full_pipeline(
         cool_file = os.path.splitext(mat)[0] + ".cool"
         pairs2cool(use_pairs, cool_file, fragments_list)
         
-        if (binning is not None):
+        if (binning > 0):
             binned_cool_file = os.path.splitext(mat)[0] + "_" + str(binning) + ".cool"
             pairs2binnedcool(use_pairs, binned_cool_file, binning, info_contigs)
             if (zoomify is True):

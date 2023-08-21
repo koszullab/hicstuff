@@ -865,6 +865,9 @@ class Pipeline(AbstractCommand):
         if not self.args["--outdir"]:
             self.args["--outdir"] = os.getcwd()
 
+        if not self.args["--binning"]:
+            self.args["--binning"] = "0"
+
         if self.args["--matfmt"] not in ("graal", "bg2", "cool"):
             logger.error("matfmt must be either bg2, cool or graal.")
             raise ValueError
