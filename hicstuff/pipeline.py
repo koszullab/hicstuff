@@ -397,9 +397,8 @@ def cool2mcool(cool_file, output_file, balance_args):
 
     # Balance 
     for res in multires: 
-        cooler_cmd = "cooler balance {args} {cooler_file}::/resolutions/{resolution}"
-        cool_args = {"cooler_file": output_file, "args": balance_args, "resolution": res}
-        sp.call(cooler_cmd.format(**cool_args), shell=True)
+        cooler_cmd = "cooler balance".split(" ")
+        sp.call(cooler_cmd + balance_args.split(" ") + [output_file+"::/resolutions/"+str(res)], shell=False)
 
 
 def pairs2matrix(
@@ -528,13 +527,13 @@ def full_pipeline(
     circular=False,
     distance_law=False,
     enzyme=5000,
-    binning=0,
-    zoomify=True,
-    balancing_args="",
     filter_events=False,
     force=False,
     mapping="normal",
-    mat_fmt="graal",
+    mat_fmt="cool",
+    binning=0,
+    zoomify=True,
+    balancing_args="",
     min_qual=30,
     min_size=0,
     no_cleanup=False,
