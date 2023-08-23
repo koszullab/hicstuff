@@ -109,7 +109,7 @@ def test_full_pipeline_frags_gzipped_genome():
             mat_fmt="cool",
             binning = 1000, 
             zoomify = True, 
-            balancing = "--min-nnz 10",
+            balancing_args = "--max-iters 10 --min-nnz 10",
             out_dir="test_out",
             plot=True,
             pcr_duplicates=True,
