@@ -367,9 +367,8 @@ def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs):
     pd.Series(chroms).to_csv(chroms_tmp, index=True, sep='\t', header=None)
 
     # Run `cooler cload pairs`
-    cooler_cmd = "cooler cload pairs -c1 2 -p1 3 -p2 4 -c2 5 {chroms_tmp}:{binning} {pairs} {cool}"
-    cool_args = {"chroms_tmp": chroms_tmp, "binning": binning, "pairs": pairs_file, "cool": cool_file}
-    sp.call(cooler_cmd.format(**cool_args), shell=True)
+    cooler_cmd = "cooler cload pairs -c1 2 -p1 3 -p2 4 -c2 5".split(" ")
+    sp.call(cooler_cmd + [chroms_tmp+":"+str(binning), pairs_file, cool_file], shell=False)
     os.remove(chroms_tmp)
 
 
