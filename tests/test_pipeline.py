@@ -72,26 +72,87 @@ def test_full_pipeline_frags():
             force=True,
         )
 
+# Testing:
+# no binning (no zoomify, no balancing)
+# binning: no zoomify (balancing)
+# binning: no zoomify, tweaked balancing
+# binning: zoomify, (balancing)
+# binning: zoomify, tweaked balancing
 
-def test_full_pipeline_frags_with_balancing():
-    mapping_to_enzyme = {
-        'normal': "DpnII",
-        'cutsite': "DpnII,HpaII"
-    }
-    for mapping, enzyme in mapping_to_enzyme.items():
-        hpi.full_pipeline(
-            input1="test_data/sample.reads_for.fastq.gz",
-            input2="test_data/sample.reads_rev.fastq.gz",
-            genome="test_data/genome/seq",
-            enzyme=enzyme,
-            mapping=mapping,
-            out_dir="test_out",
-            plot=True,
-            pcr_duplicates=True,
-            filter_events=True,
-            no_cleanup=True,
-            force=True,
-        )
+def test_full_pipeline_frags_with_binning_balancing():
+    hpi.full_pipeline(
+        input1="test_data/sample.reads_for.fastq.gz",
+        input2="test_data/sample.reads_rev.fastq.gz",
+        genome="test_data/genome/seq",
+        enzyme="DpnII,HpaII",
+        mapping="normal",
+        out_dir="test_out",
+        plot=True,
+        pcr_duplicates=True,
+        filter_events=True,
+        no_cleanup=True,
+        force=True,
+    )
+    hpi.full_pipeline(
+        input1="test_data/sample.reads_for.fastq.gz",
+        input2="test_data/sample.reads_rev.fastq.gz",
+        genome="test_data/genome/seq",
+        enzyme="DpnII,HpaII",
+        mapping="normal",
+        out_dir="test_out",
+        plot=True,
+        pcr_duplicates=True,
+        filter_events=True,
+        no_cleanup=True,
+        force=True,
+        binning = 1000,
+        zoomify = False,
+    )
+    hpi.full_pipeline(
+        input1="test_data/sample.reads_for.fastq.gz",
+        input2="test_data/sample.reads_rev.fastq.gz",
+        genome="test_data/genome/seq",
+        enzyme="DpnII,HpaII",
+        mapping="normal",
+        out_dir="test_out",
+        plot=True,
+        pcr_duplicates=True,
+        filter_events=True,
+        no_cleanup=True,
+        force=True,
+        binning = 1000,
+        zoomify = False,
+        balancing_args="--min-nnz 1 --mad-max 1",
+    )
+    hpi.full_pipeline(
+        input1="test_data/sample.reads_for.fastq.gz",
+        input2="test_data/sample.reads_rev.fastq.gz",
+        genome="test_data/genome/seq",
+        enzyme="DpnII,HpaII",
+        mapping="normal",
+        out_dir="test_out",
+        plot=True,
+        pcr_duplicates=True,
+        filter_events=True,
+        no_cleanup=True,
+        force=True,
+        binning = 1000,
+    )
+    hpi.full_pipeline(
+        input1="test_data/sample.reads_for.fastq.gz",
+        input2="test_data/sample.reads_rev.fastq.gz",
+        genome="test_data/genome/seq",
+        enzyme="DpnII,HpaII",
+        mapping="normal",
+        out_dir="test_out",
+        plot=True,
+        pcr_duplicates=True,
+        filter_events=True,
+        no_cleanup=True,
+        force=True,
+        binning = 1000,
+        balancing_args="--min-nnz 1 --mad-max 1",
+    )
 
 
 def test_full_pipeline_frags_gzipped_genome():
