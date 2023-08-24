@@ -1166,7 +1166,7 @@ def gc_bins(genome_path, frags):
         seqs = [str(rec.seq)[s:e] for s, e in zip(starts, ends)]
         # Fill GC values for bins in the chromosome
         idx = np.flatnonzero(mask)
-        gc_bins[idx] = np.array(list(map(SeqUtils.GC, seqs))) / 100.0
+        gc_bins[idx] = np.array(list(map(SeqUtils.gc_fraction, seqs))) / 100.0
 
     return gc_bins
 

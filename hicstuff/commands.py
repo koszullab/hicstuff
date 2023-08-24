@@ -743,8 +743,9 @@ class Pipeline(AbstractCommand):
         pipeline [--aligner=bowtie2] [--centromeres=FILE] [--circular] [--distance-law]
                  [--duplicates] [--enzyme=5000] [--filter] [--force] [--mapping=normal]
                  [--matfmt=graal] [--no-cleanup] [--outdir=DIR] [--plot] [--prefix=PREFIX]
-                 [--quality-min=30] [--read-len=INT] [--remove-centromeres=0] [--size=0]
-                 [--start-stage=fastq] [--threads=1] [--tmpdir=DIR] --genome=FILE <input1> [<input2>]
+                 [--binning=INT] [--zoomify] [--balancing_args=STR] [--quality-min=30] 
+                 [--read-len=INT] [--remove-centromeres=0] [--size=0] [--start-stage=fastq] 
+                 [--threads=1] [--tmpdir=DIR] --genome=FILE <input1> [<input2>]
 
     arguments:
         input1:             Forward fastq file, if start_stage is "fastq", sam
@@ -811,6 +812,12 @@ class Pipeline(AbstractCommand):
                                       at different steps of the pipeline.
         -P, --prefix=STR              Overrides default filenames and prefixes all
                                       output files with a custom name.
+        -b,--binning=INT              Bin the resulting matrix to a given resolution
+                                      (only used if `--matfmt cool")
+        -z, --zoomify                 Zoomify binned cool matrix 
+                                      (only used if mat_fmt == "cool" and binning is set)
+        -B, --balancing_args=STR      Arguments to pass to `cooler balance` 
+                                      (default: "") (only used if zoomify == True)
         -q, --quality-min=INT         Minimum mapping quality for selecting
                                       contacts. [default: 30].
         -r, --remove-centromeres=INT  Integer. Number of kb that will be remove around
@@ -858,6 +865,12 @@ class Pipeline(AbstractCommand):
         if not self.args["--outdir"]:
             self.args["--outdir"] = os.getcwd()
 
+        if not self.args["--binning"]:
+            self.args["--binning"] = "0"
+
+        if not self.args["--balancing_args"]:
+            self.args["--balancing_args"] = ""
+
         if self.args["--matfmt"] not in ("graal", "bg2", "cool"):
             logger.error("matfmt must be either bg2, cool or graal.")
             raise ValueError
@@ -879,6 +892,9 @@ class Pipeline(AbstractCommand):
             force=self.args["--force"],
             mapping=self.args["--mapping"],
             mat_fmt=self.args["--matfmt"],
+            binning=int(self.args["--binning"]),
+            zoomify=self.args["--zoomify"],
+            balancing_args=self.args["--balancing_args"],
             min_qual=int(self.args["--quality-min"]),
             min_size=int(self.args["--size"]),
             no_cleanup=self.args["--no-cleanup"],

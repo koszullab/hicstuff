@@ -13,6 +13,7 @@ from os.path import join
 import subprocess as sp
 import gzip
 from Bio import SeqIO
+import cooler
 import pandas as pd
 import numpy as np
 import pysam as ps
@@ -339,6 +340,67 @@ def pairs2cool(pairs_file, cool_file, bins_file):
     os.remove(bins_tmp)
 
 
+def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs):
+    """
+    Make a *binned* cooler file from the pairs file. See: https://github.com/mirnylab/cooler/ for more informations.
+    
+    Parameters
+    ----------
+
+    pairs_file : str
+        Path to the pairs file containing input contact data.
+    cool_file : str
+        Path to the output cool file name to generate.
+    binning : int
+        If mat_fmt is set to "cool", the cool file will be further binned to 
+        this resolution.
+    info_contigs : pathlib.Path or str
+        The path to the contigs info file
+    """
+
+    # Get chrom sizes
+    contigs = pd.read_csv(info_contigs, sep="\t")
+    chroms = dict(zip(contigs.contig, contigs.length))
+
+    # Save chrom sizes as separate file
+    chroms_tmp = info_contigs + ".chroms"
+    pd.Series(chroms).to_csv(chroms_tmp, index=True, sep='\t', header=None)
+
+    # Run `cooler cload pairs`
+    cooler_cmd = "cooler cload pairs -c1 2 -p1 3 -p2 4 -c2 5".split(" ")
+    sp.call(cooler_cmd + [chroms_tmp+":"+str(binning), pairs_file, cool_file], shell=False)
+    os.remove(chroms_tmp)
+
+
+def cool2mcool(cool_file, output_file, balance_args):
+    """
+    Zoomify a *binned* cooler file. See: https://github.com/mirnylab/cooler/ for more informations.
+    
+    Parameters
+    ----------
+
+    cool_file : str
+        Path to an existing binned .cool file.
+    output_file : str
+        Path to the new multi-resolution .mcool file.
+    balance_args : str
+        Arguments passed to `cooler balance` (default: "")
+    """
+
+    # Get resolutions
+    clr = cooler.Cooler(cool_file)
+    res = clr.binsize
+    multires = [res, res*2, res*5, res*10, res*20, res*50, res*100]
+
+    # Run cooler zoomify
+    cooler.zoomify_cooler(clr.filename, output_file, multires, chunksize=10000000)
+
+    # Balance 
+    for res in multires: 
+        cooler_cmd = "cooler balance".split(" ")
+        sp.call(cooler_cmd + balance_args.split(" ") + [output_file+"::/resolutions/"+str(res)], shell=False)
+
+
 def pairs2matrix(
     pairs_file, mat_file, fragments_file, mat_fmt="graal", threads=1, tmp_dir=None
 ):
@@ -468,7 +530,10 @@ def full_pipeline(
     filter_events=False,
     force=False,
     mapping="normal",
-    mat_fmt="graal",
+    mat_fmt="cool",
+    binning=0,
+    zoomify=True,
+    balancing_args="",
     min_qual=30,
     min_size=0,
     no_cleanup=False,
@@ -497,6 +562,13 @@ def full_pipeline(
     input2 : str
         Path to the Hi-C reads in fastq format (forward), the aligned Hi-C reads
         in BAM format, or None, depending on the value of start_stage.
+    binning : int
+        If mat_fmt is set to "cool", the cool file will be further binned to 
+        this resolution.
+    zoomify : bool
+        Whether to zoomify binned cool matrix (only used if mat_fmt == "cool" and binning is set)
+    balancing_args : str
+        Arguments to pass to `chromosight balance` (default: None) (only used if zoomify == True)
     enzyme : int or strtest_data/genome/seq.fa
     circular : bool
         Use if the genome is circular.
@@ -940,6 +1012,14 @@ def full_pipeline(
         # Name matrix file in .cool
         cool_file = os.path.splitext(mat)[0] + ".cool"
         pairs2cool(use_pairs, cool_file, fragments_list)
+        
+        if (binning > 0):
+            binned_cool_file = os.path.splitext(mat)[0] + "_" + str(binning) + ".cool"
+            pairs2binnedcool(use_pairs, binned_cool_file, binning, info_contigs)
+            if (zoomify is True):
+                mcool_file = os.path.splitext(mat)[0] + ".mcool"
+                cool2mcool(binned_cool_file, mcool_file, balancing_args)
+                
     else:
         pairs2matrix(
             use_pairs,
@@ -958,7 +1038,7 @@ def full_pipeline(
             pairs_filtered,
             bam1,
             bam2,
-            pairs_pcr,
+            # pairs_pcr,
             tmp_genome,
         ]
         # Do not delete files that were given as input
