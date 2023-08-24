@@ -1043,15 +1043,19 @@ def full_pipeline(
     # Build matrix from pairs.
     if mat_fmt == "cool":
 
+        # Name matrix file in .cool
+        mat = os.path.splitext(mat)[0] + ".cool"
+        
         # If binning is **not** set, parse the pairs into a **un-binned** cool
         if (binning == 0):
-            # Name matrix file in .cool
-            mat = os.path.splitext(mat)[0] + ".cool"
+            ## THIS NEEDS TO BE FIXED AT SOME POINT
             pairs2cool(use_pairs, mat, fragments_list)
 
         # If binning is set, proceed to bin the pairs instead
         else:
-            pairs2binnedcool(use_pairs, mat, binning, info_contigs)
+            cool_file = os.path.splitext(mat)[0] + ".cool"
+            pairs2binnedcool(use_pairs, cool_file, binning, info_contigs)
+            mat = cool_file
 
             # If zoomify == True, zoomify binned cool
             if zoomify:
@@ -1061,7 +1065,6 @@ def full_pipeline(
             
             # Balance binned matrix
             balance(mat, balancing_args)
-            
     else:
         pairs2matrix(
             use_pairs,
@@ -1072,15 +1075,20 @@ def full_pipeline(
             tmp_dir=tmp_dir,
         )
 
+    # Move final pairs file to main dir. 
+    p = pathlib.Path(use_pairs).absolute()
+    parent_dir = p.parents[1]
+    p.rename(parent_dir / p.name)
+
     # Clean temporary files
     if not no_cleanup:
         tempfiles = [
             pairs,
             pairs_idx,
             pairs_filtered,
+            pairs_pcr,
             bam1,
             bam2,
-            # pairs_pcr,
             tmp_genome,
         ]
         # Do not delete files that were given as input
@@ -1089,6 +1097,15 @@ def full_pipeline(
             tempfiles.remove(input2)
         except ValueError:
             pass
+        
+        # Delete single-resolution matrix if `--zoomify` is set
+        if binning > 0 and zoomify: 
+            try:
+                tempfiles.append(cool_file)
+            except ValueError:
+                pass
+        
+        # Remove the rest of tempfiles
         for file in tempfiles:
             try:
                 os.remove(file)
