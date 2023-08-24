@@ -372,7 +372,7 @@ def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs):
     os.remove(chroms_tmp)
 
 
-def cool2mcool(cool_file, output_file, balance_args):
+def cool2mcool(cool_file, output_file):
     """
     Zoomify a *binned* cooler file. See: https://github.com/mirnylab/cooler/ for more informations.
     
@@ -383,8 +383,6 @@ def cool2mcool(cool_file, output_file, balance_args):
         Path to an existing binned .cool file.
     output_file : str
         Path to the new multi-resolution .mcool file.
-    balance_args : str
-        Arguments passed to `cooler balance` (default: "")
     """
 
     # Get resolutions
@@ -395,10 +393,34 @@ def cool2mcool(cool_file, output_file, balance_args):
     # Run cooler zoomify
     cooler.zoomify_cooler(clr.filename, output_file, multires, chunksize=10000000)
 
+def balance(cool_file, balancing_args):
+    """
+    Balance a *binned* cooler file. See: https://github.com/mirnylab/cooler/ for more informations.
+    
+    Parameters
+    ----------
+
+    cool_file : str
+        Path to an existing binned .(m)cool file.
+    balancing_args : str
+        Extra rguments passed to `cooler balance` (default: None)
+    """
+
     # Balance 
-    for res in multires: 
+    if (cooler.fileops.is_multires_file(cool_file)):
+        paths = cooler.fileops.list_coolers(cool_file)
+        for path in paths: 
+            cooler_cmd = "cooler balance".split(" ")
+            if balancing_args is not None:
+                sp.call(cooler_cmd + balancing_args.split(" ") + [cool_file+"::"+path], shell=False)
+            else:
+                sp.call(cooler_cmd + [cool_file+"::"+path], shell=False)
+    else:
         cooler_cmd = "cooler balance".split(" ")
-        sp.call(cooler_cmd + balance_args.split(" ") + [output_file+"::/resolutions/"+str(res)], shell=False)
+        if balancing_args is not None:
+            sp.call(cooler_cmd + balancing_args.split(" ") + [cool_file], shell=False)
+        else:
+            sp.call(cooler_cmd + [cool_file], shell=False)
 
 
 def pairs2matrix(
@@ -1020,17 +1042,26 @@ def full_pipeline(
 
     # Build matrix from pairs.
     if mat_fmt == "cool":
-        # Name matrix file in .cool
-        cool_file = os.path.splitext(mat)[0] + ".cool"
-        pairs2cool(use_pairs, cool_file, fragments_list)
-        
-        if (binning > 0):
-            binned_cool_file = os.path.splitext(mat)[0] + "_" + str(binning) + ".cool"
-            pairs2binnedcool(use_pairs, binned_cool_file, binning, info_contigs)
-            if (zoomify is True):
+
+        # If binning is **not** set, parse the pairs into a **un-binned** cool
+        if (binning == 0):
+            # Name matrix file in .cool
+            mat = os.path.splitext(mat)[0] + ".cool"
+            pairs2cool(use_pairs, mat, fragments_list)
+
+        # If binning is set, proceed to bin the pairs instead
+        else:
+            pairs2binnedcool(use_pairs, mat, binning, info_contigs)
+
+            # If zoomify == True, zoomify binned cool
+            if zoomify:
                 mcool_file = os.path.splitext(mat)[0] + ".mcool"
-                cool2mcool(binned_cool_file, mcool_file, balancing_args)
-                
+                cool2mcool(mat, mcool_file)
+                mat = mcool_file
+            
+            # Balance binned matrix
+            balance(mat, balancing_args)
+            
     else:
         pairs2matrix(
             use_pairs,
