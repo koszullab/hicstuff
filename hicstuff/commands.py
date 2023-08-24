@@ -743,7 +743,7 @@ class Pipeline(AbstractCommand):
         pipeline [--aligner=bowtie2] [--centromeres=FILE] [--circular] [--distance-law]
                  [--duplicates] [--enzyme=5000] [--filter] [--force] [--mapping=normal]
                  [--matfmt=graal] [--no-cleanup] [--outdir=DIR] [--plot] [--prefix=PREFIX]
-                 [--binning=INT] [--zoomify] [--balancing_args=STR] [--quality-min=30] 
+                 [--binning=INT] [--zoomify=BOOL] [--balancing_args=STR] [--quality-min=30] 
                  [--read-len=INT] [--remove-centromeres=0] [--size=0] [--start-stage=fastq] 
                  [--threads=1] [--tmpdir=DIR] --genome=FILE <input1> [<input2>]
 
@@ -802,7 +802,7 @@ class Pipeline(AbstractCommand):
                                       Can be "bg2" for 2D Bedgraph format,
                                       "cool" for Mirnylab's cooler software, or
                                       "graal" for graal-compatible plain text
-                                      COO format. [default: graal]
+                                      COO format. [default: cool]
         -n, --no-cleanup              If enabled, intermediary BED files will
                                       be kept after generating the contact map.
                                       Disabled by defaut.
@@ -812,9 +812,10 @@ class Pipeline(AbstractCommand):
                                       at different steps of the pipeline.
         -P, --prefix=STR              Overrides default filenames and prefixes all
                                       output files with a custom name.
-        -b,--binning=INT              Bin the resulting matrix to a given resolution
+        -b,--binning=INT              Bin the contact matrix to a given resolution. 
+                                      By default, the contact matrix is not binned. 
                                       (only used if `--matfmt cool")
-        -z, --zoomify                 Zoomify binned cool matrix 
+        -z, --zoomify=BOOL            Zoomify binned cool matrix [default: True]
                                       (only used if mat_fmt == "cool" and binning is set)
         -B, --balancing_args=STR      Arguments to pass to `cooler balance` 
                                       (default: "") (only used if zoomify == True)
@@ -868,8 +869,11 @@ class Pipeline(AbstractCommand):
         if not self.args["--binning"]:
             self.args["--binning"] = "0"
 
+        if not self.args["--zoomify"]:
+            self.args["--zoomify"] = "True"
+            
         if not self.args["--balancing_args"]:
-            self.args["--balancing_args"] = ""
+            self.args["--balancing_args"] = None
 
         if self.args["--matfmt"] not in ("graal", "bg2", "cool"):
             logger.error("matfmt must be either bg2, cool or graal.")
@@ -878,7 +882,7 @@ class Pipeline(AbstractCommand):
         read_len = self.args["--read-len"]
         if read_len is not None:
             read_len = int(read_len)
-
+        
         hpi.full_pipeline(
             genome=self.args["--genome"],
             input1=self.args["<input1>"],
@@ -893,7 +897,7 @@ class Pipeline(AbstractCommand):
             mapping=self.args["--mapping"],
             mat_fmt=self.args["--matfmt"],
             binning=int(self.args["--binning"]),
-            zoomify=self.args["--zoomify"],
+            zoomify=eval(self.args["--zoomify"]),
             balancing_args=self.args["--balancing_args"],
             min_qual=int(self.args["--quality-min"]),
             min_size=int(self.args["--size"]),

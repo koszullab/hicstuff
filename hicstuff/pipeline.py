@@ -533,7 +533,7 @@ def full_pipeline(
     mat_fmt="cool",
     binning=0,
     zoomify=True,
-    balancing_args="",
+    balancing_args=None,
     min_qual=30,
     min_size=0,
     no_cleanup=False,
@@ -746,6 +746,17 @@ def full_pipeline(
     hcl.set_file_handler(log_file)
     generate_log_header(log_file, input1, input2, genome, enzyme)
 
+    # If defautl `mat_fmt` or set `mat_fmt=cool`, notify the user
+    if mat_fmt == 'cool':
+        try:
+            import cooler
+            logger.info("The default output format is now `.cool`. The Hi-C "
+                        "matrix will be generated with cooler v%s " 
+                        "(Abdennur & Mirny, Bioinformatics 2020).", 
+                        cooler.__version__
+                        )
+        except: raise
+    
     # If the user chose bowtie2 and supplied an index, extract fasta from it
     # For later steps of the pipeline (digestion / frag attribution)
     # Check if the genome is an index or fasta file
