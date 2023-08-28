@@ -880,6 +880,15 @@ def full_pipeline(
     # Perform genome alignment
     if start_stage == 0:
         
+        # Check number of reads in both fastqs
+        logger.info("Checking content of fastq files.")
+        nreads_input1 = hio.check_fastq_entries(reads1)
+        nreads_input2 = hio.check_fastq_entries(reads2)
+        if (nreads_input1 != nreads_input2):
+            logger.error("Fastq files do not have the same number of reads.")
+        else:
+            logger.info("{n} reads found in each fastq file.".format(n = nreads_input1))
+        
         # Define mapping choice (default normal):
         if mapping == "normal":
             iterative = False
@@ -941,6 +950,16 @@ def full_pipeline(
         
     # Starting from bam files
     if start_stage <= 1:
+
+        # Check number of reads in both fastqs
+        if (bam1 == input1):
+            logger.info("Checking content of bam files.")
+            nreads_input1 = hio.check_bam_entries(bam1)
+            nreads_input2 = hio.check_bam_entries(bam2)
+            if (nreads_input1 != nreads_input2):
+                logger.error("Bam files do not have the same number of reads.")
+            else:
+                logger.info("{n} reads found in each bam file.".format(n = nreads_input1))
 
         fragments_updated = True
         # Generate info_contigs and fragments_list output files
