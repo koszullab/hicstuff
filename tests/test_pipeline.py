@@ -153,6 +153,22 @@ def test_full_pipeline_frags_with_binning_balancing():
         binning = 1000,
         balancing_args="--min-nnz 1 --mad-max 1",
     )
+    hpi.full_pipeline(
+        input1="test_data/sample.reads_for.fastq.gz",
+        input2="test_data/sample.reads_rev.fastq.gz",
+        genome="test_data/genome/seq",
+        enzyme="DpnII,HpaII",
+        mapping="normal",
+        out_dir="test_out",
+        plot=True,
+        pcr_duplicates=True,
+        filter_events=True,
+        no_cleanup=False,
+        force=True,
+        binning = 1000,
+        exclude = 'seq2',
+        balancing_args="--min-nnz 1 --mad-max 1",
+    )
 
 
 def test_full_pipeline_frags_gzipped_genome():
