@@ -9,23 +9,31 @@ jobs:
       max-parallel: 5
 
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python 3.9
-      uses: actions/setup-python@v2
+
+    - name: Checkout repo
+      uses: actions/checkout@v2
+    
+    - name: Create micromamba env. for package
+      uses: mamba-org/setup-micromamba@v1
       with:
-        python-version: 3.9
-    - name: Add conda to system path
+        generate-run-shell: true
+        environment-file: environment.yml
+
+    - name: Install package
       run: |
-        # $CONDA is an environment variable pointing to the root of the miniconda directory
-        echo $CONDA/bin >> $GITHUB_PATH
-    - name: Install dependencies
+        pip install .
+      shell: micromamba-shell {0}
+
+    - name: Check installed package
       run: |
-        conda config --add channels bioconda
-        conda install -c conda-forge python=3.9 minimap2 bowtie2=2.4.5 bwa samtools htslib pysam pytest cooler pytest-cov pylint codecov mappy
-        pip install -Ur requirements.txt
-        pip install pytest-pylint
+        hicstuff --version
+      shell: micromamba-shell {0}
+
     - name: Lint and test
       run: |
+        pip install pytest-pylint pytest pytest-cov pylint codecov mappy
         pytest --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc --doctest-modules --doctest-modules hicstuff
         pytest --cov=hicstuff
         codecov
+      shell: micromamba-shell {0}
+
