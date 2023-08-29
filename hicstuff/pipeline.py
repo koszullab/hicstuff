@@ -314,7 +314,7 @@ def filter_pcr_dup(pairs_idx_file, filtered_file):
         )
 
 
-def pairs2cool(pairs_file, cool_file, bins_file):
+def pairs2cool(pairs_file, cool_file, bins_file, exclude):
     """
     Make a cooler file from the pairs file. See: https://github.com/mirnylab/cooler/ for more informations.
     
@@ -329,18 +329,20 @@ def pairs2cool(pairs_file, cool_file, bins_file):
         Path to the file containing genomic segmentation information. (fragments_list.txt).
     """
 
-    # Make bins file compatible with cooler cload
+    # Exclude some chromosomes from bins
     bins_tmp = bins_file + ".cooler"
     bins = pd.read_csv(bins_file, sep="\t", usecols=[1, 2, 3], skiprows=1, header=None)
+    bins = bins[~bins[1].isin(exclude.split(','))]
     bins.to_csv(bins_tmp, sep="\t", header=False, index=False)
 
+    # Make cool 
     cooler_cmd = "cooler cload pairs -c1 2 -p1 3 -p2 4 -c2 5 {bins} {pairs} {cool}"
     cool_args = {"bins": bins_tmp, "pairs": pairs_file, "cool": cool_file}
     sp.call(cooler_cmd.format(**cool_args), shell=True)
     os.remove(bins_tmp)
 
 
-def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs):
+def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs, exclude):
     """
     Make a *binned* cooler file from the pairs file. See: https://github.com/mirnylab/cooler/ for more informations.
     
@@ -358,13 +360,11 @@ def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs):
         The path to the contigs info file
     """
 
-    # Get chrom sizes
-    contigs = pd.read_csv(info_contigs, sep="\t")
-    chroms = dict(zip(contigs.contig, contigs.length))
-
-    # Save chrom sizes as separate file
+    # Exclude some chromosomes from bins
     chroms_tmp = info_contigs + ".chroms"
-    pd.Series(chroms).to_csv(chroms_tmp, index=True, sep='\t', header=None)
+    chroms = pd.read_csv(info_contigs, sep="\t", usecols=[0, 1], skiprows=1, header=None)
+    chroms = chroms[~chroms[0].isin(exclude.split(','))]
+    chroms.to_csv(chroms_tmp, index=False, sep='\t', header=False)
 
     # Run `cooler cload pairs`
     cooler_cmd = "cooler cload pairs -c1 2 -p1 3 -p2 4 -c2 5".split(" ")
@@ -546,6 +546,7 @@ def full_pipeline(
     input2=None,
     aligner="bowtie2",
     centromeres=None,
+    exclude=None,
     circular=False,
     distance_law=False,
     enzyme=5000,
@@ -646,6 +647,8 @@ def full_pipeline(
     centromeres : None or str
         If not None, path of file with Positions of the centromeres separated by a
         space and in the same order than the chromosomes.
+    exclude : None or str
+        If not None, the name of the chromosomes to remove (e.g. "2u,chrM")
     read_len : int
         Maximum read length to expect in the fastq file. Optionally used in iterative
         alignment mode. Estimated from the first read by default. Useful if input fastq
@@ -1068,12 +1071,12 @@ def full_pipeline(
         # If binning is **not** set, parse the pairs into a **un-binned** cool
         if (binning == 0):
             ## THIS NEEDS TO BE FIXED AT SOME POINT
-            pairs2cool(use_pairs, mat, fragments_list)
+            pairs2cool(use_pairs, mat, fragments_list, exclude)
 
         # If binning is set, proceed to bin the pairs instead
         else:
             cool_file = os.path.splitext(mat)[0] + ".cool"
-            pairs2binnedcool(use_pairs, cool_file, binning, info_contigs)
+            pairs2binnedcool(use_pairs, cool_file, binning, info_contigs, exclude)
             mat = cool_file
 
             # If zoomify == True, zoomify binned cool

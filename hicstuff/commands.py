@@ -741,10 +741,11 @@ class Pipeline(AbstractCommand):
 
     usage:
         pipeline [--aligner=bowtie2] [--centromeres=FILE] [--circular] [--distance-law]
-                 [--duplicates] [--enzyme=5000] [--filter] [--force] [--mapping=normal]
-                 [--matfmt=graal] [--no-cleanup] [--outdir=DIR] [--plot] [--prefix=PREFIX]
-                 [--binning=INT] [--zoomify=BOOL] [--balancing_args=STR] [--quality-min=30] 
-                 [--read-len=INT] [--remove-centromeres=0] [--size=0] [--start-stage=fastq] 
+                 [--duplicates] [--enzyme=5000] [--exclude=STR] [--filter] [--force] 
+                 [--mapping=normal] [--matfmt=graal] [--no-cleanup] [--outdir=DIR] 
+                 [--plot] [--prefix=PREFIX] [--binning=INT] [--zoomify=BOOL] 
+                 [--balancing_args=STR] [--quality-min=30] [--read-len=INT] 
+                 [--remove-centromeres=0] [--size=0] [--start-stage=fastq] 
                  [--threads=1] [--tmpdir=DIR] --genome=FILE <input1> [<input2>]
 
     arguments:
@@ -767,6 +768,10 @@ class Pipeline(AbstractCommand):
                                       option.
         -C, --circular                Enable if the genome is circular.
                                       Discordant with the centromeres option.
+        -E, --exclude=STR             Exclude specific chromosomes from the 
+                                      generated matrix. Multiple chromosomes 
+                                      can be listed separated by commas (e.g. 
+                                      `--exclude "chrM,2u"`) [default: None].
         -d, --distance-law            If enabled, generates a distance law file
                                       with the values of the probabilities to
                                       have a contact between two distances for
@@ -875,6 +880,9 @@ class Pipeline(AbstractCommand):
         if not self.args["--balancing_args"]:
             self.args["--balancing_args"] = None
 
+        if not self.args["--exclude"]:
+            self.args["--exclude"] = None
+
         if self.args["--matfmt"] not in ("graal", "bg2", "cool"):
             logger.error("matfmt must be either bg2, cool or graal.")
             raise ValueError
@@ -890,6 +898,7 @@ class Pipeline(AbstractCommand):
             aligner=self.args["--aligner"],
             centromeres=self.args["--centromeres"],
             circular=self.args["--circular"],
+            exclude=self.args["--exclude"],
             distance_law=self.args["--distance-law"],
             enzyme=self.args["--enzyme"],
             filter_events=self.args["--filter"],
