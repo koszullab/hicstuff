@@ -185,15 +185,15 @@ def cutsite_read(ligation_sites, seq, qual, seed_size=0):
     Returns:
     --------
     list of str
-        List of string of the sequences. The split is made at the start of the
-        ligation sites.
+        List of cut sequences. The split is made 4 bases after the start of 
+        the ligation site.
     list of str
         List of string of the qualities.
 
     Examples:
     ---------
     >>> cutsite_read(re.compile(r'GA.TA.TC'), "AAGAGTATTC", "FFF--FAFAF")
-    (['AA', 'GAGTATTC'], ['FF', 'F--FAFAF'])
+    (['AAGAGT', 'ATTC'], ['FFF--F', 'AFAF'])
     """
 
     # Find the ligation sites.
