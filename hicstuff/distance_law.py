@@ -559,7 +559,7 @@ def normalize_distance_law(xs, ps, inf=3000, sup=None):
         List of ps each normalized separately.
     """
     # Sanity check: xs and ps have the same dimension
-    if np.shape(xs) != np.shape(ps):
+    if np.shape(np.asarray(xs, dtype="object")) != np.shape(np.asarray(ps, dtype="object")):
         logger.error("xs and ps should have the same dimension.")
         sys.exit(1)
     # Define the length of shortest chromosomes as a lower bound for the sup boundary

@@ -24,9 +24,9 @@ copyright = "2018, Cyril Matthey-Doret"
 author = "Cyril Matthey-Doret"
 
 # The short X.Y version
-version = "3.1"
+version = "3.2"
 # The full version, including alpha/beta/rc tags
-release = "3.1.7"
+release = "3.2.0"
 
 
 # -- General configuration ---------------------------------------------------

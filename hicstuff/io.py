@@ -6,6 +6,7 @@ import zipfile
 import bz2
 import io
 import os
+import pysam
 import functools
 import sys
 import numpy as np
@@ -1431,3 +1432,65 @@ def check_is_fasta(in_file):
         fasta = False
 
     return fasta
+
+def check_fastq_entries(in_file):
+    """
+    Check how many reads are in the input fastq. Requires zcat.
+    
+    Parameters
+    ----------
+    in_file : str
+        Path to the input file.
+
+    Returns
+    -------
+    int :
+        How many reads listed in the input fastq
+    """
+
+    with open(in_file, 'rb') as f:
+        is_gzip = f.read(2) == b'\x1f\x8b'
+    
+    if is_gzip:
+        n_lines = sp.run(
+            "zcat < {f} | wc -l".format(f = in_file),
+            stdout=sp.PIPE,
+            stderr=sp.PIPE,
+            shell = True, 
+            encoding = 'utf-8'
+        ).stdout.removesuffix("\n")
+    else:
+        n_lines = sp.run(
+            "wc -l {f}".format(f = in_file),
+            stdout=sp.PIPE,
+            stderr=sp.PIPE,
+            shell = True, 
+            encoding = 'utf-8'
+        ).stdout.removesuffix("\n")
+
+    n_reads = int(n_lines)/4
+    return n_reads
+
+def check_bam_entries(in_file):
+    """
+    Check how many reads are in the input bam
+    
+    Parameters
+    ----------
+    in_file : str
+        Path to the input file.
+
+    Returns
+    -------
+    int :
+        How many reads listed in the input bam
+    """
+
+    n_reads = sp.run(
+        ["samtools", "view", "-c", in_file],
+        stdout=sp.PIPE,
+        stderr=sp.PIPE,
+        encoding = 'utf-8'
+    ).stdout.removesuffix("\n")
+
+    return int(n_reads)

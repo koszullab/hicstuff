@@ -29,8 +29,8 @@ CLASSIFIERS = [
 name = "hicstuff"
 
 MAJOR = 3
-MINOR = 1
-MAINTENANCE = 7
+MINOR = 2
+MAINTENANCE = 0
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "BSD-3-Clause"

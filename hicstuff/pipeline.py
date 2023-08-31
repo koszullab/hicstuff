@@ -314,7 +314,7 @@ def filter_pcr_dup(pairs_idx_file, filtered_file):
         )
 
 
-def pairs2cool(pairs_file, cool_file, bins_file):
+def pairs2cool(pairs_file, cool_file, bins_file, exclude):
     """
     Make a cooler file from the pairs file. See: https://github.com/mirnylab/cooler/ for more informations.
     
@@ -329,18 +329,20 @@ def pairs2cool(pairs_file, cool_file, bins_file):
         Path to the file containing genomic segmentation information. (fragments_list.txt).
     """
 
-    # Make bins file compatible with cooler cload
+    # Exclude some chromosomes from bins
     bins_tmp = bins_file + ".cooler"
     bins = pd.read_csv(bins_file, sep="\t", usecols=[1, 2, 3], skiprows=1, header=None)
+    bins = bins[~bins[1].isin(exclude.split(','))]
     bins.to_csv(bins_tmp, sep="\t", header=False, index=False)
 
+    # Make cool 
     cooler_cmd = "cooler cload pairs -c1 2 -p1 3 -p2 4 -c2 5 {bins} {pairs} {cool}"
     cool_args = {"bins": bins_tmp, "pairs": pairs_file, "cool": cool_file}
     sp.call(cooler_cmd.format(**cool_args), shell=True)
     os.remove(bins_tmp)
 
 
-def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs):
+def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs, exclude):
     """
     Make a *binned* cooler file from the pairs file. See: https://github.com/mirnylab/cooler/ for more informations.
     
@@ -358,13 +360,11 @@ def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs):
         The path to the contigs info file
     """
 
-    # Get chrom sizes
-    contigs = pd.read_csv(info_contigs, sep="\t")
-    chroms = dict(zip(contigs.contig, contigs.length))
-
-    # Save chrom sizes as separate file
+    # Exclude some chromosomes from bins
     chroms_tmp = info_contigs + ".chroms"
-    pd.Series(chroms).to_csv(chroms_tmp, index=True, sep='\t', header=None)
+    chroms = pd.read_csv(info_contigs, sep="\t", usecols=[0, 1], skiprows=1, header=None)
+    chroms = chroms[~chroms[0].isin(exclude.split(','))]
+    chroms.to_csv(chroms_tmp, index=False, sep='\t', header=False)
 
     # Run `cooler cload pairs`
     cooler_cmd = "cooler cload pairs -c1 2 -p1 3 -p2 4 -c2 5".split(" ")
@@ -372,7 +372,7 @@ def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs):
     os.remove(chroms_tmp)
 
 
-def cool2mcool(cool_file, output_file, balance_args):
+def cool2mcool(cool_file, output_file):
     """
     Zoomify a *binned* cooler file. See: https://github.com/mirnylab/cooler/ for more informations.
     
@@ -383,8 +383,6 @@ def cool2mcool(cool_file, output_file, balance_args):
         Path to an existing binned .cool file.
     output_file : str
         Path to the new multi-resolution .mcool file.
-    balance_args : str
-        Arguments passed to `cooler balance` (default: "")
     """
 
     # Get resolutions
@@ -395,10 +393,34 @@ def cool2mcool(cool_file, output_file, balance_args):
     # Run cooler zoomify
     cooler.zoomify_cooler(clr.filename, output_file, multires, chunksize=10000000)
 
+def balance(cool_file, balancing_args):
+    """
+    Balance a *binned* cooler file. See: https://github.com/mirnylab/cooler/ for more informations.
+    
+    Parameters
+    ----------
+
+    cool_file : str
+        Path to an existing binned .(m)cool file.
+    balancing_args : str
+        Extra rguments passed to `cooler balance` (default: None)
+    """
+
     # Balance 
-    for res in multires: 
+    if (cooler.fileops.is_multires_file(cool_file)):
+        paths = cooler.fileops.list_coolers(cool_file)
+        for path in paths: 
+            cooler_cmd = "cooler balance".split(" ")
+            if balancing_args is not None:
+                sp.call(cooler_cmd + balancing_args.split(" ") + [cool_file+"::"+path], shell=False)
+            else:
+                sp.call(cooler_cmd + [cool_file+"::"+path], shell=False)
+    else:
         cooler_cmd = "cooler balance".split(" ")
-        sp.call(cooler_cmd + balance_args.split(" ") + [output_file+"::/resolutions/"+str(res)], shell=False)
+        if balancing_args is not None:
+            sp.call(cooler_cmd + balancing_args.split(" ") + [cool_file], shell=False)
+        else:
+            sp.call(cooler_cmd + [cool_file], shell=False)
 
 
 def pairs2matrix(
@@ -524,6 +546,7 @@ def full_pipeline(
     input2=None,
     aligner="bowtie2",
     centromeres=None,
+    exclude=None,
     circular=False,
     distance_law=False,
     enzyme=5000,
@@ -533,7 +556,7 @@ def full_pipeline(
     mat_fmt="cool",
     binning=0,
     zoomify=True,
-    balancing_args="",
+    balancing_args=None,
     min_qual=30,
     min_size=0,
     no_cleanup=False,
@@ -624,6 +647,8 @@ def full_pipeline(
     centromeres : None or str
         If not None, path of file with Positions of the centromeres separated by a
         space and in the same order than the chromosomes.
+    exclude : None or str
+        If not None, the name of the chromosomes to remove (e.g. "2u,chrM")
     read_len : int
         Maximum read length to expect in the fastq file. Optionally used in iterative
         alignment mode. Estimated from the first read by default. Useful if input fastq
@@ -746,6 +771,17 @@ def full_pipeline(
     hcl.set_file_handler(log_file)
     generate_log_header(log_file, input1, input2, genome, enzyme)
 
+    # If defautl `mat_fmt` or set `mat_fmt=cool`, notify the user
+    if mat_fmt == 'cool':
+        try:
+            import cooler
+            logger.info("The default output format is now `.cool`. The Hi-C "
+                        "matrix will be generated with cooler v%s " 
+                        "(Abdennur & Mirny, Bioinformatics 2020).", 
+                        cooler.__version__
+                        )
+        except: raise
+    
     # If the user chose bowtie2 and supplied an index, extract fasta from it
     # For later steps of the pipeline (digestion / frag attribution)
     # Check if the genome is an index or fasta file
@@ -847,6 +883,15 @@ def full_pipeline(
     # Perform genome alignment
     if start_stage == 0:
         
+        # Check number of reads in both fastqs
+        logger.info("Checking content of fastq files.")
+        nreads_input1 = hio.check_fastq_entries(reads1)
+        nreads_input2 = hio.check_fastq_entries(reads2)
+        if (nreads_input1 != nreads_input2):
+            logger.error("Fastq files do not have the same number of reads.")
+        else:
+            logger.info("{n} reads found in each fastq file.".format(n = nreads_input1))
+        
         # Define mapping choice (default normal):
         if mapping == "normal":
             iterative = False
@@ -908,6 +953,16 @@ def full_pipeline(
         
     # Starting from bam files
     if start_stage <= 1:
+
+        # Check number of reads in both fastqs
+        if (bam1 == input1):
+            logger.info("Checking content of bam files.")
+            nreads_input1 = hio.check_bam_entries(bam1)
+            nreads_input2 = hio.check_bam_entries(bam2)
+            if (nreads_input1 != nreads_input2):
+                logger.error("Bam files do not have the same number of reads.")
+            else:
+                logger.info("{n} reads found in each bam file.".format(n = nreads_input1))
 
         fragments_updated = True
         # Generate info_contigs and fragments_list output files
@@ -1009,17 +1064,29 @@ def full_pipeline(
 
     # Build matrix from pairs.
     if mat_fmt == "cool":
+
         # Name matrix file in .cool
-        cool_file = os.path.splitext(mat)[0] + ".cool"
-        pairs2cool(use_pairs, cool_file, fragments_list)
+        mat = os.path.splitext(mat)[0] + ".cool"
         
-        if (binning > 0):
-            binned_cool_file = os.path.splitext(mat)[0] + "_" + str(binning) + ".cool"
-            pairs2binnedcool(use_pairs, binned_cool_file, binning, info_contigs)
-            if (zoomify is True):
+        # If binning is **not** set, parse the pairs into a **un-binned** cool
+        if (binning == 0):
+            ## THIS NEEDS TO BE FIXED AT SOME POINT
+            pairs2cool(use_pairs, mat, fragments_list, exclude)
+
+        # If binning is set, proceed to bin the pairs instead
+        else:
+            cool_file = os.path.splitext(mat)[0] + ".cool"
+            pairs2binnedcool(use_pairs, cool_file, binning, info_contigs, exclude)
+            mat = cool_file
+
+            # If zoomify == True, zoomify binned cool
+            if zoomify:
                 mcool_file = os.path.splitext(mat)[0] + ".mcool"
-                cool2mcool(binned_cool_file, mcool_file, balancing_args)
-                
+                cool2mcool(mat, mcool_file)
+                mat = mcool_file
+            
+            # Balance binned matrix
+            balance(mat, balancing_args)
     else:
         pairs2matrix(
             use_pairs,
@@ -1030,15 +1097,20 @@ def full_pipeline(
             tmp_dir=tmp_dir,
         )
 
+    # Move final pairs file to main dir. 
+    p = pathlib.Path(use_pairs).absolute()
+    parent_dir = p.parents[1]
+    p.rename(parent_dir / p.name)
+
     # Clean temporary files
     if not no_cleanup:
         tempfiles = [
             pairs,
             pairs_idx,
             pairs_filtered,
+            pairs_pcr,
             bam1,
             bam2,
-            # pairs_pcr,
             tmp_genome,
         ]
         # Do not delete files that were given as input
@@ -1047,6 +1119,15 @@ def full_pipeline(
             tempfiles.remove(input2)
         except ValueError:
             pass
+        
+        # Delete single-resolution matrix if `--zoomify` is set
+        if binning > 0 and zoomify: 
+            try:
+                tempfiles.append(cool_file)
+            except ValueError:
+                pass
+        
+        # Remove the rest of tempfiles
         for file in tempfiles:
             try:
                 os.remove(file)
