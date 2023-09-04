@@ -332,7 +332,8 @@ def pairs2cool(pairs_file, cool_file, bins_file, exclude):
     # Exclude some chromosomes from bins
     bins_tmp = bins_file + ".cooler"
     bins = pd.read_csv(bins_file, sep="\t", usecols=[1, 2, 3], skiprows=1, header=None)
-    bins = bins[~bins[1].isin(exclude.split(','))]
+    if exclude is not None:
+        bins = bins[~bins[1].isin(exclude.split(','))]
     bins.to_csv(bins_tmp, sep="\t", header=False, index=False)
 
     # Make cool 
@@ -363,7 +364,8 @@ def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs, exclude):
     # Exclude some chromosomes from bins
     chroms_tmp = info_contigs + ".chroms"
     chroms = pd.read_csv(info_contigs, sep="\t", usecols=[0, 1], skiprows=1, header=None)
-    chroms = chroms[~chroms[0].isin(exclude.split(','))]
+    if exclude is not None:
+        chroms = chroms[~chroms[0].isin(exclude.split(','))]
     chroms.to_csv(chroms_tmp, index=False, sep='\t', header=False)
 
     # Run `cooler cload pairs`
