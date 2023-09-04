@@ -1101,9 +1101,17 @@ def full_pipeline(
 
     # Move final pairs file to main dir. 
     p = pathlib.Path(use_pairs).absolute()
-    parent_dir = p.parents[1]
-    p.rename(parent_dir / p.name)
-
+    pairsf = p.parents[1] / p.name
+    p.rename(pairsf)
+    
+    # Sort and compress final pairs file
+    pairstools_cmd = "pairtools sort".split(" ")
+    sorted_pairsf = str(pairsf) + ".gz"
+    sort_args = "--output {out} --tmpdir {tmp_dir}".format(
+        out = sorted_pairsf, tmp_dir = tmp_dir
+    )
+    sp.call(pairstools_cmd + sort_args.split(" ") + [pairsf], shell=False)
+    
     # Clean temporary files
     if not no_cleanup:
         tempfiles = [

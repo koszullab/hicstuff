@@ -1,4 +1,4 @@
-name: env-name
+name: base
 channels:
   - conda-forge
   - bioconda
@@ -22,3 +22,4 @@ dependencies:
   - htslib
   - pyfastx
   - cooler
+  - pairtools

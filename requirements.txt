@@ -9,3 +9,4 @@ scikit-learn
 pysam
 pyfastx
 cooler
+pairtools

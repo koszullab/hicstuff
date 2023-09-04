@@ -17,7 +17,8 @@ RUN conda install -c conda-forge -y \
     samtools \
     htslib \
     pysam \ 
-    cooler && conda clean -afy
+    cooler \
+    pairtools && conda clean -afy
 
 RUN pip install -Ur requirements.txt
 # Using pip:
