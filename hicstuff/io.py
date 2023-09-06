@@ -1458,7 +1458,7 @@ def check_fastq_entries(in_file):
             stderr=sp.PIPE,
             shell = True, 
             encoding = 'utf-8'
-        ).stdout.removesuffix("\n")
+        ).stdout.removesuffix("\n").split(" ")[0]
     else:
         n_lines = sp.run(
             "wc -l {f}".format(f = in_file),
@@ -1466,7 +1466,7 @@ def check_fastq_entries(in_file):
             stderr=sp.PIPE,
             shell = True, 
             encoding = 'utf-8'
-        ).stdout.removesuffix("\n")
+        ).stdout.removesuffix("\n").split(" ")[0]
 
     n_reads = int(n_lines)/4
     return n_reads
