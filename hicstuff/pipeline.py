@@ -1111,6 +1111,7 @@ def full_pipeline(
         out = sorted_pairsf, tmp_dir = tmp_dir
     )
     sp.call(pairstools_cmd + sort_args.split(" ") + [pairsf], shell=False)
+    os.remove(pairsf)
     
     # Clean temporary files
     if not no_cleanup:
