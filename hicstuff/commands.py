@@ -736,42 +736,33 @@ class View(AbstractCommand):
 class Pipeline(AbstractCommand):
     """Whole (end-to-end) contact map generation command
 
-    Entire Pipeline to process fastq files into a Hi-C matrix. Uses all the
-    individual components of hicstuff.
+    Usage:
+        pipeline [options] --genome=FILE <input1> [<input2>]
+        
+    Arguments:
+        input1:     Forward fastq file, if start_stage is "fastq", sam
+                    file for aligned forward reads if start_stage is
+                    "bam", or a .pairs file if start_stage is "pairs".
+        input2:     Reverse fastq file, if start_stage is "fastq", sam
+                    file for aligned reverse reads if start_stage is
+                    "bam", or nothing if start_stage is "pairs".
 
-    usage:
-        pipeline [--aligner=bowtie2] [--centromeres=FILE] [--circular] [--distance-law]
-                 [--duplicates] [--enzyme=5000] [--exclude=STR] [--filter] [--force] 
-                 [--mapping=normal] [--matfmt=graal] [--no-cleanup] [--outdir=DIR] 
-                 [--plot] [--prefix=PREFIX] [--binning=INT] [--zoomify=BOOL] 
-                 [--balancing_args=STR] [--quality-min=30] [--read-len=INT] 
-                 [--remove-centromeres=0] [--size=0] [--start-stage=fastq] 
-                 [--threads=1] [--tmpdir=DIR] --genome=FILE <input1> [<input2>]
-
-    arguments:
-        input1:             Forward fastq file, if start_stage is "fastq", sam
-                            file for aligned forward reads if start_stage is
-                            "bam", or a .pairs file if start_stage is "pairs".
-        input2:             Reverse fastq file, if start_stage is "fastq", sam
-                            file for aligned reverse reads if start_stage is
-                            "bam", or nothing if start_stage is "pairs".
-
-
-    options:
+    Options:
         -a, --aligner=STR             Alignment software to use. Can be either
                                       bowtie2, minimap2 or bwa. minimap2 should
                                       only be used for reads > 100 bp.
                                       [default: bowtie2]
+        -B, --balancing_args=STR      Arguments to pass to `cooler balance` 
+                                      (default: "") (only used if zoomify == True)
+        -b,--binning=INT              Bin the contact matrix to a given resolution. 
+                                      By default, the contact matrix is not binned. 
+                                      (only used if `--matfmt cool")
         -c, --centromeres=FILE        Positions of the centromeres separated by
                                       a space and in the same order than the
                                       chromosomes. Discordant with the circular
                                       option.
         -C, --circular                Enable if the genome is circular.
                                       Discordant with the centromeres option.
-        -E, --exclude=STR             Exclude specific chromosomes from the 
-                                      generated matrix. Multiple chromosomes 
-                                      can be listed separated by commas (e.g. 
-                                      `--exclude "chrM,2u"`) [default: None].
         -d, --distance-law            If enabled, generates a distance law file
                                       with the values of the probabilities to
                                       have a contact between two distances for
@@ -784,6 +775,10 @@ class Pipeline(AbstractCommand):
                                       or chunk size (i.e. resolution) if a number.
                                       Can also be multiple comma-separated
                                       enzymes. [default: 5000]
+        -E, --exclude=STR             Exclude specific chromosomes from the 
+                                      generated matrix. Multiple chromosomes 
+                                      can be listed separated by commas (e.g. 
+                                      `--exclude "chrM,2u"`) [default: None].
         -f, --filter                  Filter out spurious 3C events (loops and
                                       uncuts) using hicstuff filter. Requires
                                       "-e" to be a restriction enzyme or mnase,
@@ -817,13 +812,6 @@ class Pipeline(AbstractCommand):
                                       at different steps of the pipeline.
         -P, --prefix=STR              Overrides default filenames and prefixes all
                                       output files with a custom name.
-        -b,--binning=INT              Bin the contact matrix to a given resolution. 
-                                      By default, the contact matrix is not binned. 
-                                      (only used if `--matfmt cool")
-        -z, --zoomify=BOOL            Zoomify binned cool matrix [default: True]
-                                      (only used if mat_fmt == "cool" and binning is set)
-        -B, --balancing_args=STR      Arguments to pass to `cooler balance` 
-                                      (default: "") (only used if zoomify == True)
         -q, --quality-min=INT         Minimum mapping quality for selecting
                                       contacts. [default: 30].
         -r, --remove-centromeres=INT  Integer. Number of kb that will be remove around
@@ -848,12 +836,19 @@ class Pipeline(AbstractCommand):
         -T, --tmpdir=DIR              Directory for storing intermediary BED
                                       files and temporary sort files. Defaults
                                       to the output directory.
+        -z, --zoomify=BOOL            Zoomify binned cool matrix [default: True]
+                                      (only used if mat_fmt == "cool" and binning is set)
+    
+    Example commands: 
+    
+    ## To generate a multi-resolution `.mcool` matrix, binned and balanced from 1kb, for Arima Hi-C: 
 
-    output:
-        abs_fragments_contacts_weighted.txt: the sparse contact map
-        fragments_list.txt: information about restriction fragments (or chunks)
-        info_contigs.txt: information about contigs or chromosomes
-        hicstuff.log: details and statistics about the run.
+    hicstuff pipeline --enzyme "DpnII,HinfI" --binning 1000 --threads 8 --genome <reference>.fa <prefix>_R1.fq.gz <prefix>_R2.fq.gz
+    
+    ## Recommended command: 
+
+    hicstuff pipeline --enzyme "DpnII,HinfI" --binning 1000 --duplicates --filter --distance-law --plot --threads 8 --genome <reference>.fa <prefix>_R1.fq.gz <prefix>_R2.fq.gz
+
     """
 
     def execute(self):
