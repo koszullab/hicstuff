@@ -1,27 +1,16 @@
-FROM continuumio/miniconda3:4.9.2
+FROM mambaorg/micromamba:latest
 
 LABEL Name=hicstuff Version=3.2.0
 
-COPY * ./ /app/
-WORKDIR /app
+COPY --chown=$MAMBA_USER:$MAMBA_USER . ./
 
-RUN conda update -y conda
-RUN conda config --add channels bioconda
+## Install dependencies
+RUN micromamba install -y -n base --file environment.yml && \
+    micromamba install -y -n base pip && \
+    micromamba clean --all --yes
 
-# Get 3rd party packages directly from conda
-RUN conda install -c conda-forge -y \
-    pip \
-    bowtie2 \
-    minimap2 \
-    bwa \
-    samtools \
-    htslib \
-    pysam \ 
-    cooler \
-    pairtools && conda clean -afy
+## Install hicstuff
+RUN micromamba run python3 -m pip install -e .
 
-RUN pip install -Ur requirements.txt
-# Using pip:
-RUN pip install .
-#CMD ["python3", "-m", "hicstuff.main"]
-ENTRYPOINT [ "hicstuff" ]
+WORKDIR /home/mambauser/
+ENTRYPOINT [ "/bin/bash" ]
