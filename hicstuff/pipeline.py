@@ -312,6 +312,9 @@ def filter_pcr_dup(pairs_idx_file, filtered_file):
             "%d%% PCR duplicates have been filtered out (%d / %d pairs) "
             % (100 * round(filter_count / reads_count, 3), filter_count, reads_count)
         )
+        logger.info(
+            "%d pairs remaining after removing PCR duplicates", reads_count - filter_count
+        )
 
 
 def pairs2cool(pairs_file, cool_file, bins_file, exclude):
