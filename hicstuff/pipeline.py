@@ -1070,6 +1070,19 @@ def full_pipeline(
     # Build matrix from pairs.
     if mat_fmt == "cool":
 
+        # Log which pairs file is being used and how many pairs are listed
+        pairs_count = 0
+        with open(use_pairs, "r") as file:
+            for line in file:
+                if line.startswith('#'):
+                    continue
+                else:
+                    pairs_count += 1
+        logger.info(
+            "Generating matrix from pairs file %s (%d pairs in the file) ", 
+            use_pairs, pairs_count
+        )
+
         # Name matrix file in .cool
         mat = os.path.splitext(mat)[0] + ".cool"
         
