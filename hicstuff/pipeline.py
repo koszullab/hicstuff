@@ -886,6 +886,7 @@ def full_pipeline(
         pairs_idx = input1
  
     # Perform genome alignment
+    nreads_input1 = 0
     if start_stage == 0:
         
         # Check number of reads in both fastqs
@@ -895,7 +896,7 @@ def full_pipeline(
         if (nreads_input1 != nreads_input2):
             logger.error("Fastq files do not have the same number of reads.")
         else:
-            logger.info("{n} reads found in each fastq file.".format(n = nreads_input1))
+            logger.info("{n} reads found in each fastq file.".format(n = int(nreads_input1)))
         
         # Define mapping choice (default normal):
         if mapping == "normal":
