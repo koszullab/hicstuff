@@ -23,6 +23,7 @@ import hicstuff.filter as hcf
 import hicstuff.io as hio
 import hicstuff.distance_law as hcdl
 import hicstuff.cutsite as hcc
+import hicstuff.stats as hcs
 import matplotlib
 import pathlib
 from hicstuff.version import __version__
@@ -311,6 +312,9 @@ def filter_pcr_dup(pairs_idx_file, filtered_file):
         logger.info(
             "%d%% PCR duplicates have been filtered out (%d / %d pairs) "
             % (100 * round(filter_count / reads_count, 3), filter_count, reads_count)
+        )
+        logger.info(
+            "%d pairs remaining after removing PCR duplicates", reads_count - filter_count
         )
 
 
@@ -883,6 +887,7 @@ def full_pipeline(
         pairs_idx = input1
  
     # Perform genome alignment
+    nreads_input1 = 0
     if start_stage == 0:
         
         # Check number of reads in both fastqs
@@ -892,7 +897,7 @@ def full_pipeline(
         if (nreads_input1 != nreads_input2):
             logger.error("Fastq files do not have the same number of reads.")
         else:
-            logger.info("{n} reads found in each fastq file.".format(n = nreads_input1))
+            logger.info("{n} reads found in each fastq file.".format(n = int(nreads_input1)))
         
         # Define mapping choice (default normal):
         if mapping == "normal":
@@ -1006,6 +1011,26 @@ def full_pipeline(
     )
     os.rename(pairs_idx + ".sorted", pairs_idx)
 
+    # Count total pairs
+    tot_pairs = 0
+    with open(pairs_idx, "r") as file:
+        for line in file:
+            if line.startswith('#'):
+                continue
+            else:
+                tot_pairs += 1
+    if nreads_input1 != 0:
+        logger.info(
+            "{0} pairs successfully mapped ({1}%)".format(
+                tot_pairs, round(100 * tot_pairs / (nreads_input1), 2)
+            )
+        )
+    else:
+        logger.info(
+            "{0} pairs successfully mapped".format(tot_pairs)
+        )
+
+    # Filter pairs if requested
     if filter_events:
         uncut_thr, loop_thr = hcf.get_thresholds(
             pairs_idx, plot_events=plot, fig_path=dist_plot, prefix=prefix
@@ -1067,6 +1092,19 @@ def full_pipeline(
     # Build matrix from pairs.
     if mat_fmt == "cool":
 
+        # Log which pairs file is being used and how many pairs are listed
+        pairs_count = 0
+        with open(use_pairs, "r") as file:
+            for line in file:
+                if line.startswith('#'):
+                    continue
+                else:
+                    pairs_count += 1
+        logger.info(
+            "Generating matrix from pairs file %s (%d pairs in the file) ", 
+            use_pairs, pairs_count
+        )
+
         # Name matrix file in .cool
         mat = os.path.splitext(mat)[0] + ".cool"
         
@@ -1099,6 +1137,14 @@ def full_pipeline(
             tmp_dir=tmp_dir,
         )
 
+    # Get stats on the pipeline
+    try:
+        logger.info("Fetching mapping and pairing stats")
+        hcs.get_pipeline_stats(prefix, out_dir, log_file)
+    except IndexError: 
+        logger.warning("IndexError. Stats not compiled.")
+        pass 
+    
     # Move final pairs file to main dir. 
     p = pathlib.Path(use_pairs).absolute()
     pairsf = p.parents[1] / p.name

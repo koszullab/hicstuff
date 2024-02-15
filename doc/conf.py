@@ -26,7 +26,7 @@ author = "Cyril Matthey-Doret"
 # The short X.Y version
 version = "3.2"
 # The full version, including alpha/beta/rc tags
-release = "3.2.1"
+release = "3.2.2"
 
 
 # -- General configuration ---------------------------------------------------

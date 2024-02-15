@@ -1435,7 +1435,7 @@ def check_is_fasta(in_file):
 
 def check_fastq_entries(in_file):
     """
-    Check how many reads are in the input fastq. Requires zcat.
+    Check how many reads are in the input fastq. 
     
     Parameters
     ----------
@@ -1450,24 +1450,12 @@ def check_fastq_entries(in_file):
 
     with open(in_file, 'rb') as f:
         is_gzip = f.read(2) == b'\x1f\x8b'
-    
     if is_gzip:
-        n_lines = sp.run(
-            "zcat < {f} | wc -l".format(f = in_file),
-            stdout=sp.PIPE,
-            stderr=sp.PIPE,
-            shell = True, 
-            encoding = 'utf-8'
-        ).stdout[:-2].split(" ")[0]
+        with gzip.open(in_file, "rt") as input_fastq:
+            n_lines = sum(1 for line in input_fastq)
     else:
-        n_lines = sp.run(
-            "wc -l {f}".format(f = in_file),
-            stdout=sp.PIPE,
-            stderr=sp.PIPE,
-            shell = True, 
-            encoding = 'utf-8'
-        ).stdout[:-2].split(" ")[0]
-
+        with open(in_file, "r") as input_fastq:
+            n_lines = sum(1 for line in input_fastq)
     n_reads = int(n_lines)/4
     return n_reads
 
