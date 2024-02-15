@@ -23,6 +23,7 @@ import hicstuff.filter as hcf
 import hicstuff.io as hio
 import hicstuff.distance_law as hcdl
 import hicstuff.cutsite as hcc
+import hicstuff.stats as hcs
 import matplotlib
 import pathlib
 from hicstuff.version import __version__
@@ -1010,6 +1011,26 @@ def full_pipeline(
     )
     os.rename(pairs_idx + ".sorted", pairs_idx)
 
+    # Count total pairs
+    tot_pairs = 0
+    with open(pairs_idx, "r") as file:
+        for line in file:
+            if line.startswith('#'):
+                continue
+            else:
+                tot_pairs += 1
+    if nreads_input1 != 0:
+        logger.info(
+            "{0} pairs successfully mapped ({1}%)".format(
+                tot_pairs, round(100 * tot_pairs / (nreads_input1), 2)
+            )
+        )
+    else:
+        logger.info(
+            "{0} pairs successfully mapped".format(tot_pairs)
+        )
+
+    # Filter pairs if requested
     if filter_events:
         uncut_thr, loop_thr = hcf.get_thresholds(
             pairs_idx, plot_events=plot, fig_path=dist_plot, prefix=prefix
@@ -1116,6 +1137,14 @@ def full_pipeline(
             tmp_dir=tmp_dir,
         )
 
+    # Get stats on the pipeline
+    try:
+        logger.info("Fetching mapping and pairing stats")
+        hcs.get_pipeline_stats(prefix, out_dir, log_file)
+    except IndexError: 
+        logger.warning("IndexError. Stats not compiled.")
+        pass 
+    
     # Move final pairs file to main dir. 
     p = pathlib.Path(use_pairs).absolute()
     pairsf = p.parents[1] / p.name
