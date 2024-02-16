@@ -40,7 +40,7 @@ def get_pipeline_stats(prefix, out_dir, log_file):
         log_lines = [line.rstrip() for line in file]
 
     # 1. Number of sequenced pairs from fastqs
-    fastq_pairs = [s for s in log_lines if re.search("reads found in eajch fastq file.", s)][0]
+    fastq_pairs = [s for s in log_lines if re.search("reads found in each fastq file.", s)][0]
     fastq_pairs = re.sub(".*INFO :: ", "", fastq_pairs)
     fastq_pairs = re.sub(" reads found in each fastq file.*", "", fastq_pairs)
     fastq_pairs = int(float(fastq_pairs))
@@ -151,4 +151,4 @@ def get_pipeline_stats(prefix, out_dir, log_file):
     stats_json_path = join(out_dir, prefix + ".stats.json")
     with open(stats_json_path, 'w') as json_file:
         json.dump(stats, json_file, indent=4)
-
+    return(stats)
