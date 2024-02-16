@@ -1670,13 +1670,8 @@ class Stats(AbstractCommand):
 
     def execute(self):
         log_file = self.args["<log>"]
-        hcs.get_pipeline_stats(log_file)
-        prefix = re.sub(".hicstuff.*", "", basename(log_file))
-        out_dir = dirname(log_file)
-        stats_file_path = join(out_dir, prefix + ".stats.txt")
-        with open(stats_file_path, 'r') as file: 
-            lines = [line for line in file]
-            print(''.join(lines))
+        stats = hcs.get_pipeline_stats(log_file)
+        hcs.print_pipeline_stats(stats)
 
 def parse_bin_str(bin_str):
     """Bin string parsing
