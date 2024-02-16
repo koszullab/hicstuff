@@ -3,17 +3,15 @@
 
 import re 
 from os.path import join
+from os.path import dirname
+from os.path import basename
 import json
 
-def get_pipeline_stats(prefix, out_dir, log_file):
+def get_pipeline_stats(log_file):
     """Get stats after pipeline execution.
 
     Parameters
     ----------
-    prefix : str
-        The prefix used to create output files by the pipeline.
-    out_dir : str
-        The prefix used to create output files by the pipeline.
     log_file : str
         Path to hicstuff log file.
 
@@ -36,6 +34,8 @@ def get_pipeline_stats(prefix, out_dir, log_file):
             - Trans ratio
     """
 
+    prefix = re.sub(".hicstuff.*", "", basename(log_file))
+    out_dir = dirname(log_file)
     with open(log_file) as file:
         log_lines = [line.rstrip() for line in file]
 

@@ -21,6 +21,7 @@ The subcommands are:
     iteralign       Iteratively aligns reads to a reference genome.
     missview        Preview missing Hi-C bins in based on the genome and read length.
     pipeline        Hi-C pipeline to generate contact matrix from fastq files.
+    stats           Extract mapping statistics from a hicstuff pipeline log file.
     rebin           Bin the matrix and regenerate files accordingly.
     subsample       Bootstrap subsampling of contacts from a Hi-C map.
     view            Visualize a Hi-C matrix.    

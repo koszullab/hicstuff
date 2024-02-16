@@ -14,9 +14,10 @@ commands:
     -view (map visualization)
     -pipeline (whole contact map generation)
     -distancelaw (Analysis tool and plot for the distance law)
+    -stats (Extract stats from log)
 
 Running 'pipeline' implies running 'digest', but not
-iteralign or filter unless specified, because they can
+'iteralign' or 'filter' unless specified, because they can
 take up a lot of time for dimnishing returns.
 
 Note
@@ -38,7 +39,7 @@ ValueError
 import re
 import sys, os, shutil
 import tempfile
-from os.path import join, dirname
+from os.path import join, dirname, basename
 from matplotlib import pyplot as plt
 from matplotlib import cm
 from docopt import docopt
@@ -54,6 +55,7 @@ import hicstuff.cutsite as hcc
 import hicstuff.digest as hcd
 import hicstuff.iteralign as hci
 import hicstuff.filter as hcf
+import hicstuff.stats as hcs
 from hicstuff.version import __version__
 import hicstuff.io as hio
 from hicstuff.log import logger
@@ -1656,6 +1658,25 @@ class Missview(AbstractCommand):
         )
         logger.info("Output image saved at %s.", out)
 
+class Stats(AbstractCommand):
+    """Extract stats from a hicstuff log file.
+
+    usage:
+        stats <log>
+
+    arguments:
+        log               Path to a hicstuff log file.
+    """
+
+    def execute(self):
+        log_file = self.args["<log>"]
+        hcs.get_pipeline_stats(log_file)
+        prefix = re.sub(".hicstuff.*", "", basename(log_file))
+        out_dir = dirname(log_file)
+        stats_file_path = join(out_dir, prefix + ".stats.txt")
+        with open(stats_file_path, 'r') as file: 
+            lines = [line for line in file]
+            print(''.join(lines))
 
 def parse_bin_str(bin_str):
     """Bin string parsing
@@ -1695,7 +1716,6 @@ def parse_bin_str(bin_str):
         binning = int(float(bin_str[:unit_pos]) * binsuffix[bp_unit[0]])
 
     return binning
-
 
 def parse_ucsc(ucsc_str, bins):
     """

@@ -1140,7 +1140,7 @@ def full_pipeline(
     # Get stats on the pipeline
     try:
         logger.info("Fetching mapping and pairing stats")
-        stats = hcs.get_pipeline_stats(prefix, out_dir, log_file)
+        stats = hcs.get_pipeline_stats(log_file)
         logger.info(stats)
     except IndexError: 
         logger.warning("IndexError. Stats not compiled.")
