@@ -38,9 +38,9 @@ def get_pipeline_stats(log_file):
         log_lines = [line.rstrip() for line in file]
 
     # 1. Number of sequenced pairs from fastqs
-    fastq_pairs = [s for s in log_lines if re.search("reads found in each fastq file.", s)][0]
+    fastq_pairs = [s for s in log_lines if re.search("reads found in each", s)][0]
     fastq_pairs = re.sub(".*INFO :: ", "", fastq_pairs)
-    fastq_pairs = re.sub(" reads found in each fastq file.*", "", fastq_pairs)
+    fastq_pairs = re.sub(" reads found in each.*", "", fastq_pairs)
     fastq_pairs = int(float(fastq_pairs))
     
     # 2. Number (% of total) of (un)mapped reads
