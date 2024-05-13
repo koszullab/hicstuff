@@ -26,6 +26,8 @@ import hicstuff.cutsite as hcc
 import hicstuff.stats as hcs
 import matplotlib
 import pathlib
+import pairtools
+from packaging.version import Version
 from hicstuff.version import __version__
 import hicstuff.log as hcl
 from hicstuff.log import logger
@@ -1157,6 +1159,8 @@ def full_pipeline(
     sort_args = "--output {out} --tmpdir {tmp_dir}".format(
         out = sorted_pairsf, tmp_dir = tmp_dir
     )
+    if (Version(pairtools.__version__) >= Version('1.1.0')): 
+        sort_args = sort_args + " --c1 chr1 --c2 chr2 --p1 pos1 --p2 pos2 --pt frag1" 
     sp.call(pairstools_cmd + sort_args.split(" ") + [pairsf], shell=False)
     os.remove(pairsf)
     
