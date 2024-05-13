@@ -30,7 +30,7 @@ name = "hicstuff"
 
 MAJOR = 3
 MINOR = 2
-MAINTENANCE = 2
+MAINTENANCE = 3
 VERSION = "{}.{}.{}".format(MAJOR, MINOR, MAINTENANCE)
 
 LICENSE = "BSD-3-Clause"
