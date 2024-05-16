@@ -45,7 +45,7 @@ def get_pipeline_stats(log_file):
     
     # 2. Number (% of total) of (un)mapped reads
     tot_mapped = [s for s in log_lines if re.search("mapped with Q ", s)][0]
-    tot_mapped = re.sub(".*Q >= 30 \(", "", tot_mapped)
+    tot_mapped = re.sub(".*Q >= \d+ \(", "", tot_mapped)
     tot_mapped = re.sub("/.*", "", tot_mapped)
     tot_mapped = int(float(tot_mapped))
     tot_unmapped = fastq_pairs*2 - tot_mapped
