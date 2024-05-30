@@ -55,7 +55,7 @@ import hicstuff.cutsite as hcc
 import hicstuff.digest as hcd
 import hicstuff.iteralign as hci
 import hicstuff.filter as hcf
-import hicstuff.stats as hcs
+import hicstuff.stats as hcstats
 from hicstuff.version import __version__
 import hicstuff.io as hio
 from hicstuff.log import logger
@@ -1670,8 +1670,8 @@ class Stats(AbstractCommand):
 
     def execute(self):
         log_file = self.args["<log>"]
-        stats = hcs.get_pipeline_stats(log_file)
-        hcs.print_pipeline_stats(stats)
+        stats = hcstats.get_pipeline_stats(log_file)
+        hcstats.print_pipeline_stats(stats)
 
 def parse_bin_str(bin_str):
     """Bin string parsing
