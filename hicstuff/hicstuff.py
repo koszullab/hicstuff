@@ -80,7 +80,7 @@ def distance_law_from_mat(matrix, indices=None, log_bins=True, base=1.1):
         included_bins[indices] = True
     D = np.array(
         [
-            np.average(matrix.diagonal(j)[included_bins[: n - j]])
+            np.nanmean(matrix.diagonal(j)[included_bins[: n - j]])
             for j in range(n)
         ]
     )
@@ -98,7 +98,7 @@ def distance_law_from_mat(matrix, indices=None, log_bins=True, base=1.1):
             return np.array(range(len(D))), D
         logD = np.array(
             [
-                np.average(D[logbin[i - 1] : logbin[i]])
+                np.nanmean(D[logbin[i - 1] : logbin[i]])
                 for i in range(1, len(logbin))
             ]
         )
