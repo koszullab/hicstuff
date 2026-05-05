@@ -847,6 +847,9 @@ def full_pipeline(
             index_cmd = ["bowtie2-build", '-q', fasta, fasta]
         elif aligner == 'bwa':
             index_cmd = ['bwa', 'index', fasta]
+        else:
+            logger.error("Incompatible aligner software, choose bowtie2 or bwa.")
+            raise ValueError("aligner should be either bowtie2 or bwa.")
         # We only need the index if the user provided fastq input
         if start_stage == 0:
             # If no index present assume input is fasta, copy it in tmp and

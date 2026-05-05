@@ -1725,6 +1725,8 @@ def null_model(
     if noisy:
         if callable(noisy):
             noise_function = noisy
+        else:
+            noise_function = noise
         return noise_function(N)
     else:
         return N

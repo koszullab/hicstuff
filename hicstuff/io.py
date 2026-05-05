@@ -949,6 +949,9 @@ def flexible_hic_loader(
 
             chroms = None
 
+    else:
+        raise ValueError("Unknown input format: {0}".format(hic_format))
+    
     # Ensure the matrix is upper triangle symmetric
     if mat.shape[0] == mat.shape[1]:
         if (abs(mat - mat.T) > 1e-10).nnz > 0:
