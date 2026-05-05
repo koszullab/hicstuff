@@ -8,17 +8,14 @@ import filecmp
 import numpy as np
 import hicstuff.pipeline as hpi
 
-
-MAPPING_PARAMETERS = ("mapping", ['normal', 'iterative'])
-ALIGNER_PARAMETERS = ("aligner", ['bowtie2', 'bwa', 'minimap2'])
-
-
-def test_sam2pairs():
-    ...
+MAPPING_PARAMETERS = ("mapping", ["normal", "iterative"])
+ALIGNER_PARAMETERS = ("aligner", ["bowtie2", "bwa", "minimap2"])
 
 
-def test_pairs2mat():
-    ...
+def test_sam2pairs(): ...
+
+
+def test_pairs2mat(): ...
 
 
 def test_filter_pcr_dup():
@@ -53,10 +50,7 @@ def test_filter_pcr_dup():
 
 
 def test_full_pipeline_frags():
-    mapping_to_enzyme = {
-        'normal': "DpnII",
-        'cutsite': "DpnII,HpaII"
-    }
+    mapping_to_enzyme = {"normal": "DpnII", "cutsite": "DpnII,HpaII"}
     for mapping, enzyme in mapping_to_enzyme.items():
         hpi.full_pipeline(
             input1="test_data/sample.reads_for.fastq.gz",
@@ -72,12 +66,14 @@ def test_full_pipeline_frags():
             force=True,
         )
 
+
 # Testing:
 # no binning (no zoomify, no balancing)
 # binning: no zoomify (balancing)
 # binning: no zoomify, tweaked balancing
 # binning: zoomify, (balancing)
 # binning: zoomify, tweaked balancing
+
 
 def test_full_pipeline_frags_with_binning_balancing():
     hpi.full_pipeline(
@@ -105,8 +101,8 @@ def test_full_pipeline_frags_with_binning_balancing():
         filter_events=True,
         no_cleanup=True,
         force=True,
-        binning = 1000,
-        zoomify = False,
+        binning=1000,
+        zoomify=False,
     )
     hpi.full_pipeline(
         input1="test_data/sample.reads_for.fastq.gz",
@@ -120,8 +116,8 @@ def test_full_pipeline_frags_with_binning_balancing():
         filter_events=True,
         no_cleanup=True,
         force=True,
-        binning = 1000,
-        zoomify = False,
+        binning=1000,
+        zoomify=False,
         balancing_args="--min-nnz 1 --mad-max 1",
     )
     hpi.full_pipeline(
@@ -136,7 +132,7 @@ def test_full_pipeline_frags_with_binning_balancing():
         filter_events=True,
         no_cleanup=True,
         force=True,
-        binning = 1000,
+        binning=1000,
     )
     hpi.full_pipeline(
         input1="test_data/sample.reads_for.fastq.gz",
@@ -150,7 +146,7 @@ def test_full_pipeline_frags_with_binning_balancing():
         filter_events=True,
         no_cleanup=True,
         force=True,
-        binning = 1000,
+        binning=1000,
         balancing_args="--min-nnz 1 --mad-max 1",
     )
     hpi.full_pipeline(
@@ -165,17 +161,14 @@ def test_full_pipeline_frags_with_binning_balancing():
         filter_events=True,
         no_cleanup=False,
         force=True,
-        binning = 1000,
-        exclude = 'seq2',
+        binning=1000,
+        exclude="seq2",
         balancing_args="--min-nnz 1 --mad-max 1",
     )
 
 
 def test_full_pipeline_frags_gzipped_genome():
-    mapping_to_enzyme = {
-        'normal': "DpnII",
-        'cutsite': "DpnII,HpaII"
-    }
+    mapping_to_enzyme = {"normal": "DpnII", "cutsite": "DpnII,HpaII"}
     for mapping, enzyme in mapping_to_enzyme.items():
         hpi.full_pipeline(
             input1="test_data/sample.reads_for.fastq.gz",
@@ -184,9 +177,9 @@ def test_full_pipeline_frags_gzipped_genome():
             enzyme=enzyme,
             mapping=mapping,
             mat_fmt="cool",
-            binning = 1000, 
-            zoomify = True, 
-            balancing_args = "--max-iters 10 --min-nnz 10",
+            binning=1000,
+            zoomify=True,
+            balancing_args="--max-iters 10 --min-nnz 10",
             out_dir="test_out",
             plot=True,
             pcr_duplicates=True,
@@ -201,13 +194,13 @@ def test_full_pipeline_frags_gzipped_genome():
 def test_full_pipeline_bin(mapping, aligner):
     """Crash Test for the whole pipeline"""
     start_input = {
-        'fastq': [
+        "fastq": [
             "test_data/sample.reads_for.fastq.gz",
             "test_data/sample.reads_rev.fastq.gz",
         ],
-        'bam': ['test_out/tmp/for.bam', 'test_out/tmp/rev.bam'],
-        'pairs': ['test_out/tmp/valid.pairs', None],
-        'pairs_idx': ['test_out/tmp/valid_idx.pairs', None]
+        "bam": ["test_out/tmp/for.bam", "test_out/tmp/rev.bam"],
+        "pairs": ["test_out/tmp/valid.pairs", None],
+        "pairs_idx": ["test_out/valid_idx.pairs.gz", None],
     }
     for stage, [in1, in2] in start_input.items():
         # Indexed or non-indexed genome
@@ -228,5 +221,5 @@ def test_full_pipeline_bin(mapping, aligner):
             force=True,
         )
     shutil.rmtree(f"test_out_{aligner}_{mapping}")
-    if mapping == 'iterative' and aligner == 'minimap2':
+    if mapping == "iterative" and aligner == "minimap2":
         shutil.rmtree("test_out/")

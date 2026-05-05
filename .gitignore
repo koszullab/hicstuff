@@ -149,6 +149,10 @@ test.png
 test_cli/
 test_data/digested_R1.fq.gz
 test_data/digested_R2.fq.gz
+test_out*
+distance_law.txt
+out.pdf
+out.tsv
 
 # Translations
 *.mo
