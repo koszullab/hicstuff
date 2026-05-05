@@ -1421,14 +1421,14 @@ class Distancelaw(AbstractCommand):
             output_file_img = None
         # Compute the table of distance law if pairs given
         if self.args["--pairs"]:
-            # Sanity check : frags mandatory if pairs given.
-            if not self.args["--frags"] or self.args["--dist-tbl"]:
-                logger.error(
-                    "You have to give fragments and/or not give table of the distance law if pairs file given."
-                )
+            # --dist-tbl and --pairs are mutually exclusive
+            if self.args["--dist-tbl"]:
+                logger.error("Cannot use --pairs and --dist-tbl at the same time.")
                 sys.exit(1)
             pairs = self.args["--pairs"]
-            fragments = self.args["--frags"]
+            # --frags is optional: when omitted, distances are computed from
+            # read positions (pos2 - pos1) using chromsizes in the pairs header.
+            fragments = self.args["--frags"] if self.args["--frags"] else None
             # Give no file as output_file_tabl if no given.
             if self.args["--outputfile-tabl"]:
                 output_file_tabl = self.args["--outputfile-tabl"]
@@ -1473,9 +1473,7 @@ class Distancelaw(AbstractCommand):
             names = [None] * length_files
             # Iterate on the different file given by the user.
             for i in range(length_files):
-                xs[i], ps[i], names[i] = hcdl.import_distance_law(
-                    distance_law_files[i]
-                )
+                xs[i], ps[i], names[i] = hcdl.import_distance_law(distance_law_files[i])
             names = [name[0] for name in names]
         # Put the inf and sup according to the arguments given.
         if self.args["--inf"]:
@@ -1501,9 +1499,7 @@ class Distancelaw(AbstractCommand):
         for i in range(length_files):
             # Make the average if enabled
             if self.args["--average"]:
-                xs[i], ps[i] = hcdl.average_distance_law(
-                    xs[i], ps[i], arm_sup, big_arm_only
-                )
+                xs[i], ps[i] = hcdl.average_distance_law(xs[i], ps[i], arm_sup, big_arm_only)
                 # If not average, we should to remove one level of list to have the good dimension.
         if not self.args["--average"]:
             names = names[0]
@@ -1535,9 +1531,7 @@ class Distancelaw(AbstractCommand):
 
         # Export the new table if required.
         if self.args["--outputfile-tabl"]:
-            hcdl.export_distance_law(
-                xs, ps, labels, self.args["--outputfile-tabl"]
-            )
+            hcdl.export_distance_law(xs, ps, labels, self.args["--outputfile-tabl"])
 
 
 class Missview(AbstractCommand):
