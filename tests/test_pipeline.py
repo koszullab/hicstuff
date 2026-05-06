@@ -9,7 +9,7 @@ import numpy as np
 import hicstuff.pipeline as hpi
 
 MAPPING_PARAMETERS = ("mapping", ["normal", "iterative"])
-ALIGNER_PARAMETERS = ("aligner", ["bowtie2", "bwa", "minimap2"])
+ALIGNER_PARAMETERS = ("aligner", ["bowtie2", "bwa"])
 
 
 def test_sam2pairs(): ...
