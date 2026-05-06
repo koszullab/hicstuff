@@ -87,6 +87,7 @@ def import_distance_law(distance_law_file):
         distance_law_file,
         sep="\t",
         header=None,
+        comment="#",
         dtype={"a": np.int32, "b": np.float32, "c": str},
     )
     names_idx = np.unique(file.iloc[:, 2], return_index=True)[1]
@@ -830,14 +831,15 @@ def get_ylim(xs, curve, inf, sup):
         # Skip chromosome if total size smaller than inf
         if len(min_index) == 0:
             continue
+        min_index = int(min_index[0])
         # Search for the maximum index corresponding to the biggest bin
         # inferior or equal to sup (in pair base).
         max_value = max(logbins[logbins <= sup])
-        max_index = np.where(logbins == max_value)[0]
+        max_index = int(np.where(logbins == max_value)[0][0])
         # Add the values in the interval in the flattened list.
-        if int(max_index) != len(logbins) - 1:
+        if max_index != len(logbins) - 1:
             max_index += 1
-        for j in range(int(min_index), int(max_index)):
+        for j in range(min_index, max_index):
             flatten_list.append(curve[i][j])
     # Caluclate the min and the max of this list.
     min_tot = min(flatten_list)
