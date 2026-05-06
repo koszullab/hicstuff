@@ -1098,7 +1098,10 @@ class Rebin(AbstractCommand):
             # Cast to match frags dtypes to prevent object dtype after concat
             for col in frags.columns:
                 if frags[col].dtype.name != "category":
-                    miss_bins_df[col] = pd.to_numeric(miss_bins_df[col], errors="ignore")
+                    try:
+                        miss_bins_df[col] = pd.to_numeric(miss_bins_df[col])
+                    except (ValueError, TypeError):
+                        pass
             frags["tmp_idx"] = existing_bins_idx
             miss_bins_df["tmp_idx"] = missing_bins_idx
             frags = pd.concat([frags, miss_bins_df], axis=0, sort=False)

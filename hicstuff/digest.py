@@ -9,7 +9,7 @@ sparse matrices.
 
 from Bio import SeqIO, SeqUtils
 from Bio.Seq import Seq
-from Bio.Restriction import RestrictionBatch, Analysis
+from Bio.Restriction import RestrictionBatch
 import os, sys, csv
 import re
 import collections
@@ -309,11 +309,12 @@ def get_restriction_table(seq, enzyme, circular=False):
             sites.append(chrom_len)
     else:
         # Find sites of all restriction enzymes given
-        ana = Analysis(cutter, seq, linear=not circular)
-        sites = ana.full()
-        # Gets all sites into a single flat list with 0-based index
-        sites = [site - 1 for enz in sites.values() for site in enz]
-        # Sort by position and allow first add start and end of seq
+        # Use enz_obj.search() directly instead of Analysis.full() to avoid
+        # version-dependent behaviour near sequence ends (BioPython >= 1.85)
+        sites = []
+        for enz_obj in cutter:
+            sites.extend(s - 1 for s in enz_obj.search(seq, linear=not circular))
+        # Sort by position and add start and end of seq
         sites.sort()
         sites.insert(0, 0)
         sites.append(chrom_len)
