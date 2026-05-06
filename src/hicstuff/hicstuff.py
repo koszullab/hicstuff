@@ -252,9 +252,7 @@ def bin_measurement(measurement=None, subsampling_factor=3):
     if measurement is None:
         measurement = np.array([])
     n = len(measurement)
-    binned_measurement = [
-        measurement[i - subs + 1 : i].sum() for i in range(n) if i % subs == 0 and i > 0
-    ]
+    binned_measurement = [measurement[i - subs + 1 : i].sum() for i in range(n) if i % subs == 0 and i > 0]
     return np.array(binned_measurement)
 
 
@@ -893,9 +891,7 @@ def directional(M, window=None, circ=False, extrapolate=True, log=True):
     else:
         d = []
 
-    d += [
-        ttest_rel(N[i, i - window : i], N[i, i : i + window])[0] for i in range(window, n - window)
-    ]
+    d += [ttest_rel(N[i, i - window : i], N[i, i : i + window])[0] for i in range(window, n - window)]
 
     if circ:
         d += [
@@ -950,35 +946,25 @@ def domainogram(M, window=None, circ=False, extrapolate=True):
     if circ:
         d = [
             (
-                np.sum(M[-i + window :, -i + window :])
-                + np.sum(M[: i - window + 1, : i - window + 1])
+                np.sum(M[-i + window :, -i + window :]) + np.sum(M[: i - window + 1, : i - window + 1])
                 for i in range(window)
             )
         ]
     elif extrapolate:
         d = [
-            (
-                np.sum(M[0 : 2 * i + 1, 0 : 2 * i + 1])
-                * ((2 * window + 1) ** 2.0)
-                / ((2 * i + 1) ** 2.0)
-            )
+            (np.sum(M[0 : 2 * i + 1, 0 : 2 * i + 1]) * ((2 * window + 1) ** 2.0) / ((2 * i + 1) ** 2.0))
             for i in range(window)
         ]
     else:
         d = []
 
-    d += [
-        np.sum(M[i - window : i + window + 1, i - window : i + window + 1])
-        for i in range(window, n - window)
-    ]
+    d += [np.sum(M[i - window : i + window + 1, i - window : i + window + 1]) for i in range(window, n - window)]
 
     if circ:
         d += [M[i:, i:].sum() + M[: n - i, n - i].sum() for i in range(n - window, n)]
     elif extrapolate:
         d += [
-            M[i - window :, i - window :].sum()
-            * ((2 * window + 1) ** 2.0)
-            / ((2 * (n - i) + 1) ** 2.0)
+            M[i - window :, i - window :].sum() * ((2 * window + 1) ** 2.0) / ((2 * (n - i) + 1) ** 2.0)
             for i in range(n - window, n)
         ]
 
@@ -1116,9 +1102,7 @@ def to_pdb(
     """
 
     n = len(structure)
-    letters = (
-        string.ascii_uppercase + string.ascii_lowercase + string.digits + string.punctuation
-    ) * int(n / 94 + 1)
+    letters = (string.ascii_uppercase + string.ascii_lowercase + string.digits + string.punctuation) * int(n / 94 + 1)
     if contigs is None:
         contigs = np.ones(n + 1)
     if annotations is None:
@@ -1247,7 +1231,7 @@ def distance_to_contact(D, alpha=1):
             print("Alpha parameter must be callable or an array-like")
             raise
         except ZeroDivisionError:
-            raise ValueError("Alpha parameter must be non-zero")
+            raise ValueError("Alpha parameter must be non-zero") from None
 
     m = np.max(distance_function(D[D != 0]))
     M = np.zeros(D.shape)
@@ -1384,10 +1368,7 @@ def simple_distance_diagonal_law(matrix, circular=False):
         return np.array([np.average(np.diagonal(matrix, j)) for j in range(n)])
     else:
         n = len(matrix)
-        return [
-            (np.average(np.diagonal(matrix, j)) + np.average(np.diagonal(matrix, n - j))) / 2.0
-            for j in range(n)
-        ]
+        return [(np.average(np.diagonal(matrix, j)) + np.average(np.diagonal(matrix, n - j))) / 2.0 for j in range(n)]
 
 
 def distance_diagonal_law(matrix, positions=None, circular=False):
@@ -1478,27 +1459,16 @@ def estimate_param_rippe(measurements, bins, init=None, circ=False):
             s = n * (n_l - n) / n_l
             s0 = n0 * (n_l - n0) / n_l
             norm_lin = param[3] * (
-                0.53
-                * (param[0] ** -3.0)
-                * np.power(n0, (param[2]))
-                * np.exp((d - 2) / (np.power(n0, 2) + d))
+                0.53 * (param[0] ** -3.0) * np.power(n0, (param[2])) * np.exp((d - 2) / (np.power(n0, 2) + d))
             )
 
             norm_circ = param[3] * (
-                0.53
-                * (param[0] ** -3.0)
-                * np.power(s0, (param[2]))
-                * np.exp((d - 2) / (np.power(s0, 2) + d))
+                0.53 * (param[0] ** -3.0) * np.power(s0, (param[2])) * np.exp((d - 2) / (np.power(s0, 2) + d))
             )
 
             rippe = (
                 param[3]
-                * (
-                    0.53
-                    * (param[0] ** -3.0)
-                    * np.power(s, (param[2]))
-                    * np.exp((d - 2) / (np.power(s, 2) + d))
-                )
+                * (0.53 * (param[0] ** -3.0) * np.power(s, (param[2])) * np.exp((d - 2) / (np.power(s, 2) + d)))
                 * norm_lin
                 / norm_circ
             )
@@ -1583,17 +1553,13 @@ def null_model(
         N = np.array([[distances[min(abs(i - j), n)] for i in range(n)] for j in range(n)])
 
     elif model == "rippe":
-        trans_contacts = np.array(
-            [matrix[i, j] for i, j in itertools.product(range(n), range(m)) if is_inter(i, j)]
-        )
+        trans_contacts = np.array([matrix[i, j] for i, j in itertools.product(range(n), range(m)) if is_inter(i, j)])
         mean_trans_contacts = np.average(trans_contacts)
         kuhn, lm, slope, d, A = rippe_parameters(matrix, positions, circ=circ)
 
         def jc(s, frag):
             dist = s - circ * (s**2) / lengths[frag]
-            computed_contacts = (
-                0.53 * A * (kuhn ** (-3.0)) * (dist**slope) * np.exp((d - 2) / (dist + d))
-            )
+            computed_contacts = 0.53 * A * (kuhn ** (-3.0)) * (dist**slope) * np.exp((d - 2) / (dist + d))
             return np.maximum(computed_contacts, mean_trans_contacts)
 
         for i in range(n):
@@ -2015,10 +1981,11 @@ def contigs_to_positions(contigs, binning=10000):
     positions = np.zeros_like(contigs)
 
     index = 0
+    #B031 Using the generator returned from `itertools.groupby()` more than once will do nothing on the second usage
     for _, chunk in itertools.groupby(contigs):
-        l = len(chunk)
-        positions[index : index + l] = np.arange(list(chunk)) * binning
-        index += l
+        el = len(chunk)
+        positions[index : index + el] = np.arange(list(chunk)) * binning
+        index += el
 
     return positions
 
@@ -2040,9 +2007,9 @@ def split_matrix(M, contigs):
 
     index = 0
     for _, chunk in itertools.groupby(contigs):
-        l = len(chunk)
-        yield M[index : index + l, index : index + l]
-        index += l
+        el = len(chunk)
+        yield M[index : index + el, index : index + el]
+        index += el
 
 
 def distance_law(

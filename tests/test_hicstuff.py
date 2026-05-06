@@ -172,7 +172,6 @@ def test_basic_one_argument_functions(matrix_size):
             nb_defaults = 0
         else:
             nb_defaults = len(func.__defaults__)
-        params[list(params.keys())[0]].annotation
 
         if len(params) == 1 or len(params) - nb_defaults == 1:
             try:

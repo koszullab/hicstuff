@@ -105,14 +105,14 @@ def write_frag_info(
                         end_pos = start_pos + frag_length
                         gc_content = SeqUtils.gc_fraction(frag) / 100.0
 
-                        current_fragment_line = f"{current_id}\t{contig_name}\t{start_pos}\t{end_pos}\t{frag_length}\t{gc_content}\n"
+                        current_fragment_line = (
+                            f"{current_id}\t{contig_name}\t{start_pos}\t{end_pos}\t{frag_length}\t{gc_content}\n"
+                        )
 
                         fragments_list.write(current_fragment_line)
 
                         try:
-                            assert (current_id == 1 and start_pos == 0) or (
-                                current_id > 1 and start_pos > 0
-                            )
+                            assert (current_id == 1 and start_pos == 0) or (current_id > 1 and start_pos > 0)
                         except AssertionError:
                             logger.error((current_id, start_pos))
                             raise
@@ -268,7 +268,7 @@ def get_restriction_table(seq, enzyme, circular=False):
         try:
             cutter = max(int(enzyme), DEFAULT_MIN_CHUNK_SIZE)
         except ValueError:
-            raise ValueError(wrong_enzyme)
+            raise ValueError(wrong_enzyme) from None
 
     # Conversion from string type to restriction type
     if isinstance(cutter, int):
@@ -453,9 +453,7 @@ def gen_enzyme_religation_regex(enzyme):
         for accept_site in accept_list:
             # Replace "N" by "." for regex searching of the sites
             ligation_list.append((give_site + accept_site).replace("N", "."))
-            ligation_list.append(
-                str(Seq(give_site + accept_site).reverse_complement()).replace("N", ".")
-            )
+            ligation_list.append(str(Seq(give_site + accept_site).reverse_complement()).replace("N", "."))
 
     # Build the regex for any ligation sites.
     pattern = "|".join(sorted(list(set(ligation_list))))

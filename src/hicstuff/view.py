@@ -13,16 +13,6 @@ from matplotlib import pyplot as plt
 import hicstuff.io as hio
 from hicstuff.hicstuff import normalize_sparse
 
-SEABORN = False
-
-try:
-    import seaborn as sns
-
-    SEABORN = True
-except ImportError:
-    pass
-
-
 load_sparse_matrix = hio.load_sparse_matrix
 
 

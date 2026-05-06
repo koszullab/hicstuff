@@ -50,7 +50,7 @@ def main():
         command_class = getattr(commands, command_name)
     except AttributeError:
         print("Unknown command.")
-        raise DocoptExit()
+        raise DocoptExit() from None
     # Create an instance of the command.
     command = command_class(command_args, args)
     # Execute the command.

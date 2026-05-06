@@ -17,7 +17,8 @@ __author__ = "Lyam Baudry, \
               Axel Cournac, \
               Cyril Matthey-Doret, \
               Rémi Montagne, \
-              Vittore Scolari"
+              Vittore Scolari, \
+              Jacques Serizay"
 __copyright__ = "Copyright © 2017-2019, Institut Pasteur, Paris, France"
 __credits__ = [
     "Lyam Baudry",
@@ -25,6 +26,7 @@ __credits__ = [
     "Cyril Matthey-Doret",
     "Rémi Montagne",
     "Vittore Scolari",
+    "Jacques Serizay",
 ]
 __license__ = "GPLv3"
 __maintainer__ = "Lyam Baudry, \

@@ -67,7 +67,7 @@ def test_save_bedgraph2d():
     """Test saving 2D bedgraph files"""
     # Create temp file and write a 2D bedgraph matrix inside
     f = NamedTemporaryFile("w", delete=False)
-    f.close
+    f.close()
     # Load GRAAL Matrix from test_data
     hio.save_bedgraph2d(MAT_GRAAL, FRAGS_GRAAL, f.name)
     # Check if the file created is identical to the 2D bedgraph matrix
@@ -78,9 +78,7 @@ def test_save_bedgraph2d():
 
 def test_load_bedgraph2d():
     """Test loading sparse matrices from 2D bedgraph files"""
-    mat_bg = hio.load_bedgraph2d(
-        "test_data/mat.bg2", fragments_file="test_data/fragments_list.txt"
-    )[0]
+    mat_bg = hio.load_bedgraph2d("test_data/mat.bg2", fragments_file="test_data/fragments_list.txt")[0]
     assert np.allclose(MAT_GRAAL.todense(), mat_bg.todense())
 
     # Load using fixed bin sizes
@@ -92,7 +90,7 @@ def test_load_bedgraph2d():
 def test_cooler_io():
     """Test input output operations on cool files"""
     f = NamedTemporaryFile("w", delete=False)
-    f.close
+    f.close()
     # Write cool from GRAAL objects
     hio.save_cool(f.name, MAT_GRAAL, FRAGS_GRAAL)
     c = cooler.Cooler(f.name)
@@ -113,7 +111,7 @@ def test_hic_format():
 
 def test_check_fasta_index():
     f = NamedTemporaryFile("w", delete=False)
-    f.close
+    f.close()
     assert hio.check_fasta_index(f.name, mode="minimap2") == f.name
     for i in range(6):
         Path(f.name + f".{i}.bt2").touch()
@@ -153,4 +151,4 @@ def test_get_pos_col():
     assert len(cols) == 3
     assert cols == (chrom, start, end)
 
-    pd.DataFrame(dummy, columns=[l for l in "abcde"])
+    pd.DataFrame(dummy, columns=[el for el in "abcde"])
