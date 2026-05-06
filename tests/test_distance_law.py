@@ -27,6 +27,7 @@ def hash_file(filename):
 
 def test_distancelaw_cli() -> None:
     """Test the distance law CLI."""
+    os.makedirs("test_out", exist_ok=True)
     pairs_reads_file = "test_data/valid_idx_filtered.pairs"
     os.system(f"hicstuff distancelaw --pairs {pairs_reads_file} -o test_out/ps.pdf -O test_out/ps.tsv")
     assert os.path.exists("test_out/ps.pdf")

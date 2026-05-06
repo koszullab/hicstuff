@@ -116,9 +116,7 @@ def load_sparse_matrix(mat_path, binning=1, dtype=np.float64):
         cols_arr = np.loadtxt(mat_path, delimiter="\t", dtype=dtype)
         shape = (int(cols_arr[0, 0]), int(cols_arr[0, 1]))
     except ValueError:
-        cols_arr = np.loadtxt(
-            mat_path, delimiter="\t", dtype=dtype, skiprows=1
-        )
+        cols_arr = np.loadtxt(mat_path, delimiter="\t", dtype=dtype, skiprows=1)
         shape = None
 
     # Get values into an array without the header. Use the header to give size.
@@ -129,9 +127,7 @@ def load_sparse_matrix(mat_path, binning=1, dtype=np.float64):
         subsampling_factor = num_bins // DEFAULT_MAX_MATRIX_SHAPE
     else:
         subsampling_factor = binning
-    sparse_mat = hcs.bin_sparse(
-        sparse_mat, subsampling_factor=subsampling_factor
-    )
+    sparse_mat = hcs.bin_sparse(sparse_mat, subsampling_factor=subsampling_factor)
     return sparse_mat
 
 
@@ -156,9 +152,7 @@ def save_sparse_matrix(s_mat, path):
     np.savetxt(
         path,
         sparse_arr,
-        header="{nrows}\t{ncols}\t{nonzero}".format(
-            nrows=s_mat.shape[0], ncols=s_mat.shape[1], nonzero=s_mat.nnz
-        ),
+        header="{nrows}\t{ncols}\t{nonzero}".format(nrows=s_mat.shape[0], ncols=s_mat.shape[1], nonzero=s_mat.nnz),
         comments="",
         fmt=fmt,
         delimiter="\t",
@@ -168,7 +162,7 @@ def save_sparse_matrix(s_mat, path):
 def load_pos_col(path, colnum, header=1, dtype=np.int64):
     """
     Loads a single column of a TSV file with header into a numpy array.
-    
+
     Parameters
     ----------
     path : str
@@ -202,12 +196,12 @@ def generate_temp_dir(path):
     """Temporary directory generation
 
     Generates a temporary file with a random name at the input path.
-    
+
     Parameters
     ----------
     path : str
         The path at which the temporary directory will be created.
-    
+
     Returns
     -------
     str
@@ -224,8 +218,7 @@ def generate_temp_dir(path):
         os.makedirs(full_path)
     except PermissionError:
         raise PermissionError(
-            "The temporary directory cannot be created in {}. "
-            "Make sure you have write permission.".format(path)
+            "The temporary directory cannot be created in {}. " "Make sure you have write permission.".format(path)
         )
     return full_path
 
@@ -240,11 +233,7 @@ def _check_cooler(fun):
 
             fun.__globals__["cooler"] = cooler
         except ImportError:
-            logger.error(
-                "The cooler package is required to use {0}, please install it first".format(
-                    fun.__name__
-                )
-            )
+            logger.error("The cooler package is required to use {0}, please install it first".format(fun.__name__))
             raise ImportError("The cooler package is required.")
         return fun(*args, **kwargs)
 
@@ -252,13 +241,11 @@ def _check_cooler(fun):
 
 
 @_check_cooler
-def add_cool_column(
-    clr, column, column_name, table_name="bins", metadata={}, dtype=None
-):
+def add_cool_column(clr, column, column_name, table_name="bins", metadata={}, dtype=None):
     """
     Adds a new column to a loaded Cooler store. If the column exists,
     it is replaced. This will affect the .cool file.
-    
+
     Parameters
     ----------
     clr : Cooler object
@@ -277,9 +264,7 @@ def add_cool_column(
         if column_name in c[table_name]:
             del c[table_name][column_name]
         h5opts = dict(compression="gzip", compression_opts=6)
-        c[table_name].create_dataset(
-            column_name, data=column, dtype=dtype, **h5opts
-        )
+        c[table_name].create_dataset(column_name, data=column, dtype=dtype, **h5opts)
         c[table_name][column_name].attrs.update(metadata)
 
 
@@ -287,7 +272,7 @@ def add_cool_column(
 def load_cool(cool):
     """
     Reads a cool file into memory and parses it into graal style tables.
-    
+
     Parameters
     ----------
     cool : str
@@ -306,26 +291,18 @@ def load_cool(cool):
     frags = c.bins()[:]
     chroms = c.chroms()[:]
     mat = c.pixels()[:]
-    frags.rename(
-        columns={"start": "start_pos", "end": "end_pos"}, inplace=True
-    )
+    frags.rename(columns={"start": "start_pos", "end": "end_pos"}, inplace=True)
     frags["id"] = frags.groupby("chrom", sort=False).cumcount() + 1
     # Try loading hicstuff-specific columns
     try:
-        frags = frags[
-            ["id", "chrom", "start_pos", "end_pos", "size", "gc_content"]
-        ]
+        frags = frags[["id", "chrom", "start_pos", "end_pos", "size", "gc_content"]]
     # If absent, only load standard columns
     except KeyError:
         frags = frags[["id", "chrom", "start_pos", "end_pos"]]
 
-    chroms["cumul_length"] = (
-        chroms.length.shift(1).fillna(0).cumsum().astype(int)
-    )
+    chroms["cumul_length"] = chroms.length.shift(1).fillna(0).cumsum().astype(int)
     n_frags = c.bins()[:].groupby("chrom", sort=False).count().start
-    chroms["n_frags"] = chroms.merge(
-        n_frags, right_index=True, left_on="name", how="left"
-    ).start
+    chroms["n_frags"] = chroms.merge(n_frags, right_index=True, left_on="name", how="left").start
     chroms.rename(columns={"name": "contig"}, inplace=True)
     n = int(max(np.amax(mat.bin1_id), np.amax(mat.bin2_id))) + 1
     shape = (n, n)
@@ -338,7 +315,7 @@ def load_cool(cool):
 def save_cool(cool_out, mat, frags, metadata={}):
     """
     Writes a .cool file from graal style tables.
-    
+
     Parameters
     ----------
     cool_out : str
@@ -377,7 +354,7 @@ def save_cool(cool_out, mat, frags, metadata={}):
     )
 
 
-def read_compressed(filename, mode='r'):
+def read_compressed(filename, mode="r"):
     """Read compressed file
 
     Opens the file in read mode with appropriate decompression algorithm.
@@ -416,7 +393,7 @@ def read_compressed(filename, mode='r'):
         return "uncompressed"
 
     # Open file with appropriate function
-    mode_map = {'r': 'rt', 'rb': 'rb'}
+    mode_map = {"r": "rt", "rb": "rb"}
     comp = file_type(filename)
     if comp == "gz":
         return gzip.open(filename, mode_map[mode])
@@ -425,9 +402,7 @@ def read_compressed(filename, mode='r'):
     elif comp == "zip":
         zip_arch = zipfile.ZipFile(filename, mode)
         if len(zip_arch.namelist()) > 1:
-            raise IOError(
-                "Only a single fastq file must be in the zip archive."
-            )
+            raise IOError("Only a single fastq file must be in the zip archive.")
         else:
             # ZipFile opens as bytes by default, using io to read as text
             zip_content = zip_arch.open(zip_arch.namelist()[0], mode)
@@ -542,11 +517,7 @@ def to_dade_matrix(M, annotations="", filename=None):
     if filename:
         try:
             np.savetxt(filename, A, fmt="%i")
-            logger.info(
-                "I saved input matrix in dade format as {0}".format(
-                    str(filename)
-                )
-            )
+            logger.info("I saved input matrix in dade format as {0}".format(str(filename)))
         except ValueError as e:
             logger.warning("I couldn't save input matrix.")
             logger.warning(str(e))
@@ -657,9 +628,7 @@ def dade_to_graal(
             for row_index, line in enumerate(file_handle):
                 dense_row = np.array(line.split("\t")[1:], dtype=np.int32)
                 for col_index in np.nonzero(dense_row)[0]:
-                    line_to_write = "{}\t{}\t{}\n".format(
-                        row_index, col_index, dense_row[col_index]
-                    )
+                    line_to_write = "{}\t{}\t{}\n".format(row_index, col_index, dense_row[col_index])
                     sparse_file.write(line_to_write)
 
     header = first_line.split("\t")
@@ -669,19 +638,10 @@ def dade_to_graal(
     elif bin_type == '"BIN"':
         logger.info("I detected fixed size binning")
     else:
-        logger.warning(
-            (
-                "Sorry, I don't understand this matrix's "
-                "binning: I read {}".format(str(bin_type))
-            )
-        )
+        logger.warning(("Sorry, I don't understand this matrix's " "binning: I read {}".format(str(bin_type))))
 
     header_data = [
-        header_elt.replace("'", "")
-        .replace('"', "")
-        .replace("\n", "")
-        .split("~")
-        for header_elt in header[1:]
+        header_elt.replace("'", "").replace('"', "").replace("\n", "").split("~") for header_elt in header[1:]
     ]
 
     (
@@ -719,9 +679,7 @@ def dade_to_graal(
 
     with open(output_frags, "w") as fragments_list:
 
-        fragments_list.write(
-            "id\tchrom\tstart_pos\tend_pos" "\tsize\tgc_content\n"
-        )
+        fragments_list.write("id\tchrom\tstart_pos\tend_pos" "\tsize\tgc_content\n")
         bogus_gc = 0.5
 
         for i in range(total_length):
@@ -740,7 +698,7 @@ def load_bedgraph2d(filename, bin_size=None, fragments_file=None):
     """
     Loads matrix and fragment information from a 2D bedgraph file. Note this
     function assumes chromosomes are ordered in alphabetical. order
-    
+
     Parameters
     ----------
     filename : str
@@ -750,7 +708,7 @@ def load_bedgraph2d(filename, bin_size=None, fragments_file=None):
     fragments_file : str
         Path to a fragments file to explicitely provide fragments positions.
         If the matrix does not have fixed bin size, this prevents errors.
-    
+
     Returns
     -------
     mat : scipy.sparse.coo_matrix
@@ -767,11 +725,7 @@ def load_bedgraph2d(filename, bin_size=None, fragments_file=None):
         # used when regenerating bin coordinates
         chroms_left = bed2d[[3, 5]]
         chroms_left.columns = [0, 2]
-        chroms = (
-            pd.concat([bed2d[[0, 2]], chroms_left])
-            .groupby([0], sort=False)
-            .max()
-        )
+        chroms = pd.concat([bed2d[[0, 2]], chroms_left]).groupby([0], sort=False).max()
         for chrom, size in zip(chroms.index, np.array(chroms)):
             chrom_sizes[chrom] = size[0]
     elif fragments_file is None:
@@ -781,17 +735,13 @@ def load_bedgraph2d(filename, bin_size=None, fragments_file=None):
             "will be lost"
         )
     # Get all possible fragment chrom-positions into an array
-    frag_pos = np.vstack(
-        [np.array(bed2d[[0, 1, 2]]), np.array(bed2d[[3, 4, 5]])]
-    )
+    frag_pos = np.vstack([np.array(bed2d[[0, 1, 2]]), np.array(bed2d[[3, 4, 5]])])
     # Sort by position (least important, col 1)
     frag_pos = frag_pos[frag_pos[:, 1].argsort(kind="mergesort")]
     # Then by chrom (most important, col 0)
     frag_pos = frag_pos[frag_pos[:, 0].argsort(kind="mergesort")]
     # Get unique names for fragments (chrom+pos)
-    ordered_frag_pos = (
-        pd.DataFrame(frag_pos).drop_duplicates().reset_index(drop=True)
-    )
+    ordered_frag_pos = pd.DataFrame(frag_pos).drop_duplicates().reset_index(drop=True)
     frag_pos_a = bed2d[[0, 1]].apply(lambda x: tuple(x), axis=1)
     frag_pos_b = bed2d[[3, 4]].apply(lambda x: tuple(x), axis=1)
     # If fragments file is provided, use fragments positions to indices mapping
@@ -820,15 +770,10 @@ def load_bedgraph2d(filename, bin_size=None, fragments_file=None):
                 )
             )
         frags = pd.concat(chrom_frags, axis=0).reset_index(drop=True)
-        frags.insert(
-            loc=3, column="size", value=frags.end_pos - frags.start_pos
-        )
+        frags.insert(loc=3, column="size", value=frags.end_pos - frags.start_pos)
     # If None available, guess fragments indices from bedgraph (potentially wrong)
     else:
-        frag_map = {
-            (v[0], v[1]): i
-            for i, v in ordered_frag_pos.iloc[:, [0, 1]].iterrows()
-        }
+        frag_map = {(v[0], v[1]): i for i, v in ordered_frag_pos.iloc[:, [0, 1]].iterrows()}
         frags = ordered_frag_pos.copy()
         frags[3] = frags.iloc[:, 2] - frags.iloc[:, 1]
         frags.insert(loc=0, column="id", value=0)
@@ -840,14 +785,10 @@ def load_bedgraph2d(filename, bin_size=None, fragments_file=None):
     contacts = np.array(bed2d.iloc[:, 6].tolist())
     # Use index to build matrix
     n_frags = len(frag_map.keys())
-    mat = coo_matrix(
-        (contacts, (frag_id_a, frag_id_b)), shape=(n_frags, n_frags)
-    )
+    mat = coo_matrix((contacts, (frag_id_a, frag_id_b)), shape=(n_frags, n_frags))
 
     # Get size of each chromosome in basepairs
-    chromsizes = frags.groupby("chrom", sort=False).apply(
-        lambda x: np.int64(max(x.end_pos))
-    )
+    chromsizes = frags.groupby("chrom", sort=False).apply(lambda x: np.int64(max(x.end_pos)))
     chrom_bins = frags.groupby("chrom", sort=False).size()
     # Shift chromsizes by one to get starting bin, first one is zero
     # Make chromsize cumulative to get start bin of each chrom
@@ -864,16 +805,14 @@ def load_bedgraph2d(filename, bin_size=None, fragments_file=None):
     return mat, frags, chroms
 
 
-def flexible_hic_loader(
-    mat, fragments_file=None, chroms_file=None, quiet=False
-):
+def flexible_hic_loader(mat, fragments_file=None, chroms_file=None, quiet=False):
     """
     Wrapper function to load COO, bg2 or cool input and return the same output.
     COO formats requires fragments_file and chroms_file options. bg2 format can
     infer bin_size if fixed. When providing a bg2 matrix with uneven fragments
     length, one should provide fragments_file as well or empty bins will be
     truncated from the output.
-    
+
     Parameters
     ----------
     mat : str
@@ -901,17 +840,15 @@ def flexible_hic_loader(
     if hic_format == "cool":
         mat, frags, chroms = load_cool(mat)
     # Use the first line to determine COO / bg2 format
-    if hic_format == "bg2":
+    elif hic_format == "bg2":
         # Use the frags file to define bins if available
         if fragments_file is not None:
-            mat, frags, chroms = load_bedgraph2d(
-                mat, fragments_file=fragments_file
-            )
+            mat, frags, chroms = load_bedgraph2d(mat, fragments_file=fragments_file)
         else:
             # Guess if bin size is fixed based on MAD
             bg2 = pd.read_csv(mat, sep="\t")
             sizes = np.array(bg2.iloc[:, 2] - bg2.iloc[:, 1])
-            size_mad = ss.median_abs_deviation(sizes, scale='normal')
+            size_mad = ss.median_abs_deviation(sizes, scale="normal")
             # Use only the bg2
             if size_mad > 0:
                 mat, frags, chroms = load_bedgraph2d(mat)
@@ -923,9 +860,7 @@ def flexible_hic_loader(
                 )
             # Use fixed bin size
             else:
-                mat, frags, chroms = load_bedgraph2d(
-                    mat, bin_size=int(np.median(sizes))
-                )
+                mat, frags, chroms = load_bedgraph2d(mat, bin_size=int(np.median(sizes)))
 
     elif hic_format == "graal":
         mat = load_sparse_matrix(mat)
@@ -934,8 +869,7 @@ def flexible_hic_loader(
         except ValueError:
             if not quiet:
                 logger.warning(
-                    "fragments_file was not provided when "
-                    "loading a matrix in COO/graal format. frags will be None."
+                    "fragments_file was not provided when " "loading a matrix in COO/graal format. frags will be None."
                 )
             frags = None
         try:
@@ -943,15 +877,14 @@ def flexible_hic_loader(
         except ValueError:
             if not quiet:
                 logger.warning(
-                    "chroms_file was not provided when "
-                    "loading a matrix in COO/graal format. chroms will be None."
+                    "chroms_file was not provided when " "loading a matrix in COO/graal format. chroms will be None."
                 )
 
             chroms = None
 
     else:
         raise ValueError("Unknown input format: {0}".format(hic_format))
-    
+
     # Ensure the matrix is upper triangle symmetric
     if mat.shape[0] == mat.shape[1]:
         if (abs(mat - mat.T) > 1e-10).nnz > 0:
@@ -963,7 +896,7 @@ def flexible_hic_loader(
 
 def get_hic_format(mat):
     """Returns the format of the input Hi-C matrix
-    
+
     Parameters
     ----------
     mat : str
@@ -973,11 +906,7 @@ def get_hic_format(mat):
     str :
         Hi-C format string. One of graal, bg2, cool
     """
-    if (
-        mat.endswith(".cool")
-        or mat.count(".mcool::/") == 1
-        or mat.count(".cool::/") == 1
-    ):
+    if mat.endswith(".cool") or mat.count(".mcool::/") == 1 or mat.count(".cool::/") == 1:
         hic_format = "cool"
     else:
         # Use the first line to determine COO / bg2 format
@@ -992,10 +921,15 @@ def get_hic_format(mat):
 
 
 def flexible_hic_saver(
-    mat, out_prefix, frags=None, chroms=None, hic_fmt="graal", quiet=False,
+    mat,
+    out_prefix,
+    frags=None,
+    chroms=None,
+    hic_fmt="graal",
+    quiet=False,
 ):
     """
-    Saves objects to the desired Hi-C file format. 
+    Saves objects to the desired Hi-C file format.
 
     Parameters
     ----------
@@ -1017,16 +951,12 @@ def flexible_hic_saver(
             frags.to_csv(out_prefix + ".frags.tsv", sep="\t", index=False)
         except AttributeError:
             if not quiet:
-                logger.warning(
-                    "Could not create fragments_list.txt from input files"
-                )
+                logger.warning("Could not create fragments_list.txt from input files")
         try:
             chroms.to_csv(out_prefix + ".chr.tsv", sep="\t", index=False)
         except AttributeError:
             if not quiet:
-                logger.warning(
-                    "Could not create info_contigs.txt from input files"
-                )
+                logger.warning("Could not create info_contigs.txt from input files")
     elif hic_fmt == "cool":
         frag_sizes = frags.end_pos - frags.start_pos
         size_mad = np.median(frag_sizes - np.median(frag_sizes))
@@ -1064,13 +994,9 @@ def save_bedgraph2d(mat, frags, out_path):
 
     """
 
-    mat_df = pd.DataFrame(
-        {"row": mat.row, "col": mat.col, "data": mat.data.astype(int)}
-    )
+    mat_df = pd.DataFrame({"row": mat.row, "col": mat.col, "data": mat.data.astype(int)})
     # Merge fragments with matrix based on row indices to annotate rows
-    merge_mat = mat_df.merge(
-        frags, left_on="row", right_index=True, how="left", suffixes=("", "")
-    )
+    merge_mat = mat_df.merge(frags, left_on="row", right_index=True, how="left", suffixes=("", ""))
     # Rename annotations to assign to frag1
     merge_mat.rename(
         columns={"chrom": "chr1", "start_pos": "start1", "end_pos": "end1"},
@@ -1089,9 +1015,7 @@ def save_bedgraph2d(mat, frags, out_path):
         inplace=True,
     )
     # Select only relevant columns in correct order
-    bg2 = merge_mat.loc[
-        :, ["chr1", "start1", "end1", "chr2", "start2", "end2", "data"]
-    ]
+    bg2 = merge_mat.loc[:, ["chr1", "start1", "end1", "chr2", "start2", "end2", "data"]]
     bg2.to_csv(out_path, header=None, index=False, sep="\t")
 
 
@@ -1170,7 +1094,7 @@ def gc_bins(genome_path, frags):
         seqs = [str(rec.seq)[s:e] for s, e in zip(starts, ends)]
         # Fill GC values for bins in the chromosome
         idx = np.flatnonzero(mask)
-        gc_bins[idx] = np.array(list(map(SeqUtils.gc_fraction, seqs))) / 100.0
+        gc_bins[idx] = np.array(list(map(lambda s: SeqUtils.gc_fraction(s, "ignore"), seqs)))
 
     return gc_bins
 
@@ -1203,30 +1127,20 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
     # Check if UNIX sort version supports parallelism
     parallel_ok = True
     sort_ver = sp.Popen(["sort", "--version"], stdout=sp.PIPE)
-    sort_ver = (
-        sort_ver.communicate()[0]
-        .decode()
-        .split("\n")[0]
-        .split(" ")[-1]
-        .split(".")
-    )
+    sort_ver = sort_ver.communicate()[0].decode().split("\n")[0].split(" ")[-1].split(".")
     # If so, specify threads, otherwise don't mention it in the command line
     try:
         sort_ver = list(map(int, sort_ver))
         if sort_ver[0] < 8 or (sort_ver[0] == 8 and sort_ver[1] < 23):
             logger.warning(
                 "GNU sort version is {0} but >8.23 is required for parallel "
-                "sort. Sorting on a single thread.".format(
-                    ".".join(map(str, sort_ver))
-                )
+                "sort. Sorting on a single thread.".format(".".join(map(str, sort_ver)))
             )
             parallel_ok = False
     # BSD sort has a different format and will throw error upon parsing. It does
     # not support parallel processes anyway.
     except ValueError:
-        logger.warning(
-            "Using BSD sort instead of GNU sort, sorting on a single thread."
-        )
+        logger.warning("Using BSD sort instead of GNU sort, sorting on a single thread.")
         parallel_ok = False
 
     key_map = {
@@ -1327,9 +1241,7 @@ def reorder_fasta(genome, output=None, threshold=100000):
         output = "{}_renamed.fa".format(genome.split(".")[0])
 
     handle = SeqIO.parse(genome, "fasta")
-    handle_to_write = sorted(
-        (len(u) for u in handle if len(u) > threshold), reverse=True
-    )
+    handle_to_write = sorted((len(u) for u in handle if len(u) > threshold), reverse=True)
     SeqIO.write(handle_to_write, output, "fasta")
 
 
@@ -1399,11 +1311,7 @@ def check_fasta_index(ref, mode="bowtie2"):
     elif mode == "bwa":
         refdir = str(ref.parent)
         refdir_files = os.listdir(refdir)
-        bwa_idx_files = [
-            join(refdir, f)
-            for f in refdir_files
-            if re.search(r".*\.(sa|pac|bwt|ann|amb)$", f)
-        ]
+        bwa_idx_files = [join(refdir, f) for f in refdir_files if re.search(r".*\.(sa|pac|bwt|ann|amb)$", f)]
         index = None if len(bwa_idx_files) < 5 else bwa_idx_files
     else:
         index = [ref]
@@ -1417,7 +1325,7 @@ def check_fasta_index(ref, mode="bowtie2"):
 def check_is_fasta(in_file):
     """
     Checks whether input file is in fasta format.
-    
+
     Parameters
     ----------
     in_file : str
@@ -1436,10 +1344,11 @@ def check_is_fasta(in_file):
 
     return fasta
 
+
 def check_fastq_entries(in_file):
     """
-    Check how many reads are in the input fastq. 
-    
+    Check how many reads are in the input fastq.
+
     Parameters
     ----------
     in_file : str
@@ -1451,21 +1360,22 @@ def check_fastq_entries(in_file):
         How many reads listed in the input fastq
     """
 
-    with open(in_file, 'rb') as f:
-        is_gzip = f.read(2) == b'\x1f\x8b'
+    with open(in_file, "rb") as f:
+        is_gzip = f.read(2) == b"\x1f\x8b"
     if is_gzip:
         with gzip.open(in_file, "rt") as input_fastq:
             n_lines = sum(1 for line in input_fastq)
     else:
         with open(in_file, "r") as input_fastq:
             n_lines = sum(1 for line in input_fastq)
-    n_reads = int(n_lines)/4
+    n_reads = int(n_lines) / 4
     return n_reads
+
 
 def check_bam_entries(in_file):
     """
     Check how many reads are in the input bam
-    
+
     Parameters
     ----------
     in_file : str
@@ -1477,11 +1387,6 @@ def check_bam_entries(in_file):
         How many reads listed in the input bam
     """
 
-    n_reads = sp.run(
-        ["samtools", "view", "-c", in_file],
-        stdout=sp.PIPE,
-        stderr=sp.PIPE,
-        encoding = 'utf-8'
-    ).stdout[:-2]
+    n_reads = sp.run(["samtools", "view", "-c", in_file], stdout=sp.PIPE, stderr=sp.PIPE, encoding="utf-8").stdout[:-2]
 
     return int(n_reads)

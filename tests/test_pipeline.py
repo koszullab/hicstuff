@@ -193,6 +193,12 @@ def test_full_pipeline_frags_gzipped_genome():
 @pytest.mark.parametrize(*ALIGNER_PARAMETERS)
 def test_full_pipeline_bin(mapping, aligner):
     """Crash Test for the whole pipeline"""
+    out_dir = f"test_out_{aligner}_{mapping}"
+    # Copy test_data/valid_idx.pairs into a writable location so the pipeline
+    # can sort it in-place without touching the read-only test_data directory.
+    os.makedirs(os.path.join(out_dir, "tmp"), exist_ok=True)
+    pairs_idx_copy = os.path.join(out_dir, "tmp", "valid_idx_input.pairs")
+    shutil.copy("test_data/valid_idx.pairs", pairs_idx_copy)
     start_input = {
         "fastq": [
             "test_data/sample.reads_for.fastq.gz",
@@ -200,7 +206,7 @@ def test_full_pipeline_bin(mapping, aligner):
         ],
         "bam": ["test_out/tmp/for.bam", "test_out/tmp/rev.bam"],
         "pairs": ["test_out/tmp/valid.pairs", None],
-        "pairs_idx": ["test_out/valid_idx.pairs.gz", None],
+        "pairs_idx": [pairs_idx_copy, None],
     }
     for stage, [in1, in2] in start_input.items():
         # Indexed or non-indexed genome
@@ -210,7 +216,7 @@ def test_full_pipeline_bin(mapping, aligner):
             input2=in2,
             genome="test_data/genome/seq.fa.gz",
             enzyme=5000,
-            out_dir=f"test_out_{aligner}_{mapping}",
+            out_dir=out_dir,
             aligner=aligner,
             mapping=mapping,
             prefix="test",
@@ -220,6 +226,6 @@ def test_full_pipeline_bin(mapping, aligner):
             no_cleanup=True,
             force=True,
         )
-    shutil.rmtree(f"test_out_{aligner}_{mapping}")
+    shutil.rmtree(out_dir)
     if mapping == "iterative" and aligner == "minimap2":
         shutil.rmtree("test_out/")
