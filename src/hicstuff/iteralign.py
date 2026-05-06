@@ -135,7 +135,7 @@ def iterative_align(
         iter_out += [join(tmp_dir, f"trunc_{str(n)}.bam")]
         # Generate a temporary input fastq file with the n first nucleotids
         # of the reads.
-        truncated_reads = truncate_reads(tmp_dir, uncomp_path, remaining_reads, n, first_round)
+        truncated_reads = _truncate_reads(tmp_dir, uncomp_path, remaining_reads, n, first_round)
 
         # Align the truncated reads on reference genome
         temp_alignment = join(tmp_dir, "temp_alignment.bam")
@@ -151,9 +151,7 @@ def iterative_align(
         elif re.match(r"^(bwa)$", aligner, flags=re.IGNORECASE):
             cmd = "bwa mem -t {cpus} -v 1 {idx} {fq}".format(**map_args)
         elif re.match(r"^(bowtie[2]?|bt[2]?)$", aligner, flags=re.IGNORECASE):
-            cmd = ("bowtie2 -x {idx} -p {cpus} --quiet --very-sensitive-local -U {fq}").format(
-                **map_args
-            )
+            cmd = ("bowtie2 -x {idx} -p {cpus} --quiet --very-sensitive-local -U {fq}").format(**map_args)
         else:
             raise ValueError("Unknown aligner. Select bowtie2, minimap2 or bwa.")
 
@@ -163,12 +161,12 @@ def iterative_align(
             shell=True,
             stdin=map_process.stdout,
         )
-        out, err = sort_process.communicate()
+        sort_process.wait()
 
         # filter the reads: the reads whose truncated end was aligned are written
         # to the output file.
         # The reads whose truncated end was not aligned are kept for the next round.
-        remaining_reads = filter_bamfile(temp_alignment, iter_out[-1], min_qual)
+        remaining_reads = _filter_bamfile(temp_alignment, iter_out[-1], min_qual)
 
         n += 20
         first_round = False
@@ -176,7 +174,7 @@ def iterative_align(
     # one last round without trimming
     logger.info(f"Trying to map unaligned reads at full length ({int(read_len)}bp).")
 
-    truncated_reads = truncate_reads(
+    truncated_reads = _truncate_reads(
         tmp_dir,
         infile=uncomp_path,
         unaligned_set=remaining_reads,
@@ -196,9 +194,9 @@ def iterative_align(
         shell=True,
         stdin=map_process.stdout,
     )
-    out, err = sort_process.communicate()
+    sort_process.wait()
     iter_out += [join(tmp_dir, f"trunc_{str(n)}.bam")]
-    remaining_reads = filter_bamfile(temp_alignment, iter_out[-1], min_qual)
+    remaining_reads = _filter_bamfile(temp_alignment, iter_out[-1], min_qual)
 
     # Report unaligned reads as well
     iter_out += [join(tmp_dir, "unaligned.bam")]
@@ -213,14 +211,12 @@ def iterative_align(
 
     # Merge all aligned reads and unmapped reads into a single bam
     ps.merge("-n", "-O", "BAM", "-@", str(n_cpu), bam_out, *iter_out)
-    logger.info(
-        f"{int(total_reads - len(remaining_reads))} reads aligned / {int(total_reads)} total reads."
-    )
+    logger.info(f"{int(total_reads - len(remaining_reads))} reads aligned / {int(total_reads)} total reads.")
 
     return 0
 
 
-def truncate_reads(tmp_dir, infile, unaligned_set, trunc_len, first_round):
+def _truncate_reads(tmp_dir, infile, unaligned_set, trunc_len, first_round):
     """Trim read ends
 
     Writes the n first nucleotids of each sequence in infile to an auxiliary.
@@ -259,7 +255,7 @@ def truncate_reads(tmp_dir, infile, unaligned_set, trunc_len, first_round):
     return outfile
 
 
-def filter_bamfile(temp_alignment, filtered_out, min_qual=30):
+def _filter_bamfile(temp_alignment, filtered_out, min_qual=30):
     """Filter alignment BAM files
 
     Reads all the reads in the input BAM alignment file.

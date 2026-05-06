@@ -111,11 +111,11 @@ def write_frag_info(
 
                         fragments_list.write(current_fragment_line)
 
-                        try:
-                            assert (current_id == 1 and start_pos == 0) or (current_id > 1 and start_pos > 0)
-                        except AssertionError:
-                            logger.error((current_id, start_pos))
-                            raise
+                        if not ((current_id == 1 and start_pos == 0) or (current_id > 1 and start_pos > 0)):
+                            logger.error("Fragment ID/position inconsistency: id=%d, start=%d", current_id, start_pos)
+                            raise ValueError(
+                                f"Fragment ID/position inconsistency: id={current_id}, start_pos={start_pos}"
+                            )
                         start_pos = end_pos
                         current_id += 1
                         n_frags += 1

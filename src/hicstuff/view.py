@@ -177,7 +177,6 @@ def reorder_fasta(genome, output, threshold=100000):
 
     Sort a fasta file by record lengths, optionally trimming the smallest ones.
 
-
     Parameters
     ----------
     genome : str, file or pathlib.Path
@@ -187,7 +186,10 @@ def reorder_fasta(genome, output, threshold=100000):
     threshold : int, optional
         The size below which scaffolds are discarded, by default 100000
     """
-
     handle = SeqIO.parse(genome, "fasta")
-    handle_to_write = sorted((len(u) for u in handle if len(u) > threshold), reverse=True)
-    SeqIO.write(handle_to_write, output, "fasta")
+    records_to_write = sorted(
+        (rec for rec in handle if len(rec) > threshold),
+        key=len,
+        reverse=True,
+    )
+    SeqIO.write(records_to_write, output, "fasta")

@@ -31,14 +31,10 @@ def test_distancelaw_cli() -> None:
     """Test the distance law CLI."""
     os.makedirs("test_out", exist_ok=True)
     pairs_reads_file = "test_data/valid_idx_filtered.pairs"
-    os.system(
-        f"hicstuff distancelaw --pairs {pairs_reads_file} -o test_out/ps.pdf -O test_out/ps.tsv"
-    )
+    os.system(f"hicstuff distancelaw --pairs {pairs_reads_file} -o test_out/ps.pdf -O test_out/ps.tsv")
     assert os.path.exists("test_out/ps.pdf")
     pairs_reads_file = "test_data/valid_idx_filtered.pairs.gz"
-    os.system(
-        f"hicstuff distancelaw --average --pairs {pairs_reads_file} -o test_out/ps2.pdf -O test_out/ps2.tsv"
-    )
+    os.system(f"hicstuff distancelaw --average --pairs {pairs_reads_file} -o test_out/ps2.pdf -O test_out/ps2.tsv")
     assert os.path.exists("test_out/ps2.pdf")
 
 
@@ -59,7 +55,7 @@ def test_export_distance_law():
 
 def test_import_distance_law():
     """Test importing distance law table files"""
-    xs = hcdl.logbins_xs(fragments, [60000, 20000])
+    xs = hcdl._logbins_xs(fragments, [60000, 20000])
     assert np.all(np.isclose(test_xs[0], xs[0], rtol=0.0001))
     assert np.all(np.isclose(test_xs[1], xs[1], rtol=0.0001))
     assert len(test_ps) == 2 and len(labels) == 2 and len(test_xs) == len(test_ps)
@@ -72,45 +68,45 @@ def test_get_chr_segment_bins_index():
     """Test getting the index values of the starting positions of the
     arm/chromosome."""
     # Test with centromeres positions.
-    chr_segment_bins = hcdl.get_chr_segment_bins_index(fragments, centro_file)
+    chr_segment_bins = hcdl._get_chr_segment_bins_index(fragments, centro_file)
     assert chr_segment_bins == [0, 129, 129, 409, 409, 474, 474, 564]
     # Test without centromeres positions.
-    chr_segment_bins = hcdl.get_chr_segment_bins_index(fragments)
+    chr_segment_bins = hcdl._get_chr_segment_bins_index(fragments)
     assert chr_segment_bins == [0, 409, 409, 564]
     # Test with centromeres positions and remove the centromeres.
-    chr_segment_bins = hcdl.get_chr_segment_bins_index(fragments, centro_file, 1000)
+    chr_segment_bins = hcdl._get_chr_segment_bins_index(fragments, centro_file, 1000)
     assert chr_segment_bins == [0, 121, 134, 409, 409, 463, 480, 564]
     # Test warning message if not the same numbers of chromsome and centromeres.
-    hcdl.get_chr_segment_bins_index(fragments.iloc[0:409, :], centro_file, 1000)
+    hcdl._get_chr_segment_bins_index(fragments.iloc[0:409, :], centro_file, 1000)
 
 
 def test_get_chr_segment_length():
     """Test getting the length of the arms/chromosomes."""
-    chr_length = hcdl.get_chr_segment_length(fragments, [0, 129, 129, 409, 409, 474, 474, 564])
+    chr_length = hcdl._get_chr_segment_length(fragments, [0, 129, 129, 409, 409, 474, 474, 564])
     assert chr_length == [19823, 40177, 9914, 10086]
 
 
 def test_logbins_xs():
     """Test of the function making the logbins."""
     # Test with default values.
-    xs = hcdl.logbins_xs(fragments, [60000, 20000])
+    xs = hcdl._logbins_xs(fragments, [60000, 20000])
     assert len(xs) == 2
     assert np.all(xs[0] == np.unique(np.logspace(0, 115, num=116, base=1.1, dtype=int)))
     # Test changing base.
-    xs = hcdl.logbins_xs(fragments, [60000, 20000], base=1.5)
+    xs = hcdl._logbins_xs(fragments, [60000, 20000], base=1.5)
     assert np.all(xs[0] == np.unique(np.logspace(0, 27, num=28, base=1.5, dtype=int)))
     # Test with the circular option.
-    xs = hcdl.logbins_xs(fragments, [60000, 20000], circular=True)
+    xs = hcdl._logbins_xs(fragments, [60000, 20000], circular=True)
     assert np.all(xs[0] == np.unique(np.logspace(0, 108, num=109, base=1.1, dtype=int)))
 
 
 def test_get_names():
     """Test getting names from a fragment file function."""
     # Test with the centromers option
-    names = hcdl.get_names(fragments, [0, 200, 200, 409, 409, 522, 522, 564])
-    assert names == ["seq1_left", "seq1_rigth", "seq2_left", "seq2_rigth"]
+    names = hcdl._get_names(fragments, [0, 200, 200, 409, 409, 522, 522, 564])
+    assert names == ["seq1_left", "seq1_right", "seq2_left", "seq2_right"]
     # Test without the centromers option
-    names = hcdl.get_names(fragments, [0, 409, 409, 564])
+    names = hcdl._get_names(fragments, [0, 409, 409, 564])
     assert names == ["seq1", "seq2"]
 
 
@@ -122,9 +118,7 @@ def test_get_distance_law():
     hcdl.get_distance_law(pairs_reads_file, fragments_file, out_file=distance_law.name)
     assert os.path.exists(distance_law.name)
     # Test the circular option.
-    hcdl.get_distance_law(
-        pairs_reads_file, fragments_file, out_file=distance_law.name, circular=True
-    )
+    hcdl.get_distance_law(pairs_reads_file, fragments_file, out_file=distance_law.name, circular=True)
     assert os.path.exists(distance_law.name)
     # Test the centromere option.
     hcdl.get_distance_law(
@@ -200,9 +194,5 @@ def test_slope_distance_law():
     """Test function calculating the slope of the distance law."""
     slope = hcdl.slope_distance_law(test_xs, test_ps)
     assert len(slope) == 2
-    assert np.isclose(sum(slope[0]), 18.9329, rtol=0.0001) and np.isclose(
-        sum(slope[1]), -2.7459, rtol=0.0001
-    )
-    assert np.isclose(np.std(slope[0]), 3.9226, rtol=0.0001) and np.isclose(
-        np.std(slope[1]), 5.0451, rtol=0.0001
-    )
+    assert np.isclose(sum(slope[0]), 18.9329, rtol=0.0001) and np.isclose(sum(slope[1]), -2.7459, rtol=0.0001)
+    assert np.isclose(np.std(slope[0]), 3.9226, rtol=0.0001) and np.isclose(np.std(slope[1]), 5.0451, rtol=0.0001)

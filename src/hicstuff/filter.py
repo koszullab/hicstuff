@@ -19,7 +19,6 @@ attributed.
 """
 
 import sys
-from collections import OrderedDict
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -196,8 +195,8 @@ def get_thresholds(in_dat, interactive=False, plot_events=False, fig_path=None, 
             plt.legend()
             plt.show(block=False)
 
-        except Exception:
-            logger.error(
+        except (OSError, RuntimeError):
+            logger.warning(
                 "Unable to show plots, skipping figure generation. Perhaps "
                 "there is no Xserver running ? (might be due to windows "
                 "environment). Try running without the interactive option."
@@ -214,7 +213,7 @@ def get_thresholds(in_dat, interactive=False, plot_events=False, fig_path=None, 
         thr_loop = int(input("Enter threshold for the loops events (-+):"))
         try:
             plt.clf()
-        except Exception:
+        except (OSError, RuntimeError):
             pass
     else:
         # Estimate thresholds from data
@@ -301,7 +300,7 @@ def get_thresholds(in_dat, interactive=False, plot_events=False, fig_path=None, 
                 plt.yscale("log")
                 # Remove duplicate "kept" entries in legend
                 handles, labels = plt.gca().get_legend_handles_labels()
-                by_label = OrderedDict(zip(labels, handles))
+                by_label = dict(zip(labels, handles))
                 plt.legend(by_label.values(), by_label.keys())
                 # Show uncut and loop threshold as vertical lines
                 plt.axvline(x=thr_loop, color=colors["-+"])
@@ -314,10 +313,9 @@ def get_thresholds(in_dat, interactive=False, plot_events=False, fig_path=None, 
                     plt.savefig(fig_path)
                 else:
                     plt.show(block=False)
-                # plt.clf()
 
-            except Exception:
-                logger.error(
+            except (OSError, RuntimeError):
+                logger.warning(
                     "Unable to show plots, skipping figure generation. Is "
                     "an X server running? (might be due to windows "
                     "environment). Try running without the plot option."
@@ -422,13 +420,8 @@ def filter_events(
     kept = lrange_intra + lrange_inter
     discarded = n_loops + n_uncuts + n_weirds
     total = kept + discarded
-    logger.info(
-        f"Proportion of inter contacts: {ratio_inter}% (intra: {lrange_intra}, "
-        f"inter: {lrange_inter})"
-    )
-    logger.info(
-        f"{discarded} pairs discarded: Loops: {n_loops}, Uncuts: {n_uncuts}, Weirds: {n_weirds}"
-    )
+    logger.info(f"Proportion of inter contacts: {ratio_inter}% (intra: {lrange_intra}, " f"inter: {lrange_inter})")
+    logger.info(f"{discarded} pairs discarded: Loops: {n_loops}, Uncuts: {n_uncuts}, Weirds: {n_weirds}")
     logger.info(f"{kept} pairs kept ({round(100 * kept / (kept + discarded), 2)}%)")
 
     # Visualize summary if requested by user
@@ -490,9 +483,7 @@ def filter_events(
                 fontdict=None,
             )
             percentage = round(
-                100
-                * float(lrange_inter + lrange_intra)
-                / (n_loops + n_uncuts + n_weirds + lrange_inter + lrange_intra)
+                100 * float(lrange_inter + lrange_intra) / (n_loops + n_uncuts + n_weirds + lrange_inter + lrange_intra)
             )
             plt.text(
                 -1.5,
@@ -505,8 +496,8 @@ def filter_events(
             else:
                 plt.show()
             plt.clf()
-        except Exception:
-            logger.error(
+        except (OSError, RuntimeError):
+            logger.warning(
                 "Unable to show plots. Perhaps there is no Xserver running ?"
                 "(might be due to windows environment) skipping figure "
                 "generation."

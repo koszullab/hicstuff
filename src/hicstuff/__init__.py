@@ -11,7 +11,7 @@ try:
 except PackageNotFoundError:
     __version__ = "unknown"
 
-from .hicstuff import *
+from .hicstuff import *  # noqa: F403
 
 __author__ = "Lyam Baudry, \
               Axel Cournac, \

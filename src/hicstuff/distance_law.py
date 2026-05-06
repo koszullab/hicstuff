@@ -51,22 +51,14 @@ def export_distance_law(xs, ps, names, out_file=None):
         logger.error("Number of chromosomes/arms and number of p(s) list differ.")
         sys.exit(1)
     # Create the file and write it
-    f = open(out_file, "w")
-    f.write(f"## hicstuff v{__version__}\n")
-    f.write("## distance_law\n")
-    f.write("## columns: start_bp\tp(s)\tchrom\n")
-    for i in range(len(xs)):
-        for j in range(len(xs[i])):
-            line = (
-                str(format(xs[i][j], "g"))
-                + "\t"
-                + str(format(ps[i][j], "g"))
-                + "\t"
-                + names[i]
-                + "\n"
-            )
-            f.write(line)
-    f.close()
+    with open(out_file, "w") as f:
+        f.write(f"## hicstuff v{__version__}\n")
+        f.write("## distance_law\n")
+        f.write("## columns: start_bp\tp(s)\tchrom\n")
+        for i in range(len(xs)):
+            for j in range(len(xs[i])):
+                line = str(format(xs[i][j], "g")) + "\t" + str(format(ps[i][j], "g")) + "\t" + names[i] + "\n"
+                f.write(line)
 
 
 def import_distance_law(distance_law_file):
@@ -110,7 +102,7 @@ def import_distance_law(distance_law_file):
     return xs, ps, labels
 
 
-def get_chr_segment_bins_index(fragments, centro_file=None, rm_centro=0):
+def _get_chr_segment_bins_index(fragments, centro_file=None, rm_centro=0):
     """Get the index positions of the start and end bins of different
     chromosomes, or arms if the centromers position have been given from the
     fragments file made by hicstuff.
@@ -179,7 +171,7 @@ def get_chr_segment_bins_index(fragments, centro_file=None, rm_centro=0):
     return list(chr_segment_bins)
 
 
-def get_chr_segment_length(fragments, chr_segment_bins):
+def _get_chr_segment_length(fragments, chr_segment_bins):
     """Compute a list of the length of the different objects (arm or
     chromosome) given by chr_segment_bins.
 
@@ -217,7 +209,7 @@ def get_chr_segment_length(fragments, chr_segment_bins):
     return chr_segment_length
 
 
-def logbins_xs(fragments, chr_segment_length, base=1.1, circular=False):
+def _logbins_xs(fragments, chr_segment_length, base=1.1, circular=False):
     """Compute the logbins of each chromosome/arm in order to have theme to
     compute distance law. At the end you will have bins of increasing with a
     logspace with the base of the value given in base.
@@ -258,7 +250,7 @@ def logbins_xs(fragments, chr_segment_length, base=1.1, circular=False):
     return xs
 
 
-def circular_distance_law(distance, chr_segment_length, chr_bin):
+def _circular_distance_law(distance, chr_segment_length, chr_bin):
     """Recalculate the distance to return the distance in a circular chromosome
     and not the distance between the two genomic positions.
 
@@ -293,7 +285,7 @@ def circular_distance_law(distance, chr_segment_length, chr_bin):
     return distance
 
 
-def get_pairs_distance_pos(line, chr_to_idx, chr_segment_length, xs, ps, circular=False):
+def _get_pairs_distance_pos(line, chr_to_idx, chr_segment_length, xs, ps, circular=False):
     """Compute distance law from a plain pairs line using read positions directly.
 
     For use when no fragments file is available. Uses abs(pos2 - pos1) as the
@@ -326,16 +318,14 @@ def get_pairs_distance_pos(line, chr_to_idx, chr_segment_length, xs, ps, circula
         if distance <= 0:
             return
         if circular:
-            distance = circular_distance_law(distance, chr_segment_length, chr_bin)
+            distance = _circular_distance_law(distance, chr_segment_length, chr_bin)
         xs_temp = xs[chr_bin][:]
         ps_indice = np.searchsorted(xs_temp, distance, side="right") - 1
         if 0 <= ps_indice < len(ps[chr_bin]):
             ps[chr_bin][ps_indice] += 1
 
 
-def get_pairs_distance(
-    line, fragments, chr_segment_bins, chr_segment_length, xs, ps, circular=False
-):
+def _get_pairs_distance(line, fragments, chr_segment_bins, chr_segment_length, xs, ps, circular=False):
     """From a line of a pair reads file, filter -/+ or +/- reads, keep only the
     reads in the same chromosome/arm and compute the distance of the the two
     fragments. It modify the input ps in order to count or not the line given.
@@ -402,7 +392,7 @@ def get_pairs_distance(
                         - np.array(fragments["end_pos"][int(line["frag2"])])
                     )
                 if circular:
-                    distance = circular_distance_law(distance, chr_segment_length, chr_bin1)
+                    distance = _circular_distance_law(distance, chr_segment_length, chr_bin1)
                 xs_temp = xs[chr_bin1][:]
                 # Find the logbins in which the distance is and add one to the sum
                 # of contact.
@@ -410,7 +400,7 @@ def get_pairs_distance(
                 ps[chr_bin1][ps_indice] += 1
 
 
-def get_names(fragments, chr_segment_bins):
+def _get_names(fragments, chr_segment_bins):
     """Make a list of the names of the arms or the chromosomes.
 
     Parameters
@@ -438,7 +428,7 @@ def get_names(fragments, chr_segment_bins):
         names = []
         for chr in chr_names:
             names.append(str(chr) + "_left")
-            names.append(str(chr) + "_rigth")
+            names.append(str(chr) + "_right")
         chr_names = names
     return chr_names
 
@@ -564,7 +554,7 @@ def get_distance_law(
         chr_names = list(chrom_sizes.keys())
         chr_segment_length = list(chrom_sizes.values())
         chr_to_idx = {name: i for i, name in enumerate(chr_names)}
-        xs = logbins_xs(None, chr_segment_length, base, circular)
+        xs = _logbins_xs(None, chr_segment_length, base, circular)
         ps = [[0] * len(xs[i]) for i in range(len(xs))]
         # Determine fieldnames from header columns, falling back to 7-column standard
         if columns is not None:
@@ -594,14 +584,12 @@ def get_distance_law(
                 delimiter="\t",
             )
             for line in reader:
-                get_pairs_distance_pos(line, chr_to_idx, chr_segment_length, xs, ps, circular)
+                _get_pairs_distance_pos(line, chr_to_idx, chr_segment_length, xs, ps, circular)
         # Normalise by logbin area (same formula as fragment-based path)
         for i in range(len(xs)):
             n = chr_segment_length[i]
             for j in range(len(xs[i]) - 1):
-                ps[i][j] /= ((2 * n - xs[i][j + 1] - xs[i][j]) / 2) * (
-                    (1 / np.sqrt(2)) * (xs[i][j + 1] - xs[i][j])
-                )
+                ps[i][j] /= ((2 * n - xs[i][j + 1] - xs[i][j]) / 2) * ((1 / np.sqrt(2)) * (xs[i][j + 1] - xs[i][j]))
             ps[i][-1] /= ((n - xs[i][-1]) ** 2) / 2
         names = chr_names
         if out_file:
@@ -612,10 +600,10 @@ def get_distance_law(
     # Import third columns of fragments file
     fragments = pd.read_csv(fragments_file, sep="\t", header=0, usecols=[0, 1, 2, 3])
     # Calculate the indice of the bins to separate into chromosomes/arms
-    chr_segment_bins = get_chr_segment_bins_index(fragments, centro_file, rm_centro)
+    chr_segment_bins = _get_chr_segment_bins_index(fragments, centro_file, rm_centro)
     # Calculate the length of each chromosoms/arms
-    chr_segment_length = get_chr_segment_length(fragments, chr_segment_bins)
-    xs = logbins_xs(fragments, chr_segment_length, base, circular)
+    chr_segment_length = _get_chr_segment_length(fragments, chr_segment_bins)
+    xs = _logbins_xs(fragments, chr_segment_length, base, circular)
     # Create the list of p(s) with one array for each chromosome/arm and each
     # array contain as many values as in the logbin
     ps = [None] * len(chr_segment_length)
@@ -649,18 +637,14 @@ def get_distance_law(
         )
         for line in reader:
             # Iterate in each line of the file after the header
-            get_pairs_distance(
-                line, fragments, chr_segment_bins, chr_segment_length, xs, ps, circular
-            )
+            _get_pairs_distance(line, fragments, chr_segment_bins, chr_segment_length, xs, ps, circular)
     # Divide the number of contacts by the area of the logbin
     for i in range(len(xs)):
         n = chr_segment_length[i]
         for j in range(len(xs[i]) - 1):
             # Use the area of a trapezium to know the area of the logbin with n
             # the size of the matrix.
-            ps[i][j] /= ((2 * n - xs[i][j + 1] - xs[i][j]) / 2) * (
-                (1 / np.sqrt(2)) * (xs[i][j + 1] - xs[i][j])
-            )
+            ps[i][j] /= ((2 * n - xs[i][j + 1] - xs[i][j]) / 2) * ((1 / np.sqrt(2)) * (xs[i][j + 1] - xs[i][j]))
             # print(
             #    ((2 * n - xs[i][j + 1] - xs[i][j]) / 2)
             #    * ((1 / np.sqrt(2)) * (xs[i][j + 1] - xs[i][j]))
@@ -668,7 +652,7 @@ def get_distance_law(
         # Case of the last logbin which is an isosceles rectangle triangle
         # print(ps[i][-5:-1], ((n - xs[i][-1]) ** 2) / 2)
         ps[i][-1] /= ((n - xs[i][-1]) ** 2) / 2
-    names = get_names(fragments, chr_segment_bins)
+    names = _get_names(fragments, chr_segment_bins)
     if out_file:
         export_distance_law(xs, ps, names, out_file)
     return xs, ps, names
@@ -767,9 +751,7 @@ def average_distance_law(xs, ps, sup, big_arm_only=False):
         # Sanity check : sup strictly inferior to maw length arms.
         if big_arm_only:
             if sup >= xs[-1]:
-                logger.error(
-                    "sup have to be inferior to the max length of arms/chromsomes if big arm only set"
-                )
+                logger.error("sup have to be inferior to the max length of arms/chromsomes if big arm only set")
                 sys.exit(1)
             if sup <= xs[len(chrom_ps) - 1]:
                 ps_occur[: len(chrom_ps)] += 1
@@ -808,7 +790,7 @@ def slope_distance_law(xs, ps):
             np.array(xs[i][1:]) / np.array(xs[i][:-1])
         )
         # The 1.8 is the intensity of the normalisation, it could be adapted.
-        slope_temp[slope_temp == np.nan] = 10 ** (-15)
+        slope_temp[np.isnan(slope_temp)] = 10 ** (-15)
         slope[i] = ndimage.filters.gaussian_filter1d(slope_temp, 1.8)
     return slope
 

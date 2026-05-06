@@ -1981,10 +1981,10 @@ def contigs_to_positions(contigs, binning=10000):
     positions = np.zeros_like(contigs)
 
     index = 0
-    #B031 Using the generator returned from `itertools.groupby()` more than once will do nothing on the second usage
     for _, chunk in itertools.groupby(contigs):
-        el = len(chunk)
-        positions[index : index + el] = np.arange(list(chunk)) * binning
+        items = list(chunk)
+        el = len(items)
+        positions[index : index + el] = np.arange(el) * binning
         index += el
 
     return positions
