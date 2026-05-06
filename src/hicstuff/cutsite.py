@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# coding: utf-8
 
 """Cut the reads at their ligation sites.
 
@@ -14,26 +13,24 @@ It's the most releveant one for usual workflow. 2. "all": All 2-combinations are
 made. 3. "pile": Only combinations between adjacent fragments in the initial
 reads are made.
 
-This module contains the following functions: 
-    - cut_ligation_sites 
-    - cutsite_read 
-    - write_pair 
-    - _writer    
+This module contains the following functions:
+    - cut_ligation_sites
+    - cutsite_read
+    - write_pair
+    - _writer
 """
-
 
 import gzip
 import multiprocessing
-import pyfastx
-import re
 import sys
+
+import pyfastx
+
 import hicstuff.digest as hcd
 from hicstuff.log import logger
 
 
-def cut_ligation_sites(
-    fq_for, fq_rev, digest_for, digest_rev, enzyme, mode, seed_size, n_cpu
-):
+def cut_ligation_sites(fq_for, fq_rev, digest_for, digest_rev, enzyme, mode, seed_size, n_cpu):
     """Create new reads to manage pairs with a digestion and create multiple
     pairs to take into account all the contact present.
 
@@ -95,7 +92,6 @@ def cut_ligation_sites(
         pyfastx.Fastq(fq_for, build_index=False),
         pyfastx.Fastq(fq_rev, build_index=False),
     ):
-
         # Count the numbers of original reads processed.
         original_number_of_pairs += 1
 
@@ -108,11 +104,7 @@ def cut_ligation_sites(
 
         # Sanity check to be sure all reads are with their mate.
         if for_name != rev_name:
-            logger.error(
-                "The fastq files contains reads not sorted :\n{0}\n{1}".format(
-                    for_name, rev_name
-                )
-            )
+            logger.error(f"The fastq files contains reads not sorted :\n{for_name}\n{rev_name}")
             sys.exit(1)
 
         # Cut the forward and reverse reads at the ligation sites.
@@ -144,7 +136,6 @@ def cut_ligation_sites(
 
         # If stack full, add it in the queue.
         if current_stack == max_stack_size:
-
             # Add the pair in the queue.
             pairs = (new_reads_for.encode(), new_reads_rev.encode())
             queue.put(pairs)
@@ -185,7 +176,7 @@ def cutsite_read(ligation_sites, seq, qual, seed_size=0):
     Returns:
     --------
     list of str
-        List of cut sequences. The split is made 4 bases after the start of 
+        List of cut sequences. The split is made 4 bases after the start of
         the ligation site.
     list of str
         List of string of the qualities.
@@ -199,9 +190,7 @@ def cutsite_read(ligation_sites, seq, qual, seed_size=0):
     # Find the ligation sites.
     ligation_sites_list = []
     if ligation_sites.search(seq):
-        ligation_sites_list = [
-            site.start() for site in ligation_sites.finditer(seq)
-        ]
+        ligation_sites_list = [site.start() for site in ligation_sites.finditer(seq)]
     ligation_sites_list.append(len(seq))
 
     # Split the sequences on the ligation sites.
@@ -371,9 +360,7 @@ def _writer(output_for, output_rev, queue, stop_token):
     stop_token : str
         Token to signal that the end of the file have been reached.
     """
-    with gzip.open(output_for, "wb") as for_fq, gzip.open(
-        output_rev, "wb"
-    ) as rev_fq:
+    with gzip.open(output_for, "wb") as for_fq, gzip.open(output_rev, "wb") as rev_fq:
         while True:
             line = queue.get()
             if line == stop_token:

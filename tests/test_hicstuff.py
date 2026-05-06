@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
 """hicstuff testing
 
@@ -7,11 +6,13 @@ Basic tests for functions in the hicstuff library.
 """
 
 import random
+from inspect import getmembers, isfunction, signature
+
 import numpy as np
 import pytest
-import hicstuff.hicstuff as hcs
 from scipy.sparse import coo_matrix, triu
-from inspect import signature, getmembers, isfunction
+
+import hicstuff.hicstuff as hcs
 
 SIZE_PARAMETERS = ("matrix_size", [5, 10, 20, 50, 100])
 
@@ -82,9 +83,7 @@ def test_bin_bp(matrix_size):
     pos = np.concatenate([np.array(range(size1)), np.array(range(size2))])
     B_d, _ = hcs.bin_bp_dense(M_d, pos, bin_len=binsize)
     B_s, _ = hcs.bin_bp_sparse(M_s, pos, bin_len=binsize)
-    exp_n = len(np.unique(pos[:size1] // binsize)) + len(
-        np.unique(pos[size1:] // binsize)
-    )
+    exp_n = len(np.unique(pos[:size1] // binsize)) + len(np.unique(pos[size1:] // binsize))
     # Expected dimensions ?
     assert B_d.shape[0] == exp_n
     assert B_s.shape[0] == exp_n
@@ -105,9 +104,7 @@ def test_norm(matrix_size):
     N_d = hcs.normalize_dense(M_d, "SCN", iterations=50)
     N_s = hcs.normalize_sparse(M_s, "ICE", iterations=50, n_mad=1000)
     assert np.isclose(N_d.sum(axis=1), np.ones(matrix_size), rtol=0.0001).all()
-    assert np.isclose(
-        hcs.sum_mat_bins(N_s), np.ones(matrix_size), rtol=0.0001
-    ).all()
+    assert np.isclose(hcs.sum_mat_bins(N_s), np.ones(matrix_size), rtol=0.0001).all()
     assert np.isclose(triu(coo_matrix(N_d)).data, N_s.data, rtol=0.000001).all()
 
 
@@ -128,9 +125,7 @@ def test_trim(matrix_size):
     # Choose random bins
     trim_bins = np.random.randint(0, M_d.shape[0], 2)
     # Add potential pre-existing outlier bins
-    trim_bins = np.append(
-        trim_bins, np.where((sums <= min_val) | (sums >= max_val))[0]
-    )
+    trim_bins = np.append(trim_bins, np.where((sums <= min_val) | (sums >= max_val))[0])
     trim_bins = np.unique(trim_bins)
     # Set bins to outlier values
     M_d[:, trim_bins] = M_d[trim_bins, :] = random.choice([min_val, max_val])

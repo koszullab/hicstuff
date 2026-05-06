@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# coding: utf-8
 
 """Genome digestion
 
@@ -7,18 +6,19 @@ Functions used to write auxiliary instagraal compatible
 sparse matrices.
 """
 
-from Bio import SeqIO, SeqUtils
-from Bio.Seq import Seq
-from Bio.Restriction import RestrictionBatch
-import os, sys, csv
+import csv
+import os
 import re
-import collections
-import copy
+
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from hicstuff.log import logger
+from Bio import SeqIO, SeqUtils
+from Bio.Restriction import RestrictionBatch
+from Bio.Seq import Seq
+
 import hicstuff.io as hio
+from hicstuff.log import logger
 
 DEFAULT_FRAGMENTS_LIST_FILE_NAME = "fragments_list.txt"
 DEFAULT_INFO_CONTIGS_FILE_NAME = "info_contigs.txt"
@@ -79,14 +79,10 @@ def write_frag_info(
         frag_list_path = output_frags
 
     with open(info_contigs_path, "w") as info_contigs:
-
         info_contigs.write("contig\tlength\tn_frags\tcumul_length\n")
 
         with open(frag_list_path, "w") as fragments_list:
-
-            fragments_list.write(
-                "id\tchrom\tstart_pos" "\tend_pos\tsize\tgc_content\n"
-            )
+            fragments_list.write("id\tchrom\tstart_pos\tend_pos\tsize\tgc_content\n")
 
             total_frags = 0
 
@@ -97,13 +93,8 @@ def write_frag_info(
                 if contig_length < int(min_size):
                     continue
 
-                sites = get_restriction_table(
-                    contig_seq, enzyme, circular=circular
-                )
-                fragments = (
-                    contig_seq[sites[i] : sites[i + 1]]
-                    for i in range(len(sites) - 1)
-                )
+                sites = get_restriction_table(contig_seq, enzyme, circular=circular)
+                fragments = (contig_seq[sites[i] : sites[i + 1]] for i in range(len(sites) - 1))
                 n_frags = 0
 
                 current_id = 1
@@ -197,9 +188,7 @@ def attribute_fragments(pairs_file, idx_pairs_file, restriction_table):
 
     missing_contigs = set()
     # Attribute pairs to fragments and append them to output file (after header)
-    with open(pairs_file, "r") as pairs, open(
-        idx_pairs_file, "a"
-    ) as idx_pairs:
+    with open(pairs_file) as pairs, open(idx_pairs_file, "a") as idx_pairs:
         # Skip header lines
         for _ in range(header_size):
             next(pairs)
@@ -217,22 +206,14 @@ def attribute_fragments(pairs_file, idx_pairs_file, restriction_table):
         idx_cols = pairs_cols + ["frag1", "frag2"]
 
         # Use csv reader / writer to automatically parse columns into a dict
-        pairs_reader = csv.DictReader(
-            pairs, fieldnames=pairs_cols, delimiter="\t"
-        )
-        pairs_writer = csv.DictWriter(
-            idx_pairs, fieldnames=idx_cols, delimiter="\t"
-        )
+        pairs_reader = csv.DictReader(pairs, fieldnames=pairs_cols, delimiter="\t")
+        pairs_writer = csv.DictWriter(idx_pairs, fieldnames=idx_cols, delimiter="\t")
 
         for pair in pairs_reader:
             # Get the 0-based indices of corresponding restriction fragments
             # Deducing 1 from pair position to get it into 0bp point
-            pair["frag1"] = find_frag(
-                int(pair["pos1"]) - 1, restriction_table[pair["chr1"]]
-            )
-            pair["frag2"] = find_frag(
-                int(pair["pos2"]) - 1, restriction_table[pair["chr2"]]
-            )
+            pair["frag1"] = find_frag(int(pair["pos1"]) - 1, restriction_table[pair["chr1"]])
+            pair["frag2"] = find_frag(int(pair["pos2"]) - 1, restriction_table[pair["chr2"]])
             # Shift fragment indices to make them genome-based instead of
             # chromosome-based
             try:
@@ -291,7 +272,7 @@ def get_restriction_table(seq, enzyme, circular=False):
 
     """
     chrom_len = len(seq)
-    wrong_enzyme = "{} is not a valid restriction enzyme.".format(enzyme)
+    wrong_enzyme = f"{enzyme} is not a valid restriction enzyme."
     # Restriction batch containing the restriction enzyme
     try:
         enz = [enzyme] if isinstance(enzyme, str) else enzyme
@@ -315,9 +296,7 @@ def get_restriction_table(seq, enzyme, circular=False):
         # Wrapping positions beyond chrom_len are filtered out.
         sites = []
         for enz_obj in cutter:
-            sites.extend(
-                s - 1 for s in enz_obj.search(seq, linear=False) if s <= chrom_len
-            )
+            sites.extend(s - 1 for s in enz_obj.search(seq, linear=False) if s <= chrom_len)
         # Sort by position and add start/end of seq if not already present
         sites.sort()
         if not sites or sites[0] != 0:
@@ -356,13 +335,9 @@ def find_frag(pos, r_sites):
 
     """
     if r_sites[0] != 0:
-        raise ValueError(
-            "The first position in the restriction table is not 0."
-        )
+        raise ValueError("The first position in the restriction table is not 0.")
     if pos > r_sites[-1]:
-        raise ValueError(
-            "Read position is larger than last entry in restriction table."
-        )
+        raise ValueError("Read position is larger than last entry in restriction table.")
     # binary search for the index of the read
     index = max(np.searchsorted(r_sites, pos, side="right") - 1, 0)
     # Last site = end of the chrom, index of last fragment is last site - 1
@@ -410,7 +385,7 @@ def frag_len(
         ax.set_title("Distribution of restriction fragment length")
         ax.set_yscale("log", base=10)
         ax.annotate(
-            "Total fragments: {}".format(nfrags),
+            f"Total fragments: {nfrags}",
             xy=(0.95, 0.95),
             xycoords="axes fraction",
             fontsize=12,
@@ -418,7 +393,7 @@ def frag_len(
             verticalalignment="top",
         )
         ax.annotate(
-            "Median length: {}".format(med_len),
+            f"Median length: {med_len}",
             xy=(0.95, 0.90),
             xycoords="axes fraction",
             fontsize=12,
@@ -433,10 +408,7 @@ def frag_len(
             plt.show()
         plt.clf()
     else:
-        logger.info(
-            "Genome digested into {0} fragments with a median "
-            "length of {1}".format(nfrags, med_len)
-        )
+        logger.info(f"Genome digested into {nfrags} fragments with a median length of {med_len}")
 
 
 def gen_enzyme_religation_regex(enzyme):
@@ -472,7 +444,6 @@ def gen_enzyme_religation_regex(enzyme):
 
     # Iterates on the enzymes.
     for enz in rb:
-
         # Extract restriction sites and look for cut sites.
         site = enz.elucidate()
         fw_cut = site.find("^")
@@ -496,9 +467,7 @@ def gen_enzyme_religation_regex(enzyme):
             # Replace "N" by "." for regex searching of the sites
             ligation_list.append((give_site + accept_site).replace("N", "."))
             ligation_list.append(
-                str(Seq(give_site + accept_site).reverse_complement()).replace(
-                    "N", "."
-                )
+                str(Seq(give_site + accept_site).reverse_complement()).replace("N", ".")
             )
 
     # Build the regex for any ligation sites.

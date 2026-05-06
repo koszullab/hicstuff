@@ -1,11 +1,12 @@
 # Test functions for the pipeline submodule
 
-from tempfile import NamedTemporaryFile
-import os, shutil
-import pandas as pd
-import pytest
 import filecmp
-import numpy as np
+import os
+import shutil
+from tempfile import NamedTemporaryFile
+
+import pytest
+
 import hicstuff.pipeline as hpi
 
 MAPPING_PARAMETERS = ("mapping", ["normal", "iterative"])
@@ -26,7 +27,7 @@ def test_filter_pcr_dup():
     test_rm = NamedTemporaryFile(mode="w", delete=False)
     lnum = 0
     # Copy the test valid_idx file, but generate PCR dups of the pair at line 50
-    with open("test_data/valid_idx.pairs", "r") as pairs:
+    with open("test_data/valid_idx.pairs") as pairs:
         for line in pairs:
             test_pairs.write(line)
             if lnum == 50:

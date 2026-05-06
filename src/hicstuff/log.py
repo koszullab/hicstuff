@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# coding: utf-8
 
 """Basic logging
 
@@ -8,11 +7,11 @@ texting with the right API). By default the log file is disabled, but can be
 enabled or changed using set_file_handler.
 """
 
-
+import json
 import logging
 import logging.handlers
+
 import requests
-import json
 
 TEXT_CREDENTIALS_DEFAULT_PATH = "text_credentials.json"
 

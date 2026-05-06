@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# coding: utf-8
 
 """Abstract command classes for hicstuff
 
@@ -37,31 +36,34 @@ ValueError
     specified.
 """
 
-import re
-import sys, os, shutil
-import tempfile
-from os.path import join, dirname, basename
-from matplotlib import pyplot as plt
-from matplotlib import cm
-from docopt import docopt
-import pandas as pd
-import numpy as np
-import pysam as ps
-import glob
 import copy
+import glob
+import os
+import re
+import shutil
+import sys
+import tempfile
+from os.path import dirname, join
+
+import numpy as np
+import pandas as pd
+import pysam as ps
 from Bio import SeqIO
-import hicstuff.view as hcv
-import hicstuff.hicstuff as hcs
+from docopt import docopt
+from matplotlib import cm
+from matplotlib import pyplot as plt
+
 import hicstuff.cutsite as hcc
 import hicstuff.digest as hcd
-import hicstuff.iteralign as hci
-import hicstuff.filter as hcf
-import hicstuff.stats as hcstats
-from hicstuff import __version__
-import hicstuff.io as hio
-from hicstuff.log import logger
-import hicstuff.pipeline as hpi
 import hicstuff.distance_law as hcdl
+import hicstuff.filter as hcf
+import hicstuff.hicstuff as hcs
+import hicstuff.io as hio
+import hicstuff.iteralign as hci
+import hicstuff.pipeline as hpi
+import hicstuff.stats as hcstats
+import hicstuff.view as hcv
+from hicstuff.log import logger
 
 DIVERGENT_CMAPS = [
     "PiYG",
@@ -101,7 +103,7 @@ class AbstractCommand:
         """Throws error if the output file exists. Create required file tree otherwise."""
         # Get complete output filename and prevent overwriting unless force is enabled
         if not force and os.path.exists(path):
-            raise IOError("Output file already exists. Use --force to overwrite")
+            raise OSError("Output file already exists. Use --force to overwrite")
         if dirname(path):
             os.makedirs(dirname(path), exist_ok=True)
 
@@ -211,7 +213,7 @@ class Digest(AbstractCommand):
         # Create output directory if it does not exist
         if os.path.exists(self.args["--outdir"]):
             if not self.args["--force"]:
-                raise IOError("Output directory already exists. Use --force to overwrite")
+                raise OSError("Output directory already exists. Use --force to overwrite")
         else:
             os.makedirs(self.args["--outdir"], exist_ok=True)
         if self.args["--figdir"]:
@@ -479,7 +481,9 @@ class View(AbstractCommand):
         if self.binning > 1:
             if self.bp_unit:
                 self.pos = self.frags.iloc[:, 2]
-                binned_map, binned_pos = hcs.bin_bp_sparse(M=sparse_map, positions=self.pos, bin_len=self.binning)
+                binned_map, binned_pos = hcs.bin_bp_sparse(
+                    M=sparse_map, positions=self.pos, bin_len=self.binning
+                )
                 # Get bin numbers of chromosome starts
                 binned_start = np.append(np.where(binned_pos == 0)[0], len(binned_pos))
                 # Get bin length of each chromosome
@@ -494,7 +498,9 @@ class View(AbstractCommand):
                 chrom_ends = self.frags.groupby("chrom").end_pos.max()
                 # Fill ends of chromosome bins with actual chromosome length
                 for cn in chrom_ends.index:
-                    binned_frags.end_pos[np.isnan(binned_frags.end_pos) & (binned_frags.chrom == cn)] = chrom_ends[cn]
+                    binned_frags.end_pos[
+                        np.isnan(binned_frags.end_pos) & (binned_frags.chrom == cn)
+                    ] = chrom_ends[cn]
 
             else:
                 # Note this is a basic binning procedure, chromosomes are
@@ -515,7 +521,9 @@ class View(AbstractCommand):
                             pass
                         return x
 
-                    binned_frags.start_pos = binned_frags.groupby("chrom", sort=False).start_pos.apply(shift_min)
+                    binned_frags.start_pos = binned_frags.groupby(
+                        "chrom", sort=False
+                    ).start_pos.apply(shift_min)
                 else:
                     binned_frags = self.frags
 
@@ -534,20 +542,29 @@ class View(AbstractCommand):
             try:
                 trim_std = float(self.args["--trim"])
             except ValueError:
-                logger.error("You must specify a number of standard deviations for " "trimming")
+                logger.error("You must specify a number of standard deviations for trimming")
                 raise
-            binned_map, chrom_starts = hcs.trim_sparse(binned_map, n_mad=trim_std, chrom_start=chrom_starts)
+            binned_map, chrom_starts = hcs.trim_sparse(
+                binned_map, n_mad=trim_std, chrom_start=chrom_starts
+            )
 
         # NORMALIZATION
         if self.args["--normalize"]:
-            binned_map = hcs.normalize_sparse(binned_map, norm="ICE", n_mad=float(self.args["--n-mad"]))
+            binned_map = hcs.normalize_sparse(
+                binned_map, norm="ICE", n_mad=float(self.args["--n-mad"])
+            )
 
         # ZOOM REGION
         if self.args["--region"]:
             if self.args["--lines"]:
-                raise NotImplementedError("Chromosome lines are currently incompatible with a region zoom")
+                raise NotImplementedError(
+                    "Chromosome lines are currently incompatible with a region zoom"
+                )
             if self.frags is None:
-                logger.error("A fragment file must be provided to subset " "genomic regions. See hicstuff view --help")
+                logger.error(
+                    "A fragment file must be provided to subset "
+                    "genomic regions. See hicstuff view --help"
+                )
                 sys.exit(1)
             # Load chromosomes and positions from fragments list
             reg_pos = binned_frags[["chrom", "start_pos"]]
@@ -578,11 +595,13 @@ class View(AbstractCommand):
             # In case user specified a custom cmap incompatible with ratios
             if cmap != "Reds":
                 logger.warning(
-                    "You chose a non-divergent colormap. Valid divergent "
-                    "cmaps are:\n\t{}".format(" ".join(DIVERGENT_CMAPS))
+                    "You chose a non-divergent colormap. Valid divergent cmaps are:\n\t{}".format(
+                        " ".join(DIVERGENT_CMAPS)
+                    )
                 )
             logger.info(
-                "Defaulting to seismic colormap for ratios. You can pick " "another divergent colormap if you wish."
+                "Defaulting to seismic colormap for ratios. You can pick "
+                "another divergent colormap if you wish."
             )
             cmap = "seismic"
         self.bp_unit = False
@@ -596,7 +615,8 @@ class View(AbstractCommand):
             if re.match(r"^[0-9]+[KMG]?B[P]?$", bin_str):
                 if hic_fmt == "graal" and not self.args["--frags"]:
                     logger.error(
-                        "A fragment file must be provided to perform " "basepair binning. See hicstuff view --help"
+                        "A fragment file must be provided to perform "
+                        "basepair binning. See hicstuff view --help"
                     )
                     sys.exit(1)
                 # Load positions from fragments list
@@ -605,7 +625,9 @@ class View(AbstractCommand):
             else:
                 logger.error("Please provide an integer or basepair value for binning.")
                 raise
-        sparse_map, self.frags, _ = hio.flexible_hic_loader(input_map, fragments_file=self.args["--frags"], quiet=True)
+        sparse_map, self.frags, _ = hio.flexible_hic_loader(
+            input_map, fragments_file=self.args["--frags"], quiet=True
+        )
         output_file = self.args["--output"]
         processed_map, chrom_starts = self.process_matrix(sparse_map)
         # If 2 matrices given compute log ratio
@@ -617,7 +639,7 @@ class View(AbstractCommand):
             )
             processed_map2, chrom_starts = self.process_matrix(sparse_map2)
             if sparse_map2.shape != sparse_map.shape:
-                logger.error("You cannot compute the ratio of matrices with " "different dimensions")
+                logger.error("You cannot compute the ratio of matrices with different dimensions")
             # Get log of values for both maps
             processed_map.data = np.log2(processed_map.data)
             processed_map2.data = np.log2(processed_map2.data)
@@ -899,7 +921,9 @@ class Scalogram(AbstractCommand):
     """
 
     def execute(self):
-        mat, frags, _ = hio.flexible_hic_loader(self.args["<contact_map>"], fragments_file=self.args["--frags"])
+        mat, frags, _ = hio.flexible_hic_loader(
+            self.args["<contact_map>"], fragments_file=self.args["--frags"]
+        )
         if frags is not None:
             # If fragments_list.txt is provided, load chrom start and end columns
             frags = pd.read_csv(self.args["--frags"], delimiter="\t", usecols=(1, 2, 3))
@@ -1093,7 +1117,9 @@ class Rebin(AbstractCommand):
             existing_bins_idx = np.insert(existing_bins_idx, 0, 0)
             # Add missing bins to original table, and sort by idx
             # missing bins are "holes" in the continuous range of existing bins
-            missing_bins_idx = sorted(set(range(existing_bins_idx[0], existing_bins_idx[-1])) - set(existing_bins_idx))
+            missing_bins_idx = sorted(
+                set(range(existing_bins_idx[0], existing_bins_idx[-1])) - set(existing_bins_idx)
+            )
             miss_bins_df = pd.DataFrame(miss_bins, columns=frags.columns, index=missing_bins_idx)
             # Cast to match frags dtypes to prevent object dtype after concat
             for col in frags.columns:

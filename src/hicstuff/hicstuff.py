@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# -*- coding: utf-8 -*-
 
 """Common Hi-C functions
 
@@ -19,21 +18,19 @@ These functions are meant to be simple and relatively quick
 as-is implementations of procedures described in Hi-C papers.
 """
 
-import numpy as np
-import string
 import collections
-import itertools
-import warnings
-import functools
-from scipy.sparse import coo_matrix, csr_matrix, lil_matrix
-from scipy.sparse.linalg import eigsh
-from scipy.linalg import eig, toeplitz
-import scipy.sparse as sparse
-from scipy.sparse import issparse
 import copy
-import random
+import functools
+import itertools
+import string
+import warnings
+
+import numpy as np
 import pandas as pd
-import sys
+import scipy.sparse as sparse
+from scipy.linalg import eig, toeplitz
+from scipy.sparse import coo_matrix, csr_matrix, issparse, lil_matrix
+
 from hicstuff.log import logger
 
 
@@ -255,7 +252,9 @@ def bin_measurement(measurement=None, subsampling_factor=3):
     if measurement is None:
         measurement = np.array([])
     n = len(measurement)
-    binned_measurement = [measurement[i - subs + 1 : i].sum() for i in range(n) if i % subs == 0 and i > 0]
+    binned_measurement = [
+        measurement[i - subs + 1 : i].sum() for i in range(n) if i % subs == 0 and i > 0
+    ]
     return np.array(binned_measurement)
 
 
@@ -371,7 +370,6 @@ def bin_bp_sparse(M, positions, bin_len=10000):
     # Use (chr, bin) as grouping key (coord) and indices of fragments
     # belonging to current bin (bin_frags)
     for coords, bin_frags in itertools.groupby(frag_idx, lambda x: tuple(frags[x, :])):
-
         bin_frags = list(bin_frags)
         first_frag, last_frag = bin_frags[0], bin_frags[-1] + 1
         # Pool row/col number by bin
@@ -646,7 +644,6 @@ def normalize_dense(M, norm="SCN", order=1, iterations=40):
 
     if norm == "SCN":
         for _ in range(0, iterations):
-
             sumrows = s.sum(axis=1)
             maskrows = (sumrows != 0)[:, None] * (sumrows != 0)[None, :]
             sums_row = sumrows[:, None] * np.ones(sumrows.shape)[None, :]
@@ -665,7 +662,7 @@ def normalize_dense(M, norm="SCN", order=1, iterations=40):
         except ImportError as e:
             print(str(e))
             print("I can't find mirnylib.")
-            print("Please install it from " "https://bitbucket.org/mirnylab/mirnylib")
+            print("Please install it from https://bitbucket.org/mirnylab/mirnylib")
             print("I will use default norm as fallback.")
             return normalize_dense(M, order=order, iterations=iterations)
 
@@ -853,7 +850,7 @@ def directional(M, window=None, circ=False, extrapolate=True, log=True):
     """
 
     # Sanity checks
-    if not type(M) is np.ndarray:
+    if type(M) is not np.ndarray:
         M = np.array(M)
 
     if M.shape[0] != M.shape[1]:
@@ -896,13 +893,15 @@ def directional(M, window=None, circ=False, extrapolate=True, log=True):
     else:
         d = []
 
-    d += [ttest_rel(N[i, i - window : i], N[i, i : i + window])[0] for i in range(window, n - window)]
+    d += [
+        ttest_rel(N[i, i - window : i], N[i, i : i + window])[0] for i in range(window, n - window)
+    ]
 
     if circ:
         d += [
             ttest_rel(
                 N[i, i - window : i],
-                np.array((list(N[i, : i - n + window]) + list(N[i, i:]))),
+                np.array(list(N[i, : i - n + window]) + list(N[i, i:])),
             )[0]
             for i in range(n - window, n)
         ]
@@ -930,7 +929,7 @@ def domainogram(M, window=None, circ=False, extrapolate=True):
     """
 
     # Sanity checks
-    if not type(M) is np.ndarray:
+    if type(M) is not np.ndarray:
         M = np.array(M)
 
     if M.shape[0] != M.shape[1]:
@@ -951,25 +950,35 @@ def domainogram(M, window=None, circ=False, extrapolate=True):
     if circ:
         d = [
             (
-                np.sum(M[-i + window :, -i + window :]) + np.sum(M[: i - window + 1, : i - window + 1])
+                np.sum(M[-i + window :, -i + window :])
+                + np.sum(M[: i - window + 1, : i - window + 1])
                 for i in range(window)
             )
         ]
     elif extrapolate:
         d = [
-            (np.sum(M[0 : 2 * i + 1, 0 : 2 * i + 1]) * ((2 * window + 1) ** 2.0) / ((2 * i + 1) ** 2.0))
+            (
+                np.sum(M[0 : 2 * i + 1, 0 : 2 * i + 1])
+                * ((2 * window + 1) ** 2.0)
+                / ((2 * i + 1) ** 2.0)
+            )
             for i in range(window)
         ]
     else:
         d = []
 
-    d += [np.sum(M[i - window : i + window + 1, i - window : i + window + 1]) for i in range(window, n - window)]
+    d += [
+        np.sum(M[i - window : i + window + 1, i - window : i + window + 1])
+        for i in range(window, n - window)
+    ]
 
     if circ:
         d += [M[i:, i:].sum() + M[: n - i, n - i].sum() for i in range(n - window, n)]
     elif extrapolate:
         d += [
-            M[i - window :, i - window :].sum() * ((2 * window + 1) ** 2.0) / ((2 * (n - i) + 1) ** 2.0)
+            M[i - window :, i - window :].sum()
+            * ((2 * window + 1) ** 2.0)
+            / ((2 * (n - i) + 1) ** 2.0)
             for i in range(n - window, n)
         ]
 
@@ -1107,7 +1116,9 @@ def to_pdb(
     """
 
     n = len(structure)
-    letters = (string.ascii_uppercase + string.ascii_lowercase + string.digits + string.punctuation) * int(n / 94 + 1)
+    letters = (
+        string.ascii_uppercase + string.ascii_lowercase + string.digits + string.punctuation
+    ) * int(n / 94 + 1)
     if contigs is None:
         contigs = np.ones(n + 1)
     if annotations is None:
@@ -1351,7 +1362,7 @@ def flatten_positions_to_contigs(positions):
         except TypeError:
             flattened_positions = np.array(positions)
 
-    if (np.diff(positions) == 0).any() and not (0 in set(positions)):
+    if (np.diff(positions) == 0).any() and 0 not in set(positions):
         warnings.warn("I detected identical consecutive nonzero values.")
         return positions
 
@@ -1373,7 +1384,10 @@ def simple_distance_diagonal_law(matrix, circular=False):
         return np.array([np.average(np.diagonal(matrix, j)) for j in range(n)])
     else:
         n = len(matrix)
-        return [(np.average(np.diagonal(matrix, j)) + np.average(np.diagonal(matrix, n - j))) / 2.0 for j in range(n)]
+        return [
+            (np.average(np.diagonal(matrix, j)) + np.average(np.diagonal(matrix, n - j))) / 2.0
+            for j in range(n)
+        ]
 
 
 def distance_diagonal_law(matrix, positions=None, circular=False):
@@ -1390,7 +1404,7 @@ def distance_diagonal_law(matrix, positions=None, circular=False):
     def is_intra(i, j):
         return contigs[i] == contigs[j]
 
-    max_intra_distance = max((len(contigs == u) for u in set(contigs)))
+    max_intra_distance = max(len(contigs == u) for u in set(contigs))
 
     intra_contacts = []
     inter_contacts = [np.average(np.diagonal(matrix, j)) for j in range(max_intra_distance, n)]
@@ -1448,7 +1462,7 @@ def estimate_param_rippe(measurements, bins, init=None, circ=False):
             + np.log(0.53)
             - 3 * np.log(kuhn)
             + slope * (np.log(lm * x) - np.log(kuhn))
-            + (d - 2) / ((np.power((lm * x / kuhn), 2) + d))
+            + (d - 2) / (np.power((lm * x / kuhn), 2) + d)
         )
         err = y - rippe
 
@@ -1464,27 +1478,37 @@ def estimate_param_rippe(measurements, bins, init=None, circ=False):
             s = n * (n_l - n) / n_l
             s0 = n0 * (n_l - n0) / n_l
             norm_lin = param[3] * (
-                0.53 * (param[0] ** -3.0) * np.power(n0, (param[2])) * np.exp((d - 2) / ((np.power(n0, 2) + d)))
+                0.53
+                * (param[0] ** -3.0)
+                * np.power(n0, (param[2]))
+                * np.exp((d - 2) / (np.power(n0, 2) + d))
             )
 
             norm_circ = param[3] * (
-                0.53 * (param[0] ** -3.0) * np.power(s0, (param[2])) * np.exp((d - 2) / ((np.power(s0, 2) + d)))
+                0.53
+                * (param[0] ** -3.0)
+                * np.power(s0, (param[2]))
+                * np.exp((d - 2) / (np.power(s0, 2) + d))
             )
 
             rippe = (
                 param[3]
-                * (0.53 * (param[0] ** -3.0) * np.power(s, (param[2])) * np.exp((d - 2) / ((np.power(s, 2) + d))))
+                * (
+                    0.53
+                    * (param[0] ** -3.0)
+                    * np.power(s, (param[2]))
+                    * np.exp((d - 2) / (np.power(s, 2) + d))
+                )
                 * norm_lin
                 / norm_circ
             )
 
         else:
-
             rippe = param[3] * (
                 0.53
                 * (param[0] ** -3.0)
                 * np.power((param[1] * x / param[0]), (param[2]))
-                * np.exp((d - 2) / ((np.power((param[1] * x / param[0]), 2) + d)))
+                * np.exp((d - 2) / (np.power((param[1] * x / param[0]), 2) + d))
             )
 
         return rippe
@@ -1559,14 +1583,17 @@ def null_model(
         N = np.array([[distances[min(abs(i - j), n)] for i in range(n)] for j in range(n)])
 
     elif model == "rippe":
-
-        trans_contacts = np.array([matrix[i, j] for i, j in itertools.product(range(n), range(m)) if is_inter(i, j)])
+        trans_contacts = np.array(
+            [matrix[i, j] for i, j in itertools.product(range(n), range(m)) if is_inter(i, j)]
+        )
         mean_trans_contacts = np.average(trans_contacts)
         kuhn, lm, slope, d, A = rippe_parameters(matrix, positions, circ=circ)
 
         def jc(s, frag):
             dist = s - circ * (s**2) / lengths[frag]
-            computed_contacts = 0.53 * A * (kuhn ** (-3.0)) * (dist**slope) * np.exp((d - 2) / (dist + d))
+            computed_contacts = (
+                0.53 * A * (kuhn ** (-3.0)) * (dist**slope) * np.exp((d - 2) / (dist + d))
+            )
             return np.maximum(computed_contacts, mean_trans_contacts)
 
         for i in range(n):
@@ -1668,7 +1695,7 @@ def scalogram(M, circ=False, max_range=False):
     """
 
     # Sanity checks
-    if not type(M) is np.ndarray:
+    if type(M) is not np.ndarray:
         M = np.array(M)
 
     if M.shape[0] != M.shape[1]:

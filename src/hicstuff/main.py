@@ -27,8 +27,8 @@ The subcommands are:
     view            Visualize a Hi-C matrix.
 """
 
-from docopt import docopt
-from docopt import DocoptExit
+from docopt import DocoptExit, docopt
+
 import hicstuff.commands as commands
 from hicstuff import __version__
 

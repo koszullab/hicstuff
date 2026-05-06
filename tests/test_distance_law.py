@@ -1,12 +1,14 @@
 # Tests for the hicstuff filter module.
 # 20190409
 
-import hicstuff.distance_law as hcdl
-from tempfile import NamedTemporaryFile
-import pandas as pd
-import numpy as np
-import os as os
 import hashlib as hashlib
+import os as os
+from tempfile import NamedTemporaryFile
+
+import numpy as np
+import pandas as pd
+
+import hicstuff.distance_law as hcdl
 
 fragments_file = "test_data/fragments_list.txt"
 fragments = pd.read_csv(fragments_file, sep="\t", header=0, usecols=[0, 1, 2, 3])
@@ -29,10 +31,14 @@ def test_distancelaw_cli() -> None:
     """Test the distance law CLI."""
     os.makedirs("test_out", exist_ok=True)
     pairs_reads_file = "test_data/valid_idx_filtered.pairs"
-    os.system(f"hicstuff distancelaw --pairs {pairs_reads_file} -o test_out/ps.pdf -O test_out/ps.tsv")
+    os.system(
+        f"hicstuff distancelaw --pairs {pairs_reads_file} -o test_out/ps.pdf -O test_out/ps.tsv"
+    )
     assert os.path.exists("test_out/ps.pdf")
     pairs_reads_file = "test_data/valid_idx_filtered.pairs.gz"
-    os.system(f"hicstuff distancelaw --average --pairs {pairs_reads_file} -o test_out/ps2.pdf -O test_out/ps2.tsv")
+    os.system(
+        f"hicstuff distancelaw --average --pairs {pairs_reads_file} -o test_out/ps2.pdf -O test_out/ps2.tsv"
+    )
     assert os.path.exists("test_out/ps2.pdf")
 
 
@@ -116,7 +122,9 @@ def test_get_distance_law():
     hcdl.get_distance_law(pairs_reads_file, fragments_file, out_file=distance_law.name)
     assert os.path.exists(distance_law.name)
     # Test the circular option.
-    hcdl.get_distance_law(pairs_reads_file, fragments_file, out_file=distance_law.name, circular=True)
+    hcdl.get_distance_law(
+        pairs_reads_file, fragments_file, out_file=distance_law.name, circular=True
+    )
     assert os.path.exists(distance_law.name)
     # Test the centromere option.
     hcdl.get_distance_law(
@@ -192,5 +200,9 @@ def test_slope_distance_law():
     """Test function calculating the slope of the distance law."""
     slope = hcdl.slope_distance_law(test_xs, test_ps)
     assert len(slope) == 2
-    assert np.isclose(sum(slope[0]), 18.9329, rtol=0.0001) and np.isclose(sum(slope[1]), -2.7459, rtol=0.0001)
-    assert np.isclose(np.std(slope[0]), 3.9226, rtol=0.0001) and np.isclose(np.std(slope[1]), 5.0451, rtol=0.0001)
+    assert np.isclose(sum(slope[0]), 18.9329, rtol=0.0001) and np.isclose(
+        sum(slope[1]), -2.7459, rtol=0.0001
+    )
+    assert np.isclose(np.std(slope[0]), 3.9226, rtol=0.0001) and np.isclose(
+        np.std(slope[1]), 5.0451, rtol=0.0001
+    )

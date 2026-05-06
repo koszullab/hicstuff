@@ -1,29 +1,28 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
-import gzip
-import zipfile
 import bz2
+import collections
+import functools
+import gzip
 import io
 import os
-import pysam
-import functools
-import sys
-import numpy as np
-import pandas as pd
-import collections
-import subprocess as sp
-from scipy.sparse import tril, triu
 import pathlib
 import re
-from os.path import join, exists
+import subprocess as sp
+import sys
+import zipfile
+from os.path import exists, join
 from random import getrandbits
-from scipy.sparse import coo_matrix
-from Bio import SeqIO, SeqUtils
-import hicstuff.hicstuff as hcs
-from hicstuff.log import logger
-from hicstuff import __version__
+
+import numpy as np
+import pandas as pd
 import scipy.stats as ss
+from Bio import SeqIO, SeqUtils
+from scipy.sparse import coo_matrix, tril, triu
+
+import hicstuff.hicstuff as hcs
+from hicstuff import __version__
+from hicstuff.log import logger
 
 DEFAULT_MAX_MATRIX_SHAPE = 10000
 
@@ -152,7 +151,7 @@ def save_sparse_matrix(s_mat, path):
     np.savetxt(
         path,
         sparse_arr,
-        header="{nrows}\t{ncols}\t{nonzero}".format(nrows=s_mat.shape[0], ncols=s_mat.shape[1], nonzero=s_mat.nnz),
+        header=f"{s_mat.shape[0]}\t{s_mat.shape[1]}\t{s_mat.nnz}",
         comments="",
         fmt=fmt,
         delimiter="\t",
@@ -218,7 +217,8 @@ def generate_temp_dir(path):
         os.makedirs(full_path)
     except PermissionError:
         raise PermissionError(
-            "The temporary directory cannot be created in {}. " "Make sure you have write permission.".format(path)
+            f"The temporary directory cannot be created in {path}. "
+            "Make sure you have write permission."
         )
     return full_path
 
@@ -233,7 +233,9 @@ def _check_cooler(fun):
 
             fun.__globals__["cooler"] = cooler
         except ImportError:
-            logger.error("The cooler package is required to use {0}, please install it first".format(fun.__name__))
+            logger.error(
+                f"The cooler package is required to use {fun.__name__}, please install it first"
+            )
             raise ImportError("The cooler package is required.")
         return fun(*args, **kwargs)
 
@@ -402,7 +404,7 @@ def read_compressed(filename, mode="r"):
     elif comp == "zip":
         zip_arch = zipfile.ZipFile(filename, mode)
         if len(zip_arch.namelist()) > 1:
-            raise IOError("Only a single fastq file must be in the zip archive.")
+            raise OSError("Only a single fastq file must be in the zip archive.")
         else:
             # ZipFile opens as bytes by default, using io to read as text
             zip_content = zip_arch.open(zip_arch.namelist()[0], mode)
@@ -517,7 +519,7 @@ def to_dade_matrix(M, annotations="", filename=None):
     if filename:
         try:
             np.savetxt(filename, A, fmt="%i")
-            logger.info("I saved input matrix in dade format as {0}".format(str(filename)))
+            logger.info(f"I saved input matrix in dade format as {str(filename)}")
         except ValueError as e:
             logger.warning("I couldn't save input matrix.")
             logger.warning(str(e))
@@ -545,8 +547,9 @@ def load_into_redis(filename):
         The key of the dataset needed to retrieve it from redis.
     """
     try:
-        from redis import StrictRedis as redis
         import time
+
+        from redis import StrictRedis as redis
     except ImportError:
         print(
             "Error! Redis does not appear to be installed in your system.",
@@ -559,7 +562,7 @@ def load_into_redis(filename):
     m, n = M.shape
     M = M.ravel().tostring()
     database = redis(host="localhost", port=6379, db=0)
-    key = "{0}|{1}#{2}#{3}".format(int(time.time()), array_dtype, m, n)
+    key = f"{int(time.time())}|{array_dtype}#{m}#{n}"
 
     database.set(key, M)
 
@@ -628,7 +631,7 @@ def dade_to_graal(
             for row_index, line in enumerate(file_handle):
                 dense_row = np.array(line.split("\t")[1:], dtype=np.int32)
                 for col_index in np.nonzero(dense_row)[0]:
-                    line_to_write = "{}\t{}\t{}\n".format(row_index, col_index, dense_row[col_index])
+                    line_to_write = f"{row_index}\t{col_index}\t{dense_row[col_index]}\n"
                     sparse_file.write(line_to_write)
 
     header = first_line.split("\t")
@@ -638,10 +641,11 @@ def dade_to_graal(
     elif bin_type == '"BIN"':
         logger.info("I detected fixed size binning")
     else:
-        logger.warning(("Sorry, I don't understand this matrix's " "binning: I read {}".format(str(bin_type))))
+        logger.warning(f"Sorry, I don't understand this matrix's binning: I read {str(bin_type)}")
 
     header_data = [
-        header_elt.replace("'", "").replace('"', "").replace("\n", "").split("~") for header_elt in header[1:]
+        header_elt.replace("'", "").replace('"', "").replace("\n", "").split("~")
+        for header_elt in header[1:]
     ]
 
     (
@@ -659,13 +663,11 @@ def dade_to_graal(
     total_length = len(global_frag_ids)
 
     with open(output_contigs, "w") as info_contigs:
-
         info_contigs.write("contig\tlength\tn_frags\tcumul_length\n")
 
         cumul_length = 0
 
         for contig in collections.OrderedDict.fromkeys(contig_names):
-
             length_tig = np.sum(frag_lengths[contig_names == contig])
             n_frags = collections.Counter(contig_names)[contig]
             line_to_write = "%s\t%s\t%s\t%s\n" % (
@@ -678,8 +680,7 @@ def dade_to_graal(
             cumul_length += n_frags
 
     with open(output_frags, "w") as fragments_list:
-
-        fragments_list.write("id\tchrom\tstart_pos\tend_pos" "\tsize\tgc_content\n")
+        fragments_list.write("id\tchrom\tstart_pos\tend_pos\tsize\tgc_content\n")
         bogus_gc = 0.5
 
         for i in range(total_length):
@@ -869,7 +870,8 @@ def flexible_hic_loader(mat, fragments_file=None, chroms_file=None, quiet=False)
         except ValueError:
             if not quiet:
                 logger.warning(
-                    "fragments_file was not provided when " "loading a matrix in COO/graal format. frags will be None."
+                    "fragments_file was not provided when "
+                    "loading a matrix in COO/graal format. frags will be None."
                 )
             frags = None
         try:
@@ -877,13 +879,14 @@ def flexible_hic_loader(mat, fragments_file=None, chroms_file=None, quiet=False)
         except ValueError:
             if not quiet:
                 logger.warning(
-                    "chroms_file was not provided when " "loading a matrix in COO/graal format. chroms will be None."
+                    "chroms_file was not provided when "
+                    "loading a matrix in COO/graal format. chroms will be None."
                 )
 
             chroms = None
 
     else:
-        raise ValueError("Unknown input format: {0}".format(hic_format))
+        raise ValueError(f"Unknown input format: {hic_format}")
 
     # Ensure the matrix is upper triangle symmetric
     if mat.shape[0] == mat.shape[1]:
@@ -976,7 +979,7 @@ def flexible_hic_saver(
         except NameError:
             NameError("frags is required to save a bg2 file")
     else:
-        raise ValueError("Unknown output format: {0}".format(hic_fmt))
+        raise ValueError(f"Unknown output format: {hic_fmt}")
 
 
 def save_bedgraph2d(mat, frags, out_path):
@@ -1175,9 +1178,9 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
         grep_proc = sp.Popen(["grep", "-v", "^#", in_file], stdout=sp.PIPE)
         sort_cmd = ["sort", "-S %s" % buffer] + list(sort_keys)
         if tmp_dir is not None:
-            sort_cmd.append("--temporary-directory={0}".format(tmp_dir))
+            sort_cmd.append(f"--temporary-directory={tmp_dir}")
         if parallel_ok:
-            sort_cmd.append("--parallel={0}".format(threads))
+            sort_cmd.append(f"--parallel={threads}")
         sort_proc = sp.Popen(sort_cmd, stdin=grep_proc.stdout, stdout=output)
         sort_proc.communicate()
 
@@ -1210,7 +1213,7 @@ def get_pairs_header(pairs):
         >>> os.unlink(p.name)
     """
     # Open file if needed
-    with open(pairs, "r") as pairs:
+    with open(pairs) as pairs:
         # Store header lines into a list
         header = []
         line = pairs.readline()
@@ -1268,7 +1271,6 @@ def rename_genome(genome, output=None, ambiguous=True):
 
     with open(output, "w") as output_handle:
         for record in SeqIO.parse(genome, "fasta"):
-
             # Replace hyphens, tabs and whitespace with underscores
             new_record_id = record.id.replace(" ", "_")
             new_record_id = new_record_id.replace("-", "_")
@@ -1277,12 +1279,12 @@ def rename_genome(genome, output=None, ambiguous=True):
             # Remove anything that's weird, i.e. not alphanumeric
             # or an underscore
             new_record_id = re.sub("[^_A-Za-z0-9]+", "", new_record_id)
-            header = ">{}\n".format(new_record_id)
+            header = f">{new_record_id}\n"
 
             new_seq = re.sub("[^ATGCatgcNn]", "N", str(record.seq))
 
             output_handle.write(header)
-            output_handle.write("{}\n".format(new_seq))
+            output_handle.write(f"{new_seq}\n")
 
 
 def check_fasta_index(ref, mode="bowtie2"):
@@ -1306,12 +1308,14 @@ def check_fasta_index(ref, mode="bowtie2"):
     ref = pathlib.Path(ref)
     if mode == "bowtie2":
         # Bowtie2 should have 6 index files
-        bt2_idx_files = list(ref.parent.glob("{}*bt2*".format(ref.name)))
+        bt2_idx_files = list(ref.parent.glob(f"{ref.name}*bt2*"))
         index = None if len(bt2_idx_files) < 6 else bt2_idx_files
     elif mode == "bwa":
         refdir = str(ref.parent)
         refdir_files = os.listdir(refdir)
-        bwa_idx_files = [join(refdir, f) for f in refdir_files if re.search(r".*\.(sa|pac|bwt|ann|amb)$", f)]
+        bwa_idx_files = [
+            join(refdir, f) for f in refdir_files if re.search(r".*\.(sa|pac|bwt|ann|amb)$", f)
+        ]
         index = None if len(bwa_idx_files) < 5 else bwa_idx_files
     else:
         index = [ref]
@@ -1366,7 +1370,7 @@ def check_fastq_entries(in_file):
         with gzip.open(in_file, "rt") as input_fastq:
             n_lines = sum(1 for line in input_fastq)
     else:
-        with open(in_file, "r") as input_fastq:
+        with open(in_file) as input_fastq:
             n_lines = sum(1 for line in input_fastq)
     n_reads = int(n_lines) / 4
     return n_reads
@@ -1387,6 +1391,11 @@ def check_bam_entries(in_file):
         How many reads listed in the input bam
     """
 
-    n_reads = sp.run(["samtools", "view", "-c", in_file], stdout=sp.PIPE, stderr=sp.PIPE, encoding="utf-8").stdout[:-2]
+    n_reads = sp.run(
+        ["samtools", "view", "-c", in_file],
+        stdout=sp.PIPE,
+        stderr=sp.PIPE,
+        encoding="utf-8",
+    ).stdout[:-2]
 
     return int(n_reads)

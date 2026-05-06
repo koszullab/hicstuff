@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# coding: utf-8
 
 """Hi-C visualization
 
@@ -7,11 +6,10 @@ A lightweight library for quickly parsing, loading and
 viewing contact maps in instagraal or csv format.
 """
 
-
 import numpy as np
-from matplotlib import pyplot as plt
-from matplotlib import colors
 from Bio import SeqIO
+from matplotlib import pyplot as plt
+
 import hicstuff.io as hio
 from hicstuff.hicstuff import normalize_sparse
 
@@ -23,7 +21,6 @@ try:
     SEABORN = True
 except ImportError:
     pass
-
 
 
 load_sparse_matrix = hio.load_sparse_matrix
@@ -70,7 +67,15 @@ def sparse_to_dense(M, remove_diag=True):
 
 
 def plot_matrix(
-    array, ax=None, filename=None, vmin=0, vmax=None, title=None, dpi=500, cmap="Reds", chrom_starts=None
+    array,
+    ax=None,
+    filename=None,
+    vmin=0,
+    vmax=None,
+    title=None,
+    dpi=500,
+    cmap="Reds",
+    chrom_starts=None,
 ):
     """A function that performs all the tedious matplotlib
     magic to draw a 2D array with as few parameters and
@@ -109,8 +114,8 @@ def plot_matrix(
     # plt.margins(0, 0)
     # plt.gca().xaxis.set_major_locator(plt.NullLocator())
     # plt.gca().yaxis.set_major_locator(plt.NullLocator())
-    im_kwargs = {'vmin': vmin, 'vmax': vmax, 'cmap': cmap, 'interpolation': "none"}
-    li_kwargs = {'ls': ':', 'alpha': 0.5, 'c': 'black'}
+    im_kwargs = {"vmin": vmin, "vmax": vmax, "cmap": cmap, "interpolation": "none"}
+    li_kwargs = {"ls": ":", "alpha": 0.5, "c": "black"}
     if ax is None:
         plt.figure()
         plt.imshow(array, **im_kwargs)
@@ -124,7 +129,7 @@ def plot_matrix(
         for pos in chrom_starts:
             targ.axvline(pos, **li_kwargs)
             targ.axhline(pos, **li_kwargs)
-    
+
     if title is not None:
         if ax is None:
             plt.title(title)
@@ -138,8 +143,7 @@ def plot_matrix(
 
 
 def normalize(M, norm="SCN"):
-    """Attempt to normalize if hicstuff is found, does nothing otherwise.
-    """
+    """Attempt to normalize if hicstuff is found, does nothing otherwise."""
     try:
         return normalize_sparse(M, norm=norm)
     except NameError:
@@ -168,9 +172,7 @@ def scaffold_distribution(genome, threshold=100, plot=True):
     """
 
     handle = SeqIO.parse(genome, "fasta")
-    lengths = sorted(
-        (len(u) for u in handle if len(u) > threshold), reverse=True
-    )
+    lengths = sorted((len(u) for u in handle if len(u) > threshold), reverse=True)
 
     if plot:
         x, y = zip(*enumerate(lengths))
@@ -197,7 +199,5 @@ def reorder_fasta(genome, output, threshold=100000):
     """
 
     handle = SeqIO.parse(genome, "fasta")
-    handle_to_write = sorted(
-        (len(u) for u in handle if len(u) > threshold), reverse=True
-    )
+    handle_to_write = sorted((len(u) for u in handle if len(u) > threshold), reverse=True)
     SeqIO.write(handle_to_write, output, "fasta")

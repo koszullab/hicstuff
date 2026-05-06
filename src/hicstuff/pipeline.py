@@ -3,34 +3,40 @@ Handle generation of graal-compatible contact maps from fastq files.
 cmdoret, 20190322
 """
 
-import os, time, csv, sys, re
-from datetime import datetime
-from dateutil.relativedelta import relativedelta
-import shutil as st
-import itertools
-from shutil import which
-import logging
-from os.path import join
-import subprocess as sp
+import csv
 import gzip
-from Bio import SeqIO
+import itertools
+import logging
+import os
+import pathlib
+import re
+import shutil as st
+import subprocess as sp
+import sys
+import time
+from datetime import datetime
+from os.path import join
+from shutil import which
+
 import cooler
-import pandas as pd
+import matplotlib
 import numpy as np
+import pairtools
+import pandas as pd
 import pysam as ps
+from Bio import SeqIO
+from dateutil.relativedelta import relativedelta
+from packaging.version import Version
+
+import hicstuff.cutsite as hcc
 import hicstuff.digest as hcd
-import hicstuff.iteralign as hci
+import hicstuff.distance_law as hcdl
 import hicstuff.filter as hcf
 import hicstuff.io as hio
-import hicstuff.distance_law as hcdl
-import hicstuff.cutsite as hcc
-import hicstuff.stats as hcs
-import matplotlib
-import pathlib
-import pairtools
-from packaging.version import Version
-from hicstuff import __version__
+import hicstuff.iteralign as hci
 import hicstuff.log as hcl
+import hicstuff.stats as hcs
+from hicstuff import __version__
 from hicstuff.log import logger
 
 
@@ -94,9 +100,7 @@ def align_reads(
         )
         st.rmtree(iter_tmp_dir)
         sp.call(
-            "samtools view -F 2048 -h -@ {threads} -O BAM {tmp} -o {out}".format(
-                threads=threads, tmp=tmp_bam, out=out_bam
-            ),
+            f"samtools view -F 2048 -h -@ {threads} -O BAM {tmp_bam} -o {out_bam}",
             shell=True,
         )
     else:
@@ -116,9 +120,7 @@ def align_reads(
         sp.call(map_cmd.format(**map_args), shell=True)
         # Remove supplementary alignments and sort reads by name
         sp.call(
-            "samtools view -F 2048 -h -@ {threads} {tmp} | samtools sort -n -@ {threads} -o {out} -".format(
-                tmp=tmp_bam, threads=threads, out=out_bam
-            ),
+            f"samtools view -F 2048 -h -@ {threads} {tmp_bam} | samtools sort -n -@ {threads} -o {out_bam} -",
             shell=True,
         )
     os.remove(tmp_bam)
@@ -153,7 +155,9 @@ def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30):
     sorting = "#sorted: readID\n"
     cols = "#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n"
     # Chromosome order will be identical in info_contigs and pair files
-    chroms = pd.read_csv(info_contigs, sep="\t").apply(lambda x: "#chromsize: %s %d\n" % (x.contig, x.length), axis=1)
+    chroms = pd.read_csv(info_contigs, sep="\t").apply(
+        lambda x: "#chromsize: %s %d\n" % (x.contig, x.length), axis=1
+    )
     with open(out_pairs, "w") as pairs:
         pairs.writelines([format_version, sorting, cols] + chroms.tolist())
         pairs_writer = csv.writer(pairs, delimiter="\t")
@@ -213,10 +217,10 @@ def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30):
             n_reads["mapped"] += sum([end1_passed, end2_passed])
             # Keep only pairs where both reads have good quality
             if end1_passed and end2_passed:
-
                 # Flipping to get upper triangle
                 if (
-                    end1.reference_id == end2.reference_id and end1.reference_start > end2.reference_start
+                    end1.reference_id == end2.reference_id
+                    and end1.reference_start > end2.reference_start
                 ) or end1.reference_id > end2.reference_id:
                     end1, end2 = end2, end1
                 pairs_writer.writerow(
@@ -275,7 +279,7 @@ def filter_pcr_dup(pairs_idx_file, filtered_file):
     reads_count = 0
     # Store header lines
     header = hio.get_pairs_header(pairs_idx_file)
-    with open(pairs_idx_file, "r") as pairs, open(filtered_file, "w") as filtered:
+    with open(pairs_idx_file) as pairs, open(filtered_file, "w") as filtered:
         # Copy header lines to filtered file
         for head_line in header:
             filtered.write(head_line + "\n")
@@ -314,7 +318,10 @@ def filter_pcr_dup(pairs_idx_file, filtered_file):
             "%d%% PCR duplicates have been filtered out (%d / %d pairs) "
             % (100 * round(filter_count / reads_count, 3), filter_count, reads_count)
         )
-        logger.info("%d pairs remaining after removing PCR duplicates", reads_count - filter_count)
+        logger.info(
+            "%d pairs remaining after removing PCR duplicates",
+            reads_count - filter_count,
+        )
 
 
 def pairs2cool(pairs_file, cool_file, bins_file, exclude):
@@ -373,7 +380,10 @@ def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs, exclude):
 
     # Run `cooler cload pairs`
     cooler_cmd = "cooler cload pairs -c1 2 -p1 3 -p2 4 -c2 5".split(" ")
-    sp.call(cooler_cmd + [chroms_tmp + ":" + str(binning), pairs_file, cool_file], shell=False)
+    sp.call(
+        cooler_cmd + [chroms_tmp + ":" + str(binning), pairs_file, cool_file],
+        shell=False,
+    )
     os.remove(chroms_tmp)
 
 
@@ -418,7 +428,10 @@ def balance(cool_file, balancing_args):
         for path in paths:
             cooler_cmd = "cooler balance".split(" ")
             if balancing_args is not None:
-                sp.call(cooler_cmd + balancing_args.split(" ") + [cool_file + "::" + path], shell=False)
+                sp.call(
+                    cooler_cmd + balancing_args.split(" ") + [cool_file + "::" + path],
+                    shell=False,
+                )
             else:
                 sp.call(cooler_cmd + [cool_file + "::" + path], shell=False)
     else:
@@ -450,7 +463,7 @@ def pairs2matrix(pairs_file, mat_file, fragments_file, mat_fmt="graal", threads=
         Temporary directory for sorting files. If None given, will use the system default.
     """
     # Number of fragments is N lines in frag list - 1 for the header
-    n_frags = sum(1 for line in open(fragments_file, "r")) - 1
+    n_frags = sum(1 for line in open(fragments_file)) - 1
     frags = pd.read_csv(fragments_file, delimiter="\t")
 
     def write_mat_entry(frag1, frag2, contacts):
@@ -486,7 +499,7 @@ def pairs2matrix(pairs_file, mat_file, fragments_file, mat_fmt="graal", threads=
         tmp_dir=tmp_dir,
     )
     header_size = len(hio.get_pairs_header(pre_mat_file))
-    with open(pre_mat_file, "r") as pairs, open(mat_file, "w") as mat:
+    with open(pre_mat_file) as pairs, open(mat_file, "w") as mat:
         # Skip header lines
         for _ in range(header_size):
             next(pairs)
@@ -676,7 +689,9 @@ def full_pipeline(
         try:
             import cooler
         except ImportError:
-            logger.error("The cooler package is require to return matrix in cool format, please install it first.")
+            logger.error(
+                "The cooler package is require to return matrix in cool format, please install it first."
+            )
             raise ImportError("The cooler package is required.")
 
     # Pipeline can start from 3 input types
@@ -687,11 +702,13 @@ def full_pipeline(
     # Check if the number of input files is correct
     if start_stage <= 1:
         if input2 is None:
-            logger.error("You must provide 2 input files when --start-stage is fastq " "or bam.")
+            logger.error("You must provide 2 input files when --start-stage is fastq or bam.")
             sys.exit(1)
     else:
         if input2 is not None:
-            logger.error("You must provide a single input file when --start-stage is " "pairs or pairs_idx.")
+            logger.error(
+                "You must provide a single input file when --start-stage is pairs or pairs_idx."
+            )
             sys.exit(1)
     # sanitize enzyme
     enzyme = str(enzyme)
@@ -734,7 +751,7 @@ def full_pipeline(
             fname = prefix + "." + fname
         full_path = join(tmp_dir, fname)
         if not force and os.path.exists(full_path):
-            raise IOError("Temporary file {} already exists. Use --force to overwrite".format(full_path))
+            raise OSError(f"Temporary file {full_path} already exists. Use --force to overwrite")
         return full_path
 
     def _out_file(fname):
@@ -742,7 +759,7 @@ def full_pipeline(
             fname = prefix + "." + fname
         full_path = join(out_dir, fname)
         if not force and os.path.exists(full_path):
-            raise IOError("Output file {} already exists. Use --force to overwrite".format(full_path))
+            raise OSError(f"Output file {full_path} already exists. Use --force to overwrite")
 
         return full_path
 
@@ -812,7 +829,6 @@ def full_pipeline(
         # bowtie2-inspect still has return code 0 when crashing, need to
         # actively look for error in stderr
         if re.search(r"[Ee]rror", bt2err.decode()):
-
             logger.error(bt2err)
             logger.error(
                 "bowtie2-inspect has failed, make sure you provided "
@@ -833,7 +849,11 @@ def full_pipeline(
         if start_stage == 0:
             # If no index present assume input is fasta, copy it in tmp and
             # index it (to avoid conflict between instances)
-            logger.info("%s index not found at %s, generating " "a local temporary index.", aligner, genome)
+            logger.info(
+                "%s index not found at %s, generating a local temporary index.",
+                aligner,
+                genome,
+            )
             sp.run(index_cmd, stderr=sp.PIPE)
 
     # Check for spaces in fasta headers and issue error if found
@@ -868,7 +888,6 @@ def full_pipeline(
     # Perform genome alignment
     nreads_input1 = 0
     if start_stage == 0:
-
         # Check number of reads in both fastqs
         logger.info("Checking content of fastq files.")
         nreads_input1 = hio.check_fastq_entries(reads1)
@@ -876,7 +895,7 @@ def full_pipeline(
         if nreads_input1 != nreads_input2:
             logger.error("Fastq files do not have the same number of reads.")
         else:
-            logger.info("{n} reads found in each fastq file.".format(n=int(nreads_input1)))
+            logger.info(f"{int(nreads_input1)} reads found in each fastq file.")
 
         # Define mapping choice (default normal):
         if mapping == "normal":
@@ -941,7 +960,6 @@ def full_pipeline(
 
     # Starting from bam files
     if start_stage <= 1:
-
         # Check number of reads in both fastqs
         if bam1 == input1:
             logger.info("Checking content of bam files.")
@@ -950,7 +968,7 @@ def full_pipeline(
             if nreads_input1 != nreads_input2:
                 logger.error("Bam files do not have the same number of reads.")
             else:
-                logger.info("{n} reads found in each bam file.".format(n=nreads_input1))
+                logger.info(f"{nreads_input1} reads found in each bam file.")
 
         fragments_updated = True
         # Generate info_contigs and fragments_list output files
@@ -974,7 +992,9 @@ def full_pipeline(
         restrict_table = {}
         for record in SeqIO.parse(hio.read_compressed(fasta), "fasta"):
             # Get chromosome restriction table
-            restrict_table[record.id] = hcd.get_restriction_table(record.seq, enzyme, circular=circular)
+            restrict_table[record.id] = hcd.get_restriction_table(
+                record.seq, enzyme, circular=circular
+            )
 
         # Add fragment index to pairs (readID, chr1, pos1, chr2,
         # pos2, strand1, strand2, frag1, frag2)
@@ -992,7 +1012,7 @@ def full_pipeline(
 
     # Count total pairs
     tot_pairs = 0
-    with open(pairs_idx, "r") as file:
+    with open(pairs_idx) as file:
         for line in file:
             if line.startswith("#"):
                 continue
@@ -1000,14 +1020,16 @@ def full_pipeline(
                 tot_pairs += 1
     if nreads_input1 != 0:
         logger.info(
-            "{0} pairs successfully mapped ({1}%)".format(tot_pairs, round(100 * tot_pairs / (nreads_input1), 2))
+            f"{tot_pairs} pairs successfully mapped ({round(100 * tot_pairs / (nreads_input1), 2)}%)"
         )
     else:
-        logger.info("{0} pairs successfully mapped".format(tot_pairs))
+        logger.info(f"{tot_pairs} pairs successfully mapped")
 
     # Filter pairs if requested
     if filter_events:
-        uncut_thr, loop_thr = hcf.get_thresholds(pairs_idx, plot_events=plot, fig_path=dist_plot, prefix=prefix)
+        uncut_thr, loop_thr = hcf.get_thresholds(
+            pairs_idx, plot_events=plot, fig_path=dist_plot, prefix=prefix
+        )
         hcf.filter_events(
             pairs_idx,
             pairs_filtered,
@@ -1064,16 +1086,19 @@ def full_pipeline(
 
     # Build matrix from pairs.
     if mat_fmt == "cool":
-
         # Log which pairs file is being used and how many pairs are listed
         pairs_count = 0
-        with open(use_pairs, "r") as file:
+        with open(use_pairs) as file:
             for line in file:
                 if line.startswith("#"):
                     continue
                 else:
                     pairs_count += 1
-        logger.info("Generating matrix from pairs file %s (%d pairs in the file) ", use_pairs, pairs_count)
+        logger.info(
+            "Generating matrix from pairs file %s (%d pairs in the file) ",
+            use_pairs,
+            pairs_count,
+        )
 
         # Name matrix file in .cool
         mat = os.path.splitext(mat)[0] + ".cool"
@@ -1130,7 +1155,7 @@ def full_pipeline(
     # Sort and compress final pairs file
     pairstools_cmd = "pairtools sort".split(" ")
     sorted_pairsf = str(pairsf) + ".gz"
-    sort_args = "--output {out} --tmpdir {tmp_dir}".format(out=sorted_pairsf, tmp_dir=tmp_dir)
+    sort_args = f"--output {sorted_pairsf} --tmpdir {tmp_dir}"
     if Version(pairtools.__version__) >= Version("1.1.0"):
         sort_args = sort_args + " --c1 chr1 --c2 chr2 --p1 pos1 --p2 pos2 --pt frag1"
     sp.call(pairstools_cmd + sort_args.split(" ") + [pairsf], shell=False)
@@ -1171,5 +1196,5 @@ def full_pipeline(
     end_time = datetime.now()
     duration = relativedelta(end_time, start_time)
     logger.info(
-        "Contact map generated after {h}h {m}m {s}s".format(h=duration.hours, m=duration.minutes, s=duration.seconds)
+        f"Contact map generated after {duration.hours}h {duration.minutes}m {duration.seconds}s"
     )

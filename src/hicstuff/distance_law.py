@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 
-import io
-import numpy as np
-import sys
-import matplotlib.pyplot as plt
-import warnings
-from scipy import ndimage
-from matplotlib import cm
-import pandas as pd
-import os as os
 import csv as csv
+import io
+import os as os
+import sys
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from matplotlib import cm
+from scipy import ndimage
+
 import hicstuff.io as hio
-from hicstuff.log import logger
 from hicstuff import __version__
+from hicstuff.log import logger
 
 
 def export_distance_law(xs, ps, names, out_file=None):
@@ -57,7 +57,14 @@ def export_distance_law(xs, ps, names, out_file=None):
     f.write("## columns: start_bp\tp(s)\tchrom\n")
     for i in range(len(xs)):
         for j in range(len(xs[i])):
-            line = str(format(xs[i][j], "g")) + "\t" + str(format(ps[i][j], "g")) + "\t" + names[i] + "\n"
+            line = (
+                str(format(xs[i][j], "g"))
+                + "\t"
+                + str(format(ps[i][j], "g"))
+                + "\t"
+                + names[i]
+                + "\n"
+            )
             f.write(line)
     f.close()
 
@@ -142,7 +149,7 @@ def get_chr_segment_bins_index(fragments, centro_file=None, rm_centro=0):
     chr_segment_bins = np.sort(np.concatenate((chr_start_bins, chr_end_bins)))
     if centro_file is not None:
         # Read the file of the centromers
-        with open(centro_file, "r", newline="") as centro:
+        with open(centro_file, newline="") as centro:
             centro = csv.reader(centro, delimiter=" ")
             centro_pos = next(centro)
         # Sanity check: as many chroms as centromeres
@@ -326,7 +333,9 @@ def get_pairs_distance_pos(line, chr_to_idx, chr_segment_length, xs, ps, circula
             ps[chr_bin][ps_indice] += 1
 
 
-def get_pairs_distance(line, fragments, chr_segment_bins, chr_segment_length, xs, ps, circular=False):
+def get_pairs_distance(
+    line, fragments, chr_segment_bins, chr_segment_length, xs, ps, circular=False
+):
     """From a line of a pair reads file, filter -/+ or +/- reads, keep only the
     reads in the same chromosome/arm and compute the distance of the the two
     fragments. It modify the input ps in order to count or not the line given.
@@ -561,7 +570,15 @@ def get_distance_law(
         if columns is not None:
             fieldnames = columns
         else:
-            fieldnames = ["readID", "chr1", "pos1", "chr2", "pos2", "strand1", "strand2"]
+            fieldnames = [
+                "readID",
+                "chr1",
+                "pos1",
+                "chr2",
+                "pos2",
+                "strand1",
+                "strand2",
+            ]
         with hio.read_compressed(pairs_reads_file) as reads:
             # Skip header lines
             raw_line = reads.readline()
@@ -582,7 +599,9 @@ def get_distance_law(
         for i in range(len(xs)):
             n = chr_segment_length[i]
             for j in range(len(xs[i]) - 1):
-                ps[i][j] /= ((2 * n - xs[i][j + 1] - xs[i][j]) / 2) * ((1 / np.sqrt(2)) * (xs[i][j + 1] - xs[i][j]))
+                ps[i][j] /= ((2 * n - xs[i][j + 1] - xs[i][j]) / 2) * (
+                    (1 / np.sqrt(2)) * (xs[i][j + 1] - xs[i][j])
+                )
             ps[i][-1] /= ((n - xs[i][-1]) ** 2) / 2
         names = chr_names
         if out_file:
@@ -630,14 +649,18 @@ def get_distance_law(
         )
         for line in reader:
             # Iterate in each line of the file after the header
-            get_pairs_distance(line, fragments, chr_segment_bins, chr_segment_length, xs, ps, circular)
+            get_pairs_distance(
+                line, fragments, chr_segment_bins, chr_segment_length, xs, ps, circular
+            )
     # Divide the number of contacts by the area of the logbin
     for i in range(len(xs)):
         n = chr_segment_length[i]
         for j in range(len(xs[i]) - 1):
             # Use the area of a trapezium to know the area of the logbin with n
             # the size of the matrix.
-            ps[i][j] /= ((2 * n - xs[i][j + 1] - xs[i][j]) / 2) * ((1 / np.sqrt(2)) * (xs[i][j + 1] - xs[i][j]))
+            ps[i][j] /= ((2 * n - xs[i][j + 1] - xs[i][j]) / 2) * (
+                (1 / np.sqrt(2)) * (xs[i][j + 1] - xs[i][j])
+            )
             # print(
             #    ((2 * n - xs[i][j + 1] - xs[i][j]) / 2)
             #    * ((1 / np.sqrt(2)) * (xs[i][j + 1] - xs[i][j]))
@@ -744,7 +767,9 @@ def average_distance_law(xs, ps, sup, big_arm_only=False):
         # Sanity check : sup strictly inferior to maw length arms.
         if big_arm_only:
             if sup >= xs[-1]:
-                logger.error("sup have to be inferior to the max length of arms/chromsomes if big arm only set")
+                logger.error(
+                    "sup have to be inferior to the max length of arms/chromsomes if big arm only set"
+                )
                 sys.exit(1)
             if sup <= xs[len(chrom_ps) - 1]:
                 ps_occur[: len(chrom_ps)] += 1

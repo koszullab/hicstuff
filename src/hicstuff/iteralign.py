@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# coding: utf-8
 """Iterative alignment
 
 Aligns iteratively reads from a 3C fastq file: reads
@@ -11,17 +10,18 @@ increase of properly mapped reads.
 @author: Remi Montagne & cmdoret
 """
 
-import os
-import sys
-import glob
-import re
-import subprocess as sp
-import pysam as ps
-import shutil as st
-import hicstuff.io as hio
 import contextlib
-from hicstuff.log import logger
+import os
+import re
+import shutil as st
+import subprocess as sp
+import sys
 from os.path import join
+
+import pysam as ps
+
+import hicstuff.io as hio
+from hicstuff.log import logger
 
 
 def iterative_align(
@@ -99,9 +99,7 @@ def iterative_align(
     # throw error if index does not exist
     index = hio.check_fasta_index(ref, mode=aligner)
     if index is None:
-        logger.error(
-            f"Reference index is missing, please build the {aligner} index first."
-        )
+        logger.error(f"Reference index is missing, please build the {aligner} index first.")
         sys.exit(1)
     # Counting reads
     with hio.read_compressed(uncomp_path) as inf:
@@ -122,11 +120,9 @@ def iterative_align(
     if read_len > min_len:
         n = min_len
     else:
-        logger.warning(
-            "min_len is longer than the reads. Iterative mapping will have no effect."
-        )
+        logger.warning("min_len is longer than the reads. Iterative mapping will have no effect.")
         n = read_len
-    logger.info("{0} reads to parse".format(int(total_reads)))
+    logger.info(f"{int(total_reads)} reads to parse")
 
     first_round = True
     # iterative alignment per se
@@ -136,12 +132,10 @@ def iterative_align(
                 size=int(n), again="" if first_round else " again"
             )
         )
-        iter_out += [join(tmp_dir, "trunc_{0}.bam".format(str(n)))]
+        iter_out += [join(tmp_dir, f"trunc_{str(n)}.bam")]
         # Generate a temporary input fastq file with the n first nucleotids
         # of the reads.
-        truncated_reads = truncate_reads(
-            tmp_dir, uncomp_path, remaining_reads, n, first_round
-        )
+        truncated_reads = truncate_reads(tmp_dir, uncomp_path, remaining_reads, n, first_round)
 
         # Align the truncated reads on reference genome
         temp_alignment = join(tmp_dir, "temp_alignment.bam")
@@ -157,13 +151,11 @@ def iterative_align(
         elif re.match(r"^(bwa)$", aligner, flags=re.IGNORECASE):
             cmd = "bwa mem -t {cpus} -v 1 {idx} {fq}".format(**map_args)
         elif re.match(r"^(bowtie[2]?|bt[2]?)$", aligner, flags=re.IGNORECASE):
-            cmd = (
-                "bowtie2 -x {idx} -p {cpus} --quiet --very-sensitive-local -U {fq}"
-            ).format(**map_args)
-        else:
-            raise ValueError(
-                "Unknown aligner. Select bowtie2, minimap2 or bwa."
+            cmd = ("bowtie2 -x {idx} -p {cpus} --quiet --very-sensitive-local -U {fq}").format(
+                **map_args
             )
+        else:
+            raise ValueError("Unknown aligner. Select bowtie2, minimap2 or bwa.")
 
         map_process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
         sort_process = sp.Popen(
@@ -182,11 +174,7 @@ def iterative_align(
         first_round = False
 
     # one last round without trimming
-    logger.info(
-        "Trying to map unaligned reads at full length ({0}bp).".format(
-            int(read_len)
-        )
-    )
+    logger.info(f"Trying to map unaligned reads at full length ({int(read_len)}bp).")
 
     truncated_reads = truncate_reads(
         tmp_dir,
@@ -196,28 +184,20 @@ def iterative_align(
         first_round=first_round,
     )
     if aligner == "minimap2" or aligner == "Minimap2":
-        cmd = "minimap2 -x sr -a -t {cpus} {fa} {fq}".format(
-            fa=ref, cpus=n_cpu, fq=truncated_reads
-        )
+        cmd = f"minimap2 -x sr -a -t {n_cpu} {ref} {truncated_reads}"
     elif aligner == "bwa" or aligner == "Bwa" or aligner == "BWA":
-        cmd = "bwa mem -v 1 -t {cpus} {idx} {fq}".format(
-            idx=index, cpus=n_cpu, fq=truncated_reads
-        )
+        cmd = f"bwa mem -v 1 -t {n_cpu} {index} {truncated_reads}"
     else:
-        cmd = (
-            "bowtie2 -x {idx} -p {cpus} --quiet " "--very-sensitive {fq}"
-        ).format(idx=index, cpus=n_cpu, fq=truncated_reads)
+        cmd = f"bowtie2 -x {index} -p {n_cpu} --quiet --very-sensitive {truncated_reads}"
     map_process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
     # Keep reads sorted by name
     sort_process = sp.Popen(
-        "samtools sort -n -@ {cpus} -O BAM -o {bam}".format(
-            cpus=n_cpu, bam=temp_alignment
-        ),
+        f"samtools sort -n -@ {n_cpu} -O BAM -o {temp_alignment}",
         shell=True,
         stdin=map_process.stdout,
     )
     out, err = sort_process.communicate()
-    iter_out += [join(tmp_dir, "trunc_{0}.bam".format(str(n)))]
+    iter_out += [join(tmp_dir, f"trunc_{str(n)}.bam")]
     remaining_reads = filter_bamfile(temp_alignment, iter_out[-1], min_qual)
 
     # Report unaligned reads as well
@@ -234,9 +214,7 @@ def iterative_align(
     # Merge all aligned reads and unmapped reads into a single bam
     ps.merge("-n", "-O", "BAM", "-@", str(n_cpu), bam_out, *iter_out)
     logger.info(
-        "{0} reads aligned / {1} total reads.".format(
-            int(total_reads - len(remaining_reads)), int(total_reads)
-        )
+        f"{int(total_reads - len(remaining_reads))} reads aligned / {int(total_reads)} total reads."
     )
 
     return 0
@@ -270,7 +248,7 @@ def truncate_reads(tmp_dir, infile, unaligned_set, trunc_len, first_round):
         Path to the output fastq file containing truncated reads.
     """
 
-    outfile = "{0}/truncated.fastq".format(tmp_dir)
+    outfile = f"{tmp_dir}/truncated.fastq"
     with ps.FastxFile(infile, "r") as inf, open(outfile, "w") as outf:
         for entry in inf:
             # If the read did not align in previous round or this is the first round
@@ -316,7 +294,7 @@ def filter_bamfile(temp_alignment, filtered_out, min_qual=30):
         else:
             unaligned.add(r.query_name)
 
-    logger.info("{0} reads left to map.".format(len(unaligned)))
+    logger.info(f"{len(unaligned)} reads left to map.")
     temp_bam.close()
     outf.close()
 

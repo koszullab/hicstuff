@@ -1,11 +1,13 @@
 # Tests for CLI tools of hicstuff
 # Commands are simply run to test for crashes.
 # TODO: add tests to check for output contents
-import hicstuff.commands as hcmd
 import os
-import pytest
-from pathlib import Path
 import shutil as su
+from pathlib import Path
+
+import pytest
+
+import hicstuff.commands as hcmd
 
 # Use global variables for input files
 GRAAL = "test_data/abs_fragments_contacts_weighted.txt"
@@ -42,9 +44,7 @@ def test_pipeline():
 
 @pytest.mark.parametrize(*MATS)
 def test_rebin(mat):
-    args = "-b 1kb -f {0} -c {1} {2} {3}".format(
-        FRAG, CHROM, mat, str(Path(OUT) / "rebinned")
-    )
+    args = "-b 1kb -f {0} -c {1} {2} {3}".format(FRAG, CHROM, mat, str(Path(OUT) / "rebinned"))
     proc = hcmd.Rebin(args.split(" ") + ["-F"], {})
     proc.execute()
     with pytest.raises(IOError):
@@ -53,9 +53,7 @@ def test_rebin(mat):
 
 
 def test_convert():
-    args = "-f {0} -c {1} {2} {3}".format(
-        FRAG, CHROM, GRAAL, str(Path(OUT) / "converted")
-    )
+    args = "-f {0} -c {1} {2} {3}".format(FRAG, CHROM, GRAAL, str(Path(OUT) / "converted"))
     proc = hcmd.Convert(args.split(" ") + ["-F"], {})
     proc.execute()
     with pytest.raises(IOError):
@@ -91,7 +89,7 @@ def test_iteralign():
 
 
 def test_digest():
-    args = "-e DpnII -p -f {0} -o {0} test_data/genome/seq.fa".format(OUT)
+    args = f"-e DpnII -p -f {OUT} -o {OUT} test_data/genome/seq.fa"
     su.rmtree(OUT)
     proc = hcmd.Digest(args.split(" "), {})
     proc.execute()
@@ -106,15 +104,13 @@ def test_digest():
 
 
 def test_filter():
-    args = "-f {0} -p test_data/valid_idx.pairs {0}/valid_idx_filtered.pairs".format(
-        OUT
-    )
+    args = f"-f {OUT} -p test_data/valid_idx.pairs {OUT}/valid_idx_filtered.pairs"
     proc = hcmd.Filter(args.split(" "), {})
     proc.execute()
 
 
 def test_scalogram():
-    args = "-C viridis -n -t 1 -o {0}/scalo.png {1}".format(OUT, GRAAL)
+    args = f"-C viridis -n -t 1 -o {OUT}/scalo.png {GRAAL}"
     proc = hcmd.Scalogram(args.split(" "), {})
     proc.execute()
 
@@ -136,8 +132,8 @@ def test_cutsite(mode):
         "FASTQ_REV": "test_data/sample.reads_rev.fastq.gz",
         "OUT": "test_data/digested",
     }
-    args = (
-        "-1 {FASTQ_FOR} -2 {FASTQ_REV} -e DpnII,HinfI -m {0} -p {OUT} -t 8"
-    ).format(mode, **arg_vals)
+    args = ("-1 {FASTQ_FOR} -2 {FASTQ_REV} -e DpnII,HinfI -m {0} -p {OUT} -t 8").format(
+        mode, **arg_vals
+    )
     proc = hcmd.Cutsite(args.split(" "), {})
     proc.execute()

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Hi-C event filtering
 
 Analyse the contents of a 3C library and filters spurious events such as loops
@@ -20,9 +19,11 @@ attributed.
 """
 
 import sys
-import numpy as np
 from collections import OrderedDict
+
 import matplotlib.pyplot as plt
+import numpy as np
+
 from hicstuff.log import logger
 
 
@@ -110,9 +111,7 @@ def process_read_pair(line):
     return p
 
 
-def get_thresholds(
-    in_dat, interactive=False, plot_events=False, fig_path=None, prefix=None
-):
+def get_thresholds(in_dat, interactive=False, plot_events=False, fig_path=None, prefix=None):
     """Guess distance threshold for event filtering
 
     Analyse the events in the first million of Hi-C pairs in the library, plot
@@ -133,7 +132,7 @@ def get_thresholds(
         diplayed interactively.
     prefix : str
         If the library has a name, it will be shown on plots.
-    
+
     Returns
     -------
     dictionary
@@ -154,7 +153,7 @@ def get_thresholds(
     n_events = {event: np.zeros(max_sites) for event in legend}
     i = 0
     # open the file for reading (just the first 1 000 000 lines)
-    with open(in_dat, "r") as pairs:
+    with open(in_dat) as pairs:
         for line in pairs:
             # Skip header lines
             if line.startswith("#"):
@@ -235,26 +234,16 @@ def get_thresholds(
         for site in range(max_sites)[:1:-1]:
             # For uncuts and loops, keep the last (closest) site where the
             # deviation from other events <= expected_stdev
-            if (
-                abs(np.log(n_events["+-"][site]) - event_med[site])
-                <= exp_stdev
-            ):
+            if abs(np.log(n_events["+-"][site]) - event_med[site]) <= exp_stdev:
                 thr_uncut = site
-            if (
-                abs(np.log(n_events["-+"][site]) - event_med[site])
-                <= exp_stdev
-            ):
+            if abs(np.log(n_events["-+"][site]) - event_med[site]) <= exp_stdev:
                 thr_loop = site
         if thr_uncut is None or thr_loop is None:
             raise ValueError(
                 "The threshold for loops or uncut could not be estimated. "
                 "Please try running with -i to investigate the problem."
             )
-        logger.info(
-            "Filtering with thresholds: uncuts={0} loops={1}".format(
-                thr_uncut, thr_loop
-            )
-        )
+        logger.info(f"Filtering with thresholds: uncuts={thr_uncut} loops={thr_loop}")
         if plot_events:
             try:
                 plt.figure(1)
@@ -319,9 +308,7 @@ def get_thresholds(
                 plt.axvline(x=thr_uncut, color=colors["+-"])
 
                 if prefix:
-                    plt.title(
-                        "Library events by distance in {}".format(prefix)
-                    )
+                    plt.title(f"Library events by distance in {prefix}")
                 plt.tight_layout()
                 if fig_path:
                     plt.savefig(fig_path)
@@ -383,7 +370,7 @@ def filter_events(
     lrange_inter = 0
 
     # open the files for reading and writing
-    with open(in_dat, "r") as pairs, open(out_filtered, "w") as filtered:
+    with open(in_dat) as pairs, open(out_filtered, "w") as filtered:
         for line in pairs:  # iterate over each line
             # Copy header lines to output
             if line.startswith("#"):
@@ -427,9 +414,7 @@ def filter_events(
                 filtered.write(line_to_write)
 
     if lrange_inter > 0:
-        ratio_inter = round(
-            100 * lrange_inter / float(lrange_intra + lrange_inter), 2
-        )
+        ratio_inter = round(100 * lrange_inter / float(lrange_intra + lrange_inter), 2)
     else:
         ratio_inter = 0
 
@@ -438,24 +423,18 @@ def filter_events(
     discarded = n_loops + n_uncuts + n_weirds
     total = kept + discarded
     logger.info(
-        "Proportion of inter contacts: {0}% (intra: {1}, "
-        "inter: {2})".format(ratio_inter, lrange_intra, lrange_inter)
+        f"Proportion of inter contacts: {ratio_inter}% (intra: {lrange_intra}, "
+        f"inter: {lrange_inter})"
     )
     logger.info(
-        "{0} pairs discarded: Loops: {1}, Uncuts: {2}, Weirds: {3}".format(
-            discarded, n_loops, n_uncuts, n_weirds
-        )
+        f"{discarded} pairs discarded: Loops: {n_loops}, Uncuts: {n_uncuts}, Weirds: {n_weirds}"
     )
-    logger.info(
-        "{0} pairs kept ({1}%)".format(
-            kept, round(100 * kept / (kept + discarded), 2)
-        )
-    )
+    logger.info(f"{kept} pairs kept ({round(100 * kept / (kept + discarded), 2)}%)")
 
     # Visualize summary if requested by user
     if plot_events:
         try:
-        # Plot: make a square figure and axes to plot a pieChart:
+            # Plot: make a square figure and axes to plot a pieChart:
             plt.figure(2, figsize=(6, 6))
             # The slices will be ordered and plotted counter-clockwise.
             fracs = [n_uncuts, n_loops, n_weirds, lrange_intra, lrange_inter]
@@ -477,12 +456,12 @@ def filter_events(
             plt.legend(
                 patches,
                 labels,
-                loc='upper left',
-                bbox_to_anchor=(-0.1, 1.),
+                loc="upper left",
+                bbox_to_anchor=(-0.1, 1.0),
             )
             if prefix:
                 plt.title(
-                    "Distribution of library events in {}".format(prefix),
+                    f"Distribution of library events in {prefix}",
                     bbox={"facecolor": "1.0", "pad": 5},
                 )
             plt.text(
@@ -518,7 +497,7 @@ def filter_events(
             plt.text(
                 -1.5,
                 -1.4,
-                "Selected reads = {0}%".format(percentage),
+                f"Selected reads = {percentage}%",
                 fontdict=None,
             )
             if fig_path:
