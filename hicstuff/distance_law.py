@@ -841,7 +841,7 @@ def get_ylim(xs, curve, inf, sup):
             max_index += 1
         for j in range(min_index, max_index):
             flatten_list.append(curve[i][j])
-    # Caluclate the min and the max of this list.
+    # Calculate the min and the max of this list.
     min_tot = min(flatten_list)
     max_tot = max(flatten_list)
     return min_tot, max_tot
