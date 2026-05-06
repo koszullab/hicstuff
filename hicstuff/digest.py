@@ -308,16 +308,22 @@ def get_restriction_table(seq, enzyme, circular=False):
         if sites[-1] < chrom_len:
             sites.append(chrom_len)
     else:
-        # Find sites of all restriction enzymes given
-        # Use enz_obj.search() directly instead of Analysis.full() to avoid
-        # version-dependent behaviour near sequence ends (BioPython >= 1.85)
+        # Find sites of all restriction enzymes given.
+        # Always use linear=False (circular) search to capture terminal
+        # restriction sites, which biopython >=1.87 omits for linear sequences
+        # when the recognition site ends at the last base of the sequence.
+        # Wrapping positions beyond chrom_len are filtered out.
         sites = []
         for enz_obj in cutter:
-            sites.extend(s - 1 for s in enz_obj.search(seq, linear=not circular))
-        # Sort by position and add start and end of seq
+            sites.extend(
+                s - 1 for s in enz_obj.search(seq, linear=False) if s <= chrom_len
+            )
+        # Sort by position and add start/end of seq if not already present
         sites.sort()
-        sites.insert(0, 0)
-        sites.append(chrom_len)
+        if not sites or sites[0] != 0:
+            sites.insert(0, 0)
+        if sites[-1] != chrom_len:
+            sites.append(chrom_len)
 
     return np.array(sites)
 
