@@ -2,7 +2,7 @@ name: hicstuff
 channels:
   - conda-forge
   - bioconda
-  - defaults
+  - nodefaults
 dependencies:
   - python >= 3.7
   - pip
