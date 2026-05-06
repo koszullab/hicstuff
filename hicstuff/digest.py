@@ -287,7 +287,7 @@ def get_restriction_table(seq, enzyme, circular=False):
     >>> get_restriction_table("AA","HpaII")
     Traceback (most recent call last):
         ...
-    TypeError: Expected Seq or MutableSeq instance, got <class 'str'> instead
+    TypeError: expected Seq or MutableSeq, got <class 'str'>
 
     """
     chrom_len = len(seq)
@@ -362,7 +362,7 @@ def find_frag(pos, r_sites):
     # Last site = end of the chrom, index of last fragment is last site - 1
     index = min(len(r_sites) - 2, index)
 
-    return index
+    return int(index)
 
 
 def frag_len(
