@@ -36,6 +36,7 @@ ValueError
     not an enzyme or number or invalid range view is
     specified.
 """
+
 import re
 import sys, os, shutil
 import tempfile
@@ -100,9 +101,7 @@ class AbstractCommand:
         """Throws error if the output file exists. Create required file tree otherwise."""
         # Get complete output filename and prevent overwriting unless force is enabled
         if not force and os.path.exists(path):
-            raise IOError(
-                "Output file already exists. Use --force to overwrite"
-            )
+            raise IOError("Output file already exists. Use --force to overwrite")
         if dirname(path):
             os.makedirs(dirname(path), exist_ok=True)
 
@@ -212,9 +211,7 @@ class Digest(AbstractCommand):
         # Create output directory if it does not exist
         if os.path.exists(self.args["--outdir"]):
             if not self.args["--force"]:
-                raise IOError(
-                    "Output directory already exists. Use --force to overwrite"
-                )
+                raise IOError("Output directory already exists. Use --force to overwrite")
         else:
             os.makedirs(self.args["--outdir"], exist_ok=True)
         if self.args["--figdir"]:
@@ -300,9 +297,7 @@ class Cutsite(AbstractCommand):
         # Digestion of the reads.
         logger.info("Digestion of the reads:")
         logger.info("Enzyme used: {0}".format(self.args["--enzyme"]))
-        logger.info(
-            "Mode used to cut the reads: {0}".format(self.args["--mode"])
-        )
+        logger.info("Mode used to cut the reads: {0}".format(self.args["--mode"]))
         hcc.cut_ligation_sites(
             self.args["--forward"],
             self.args["--reverse"],
@@ -357,9 +352,7 @@ class Filter(AbstractCommand):
                 uncut_thr = int(uncut_thr)
                 loop_thr = int(loop_thr)
             except ValueError:
-                logger.error(
-                    "You must provide integer numbers for the thresholds."
-                )
+                logger.error("You must provide integer numbers for the thresholds.")
         else:
             # Threshold defined at runtime
             if self.args["--figdir"]:
@@ -486,48 +479,32 @@ class View(AbstractCommand):
         if self.binning > 1:
             if self.bp_unit:
                 self.pos = self.frags.iloc[:, 2]
-                binned_map, binned_pos = hcs.bin_bp_sparse(
-                    M=sparse_map, positions=self.pos, bin_len=self.binning
-                )
+                binned_map, binned_pos = hcs.bin_bp_sparse(M=sparse_map, positions=self.pos, bin_len=self.binning)
                 # Get bin numbers of chromosome starts
-                binned_start = np.append(
-                    np.where(binned_pos == 0)[0], len(binned_pos)
-                )
+                binned_start = np.append(np.where(binned_pos == 0)[0], len(binned_pos))
                 # Get bin length of each chromosome
                 num_binned = binned_start[1:] - binned_start[:-1]
                 # Get unique chromosome names without losing original order
                 # (numpy.unique sorts output)
-                chr_names_idx = np.unique(
-                    self.frags.iloc[:, 1], return_index=True
-                )[1]
-                chr_names = [
-                    self.frags.iloc[index, 1] for index in sorted(chr_names_idx)
-                ]
+                chr_names_idx = np.unique(self.frags.iloc[:, 1], return_index=True)[1]
+                chr_names = [self.frags.iloc[index, 1] for index in sorted(chr_names_idx)]
                 binned_chrom = np.repeat(chr_names, num_binned)
-                binned_frags = pd.DataFrame(
-                    {"chrom": binned_chrom, "start_pos": binned_pos[:, 0]}
-                )
-                binned_frags["end_pos"] = binned_frags.groupby("chrom")[
-                    "start_pos"
-                ].shift(-1)
+                binned_frags = pd.DataFrame({"chrom": binned_chrom, "start_pos": binned_pos[:, 0]})
+                binned_frags["end_pos"] = binned_frags.groupby("chrom")["start_pos"].shift(-1)
                 chrom_ends = self.frags.groupby("chrom").end_pos.max()
                 # Fill ends of chromosome bins with actual chromosome length
                 for cn in chrom_ends.index:
-                    binned_frags.end_pos[
-                        np.isnan(binned_frags.end_pos)
-                        & (binned_frags.chrom == cn)
-                    ] = chrom_ends[cn]
+                    binned_frags.end_pos[np.isnan(binned_frags.end_pos) & (binned_frags.chrom == cn)] = chrom_ends[cn]
 
             else:
                 # Note this is a basic binning procedure, chromosomes are
                 # not taken into account -> last few fragments of a chrom
                 # are merged with the first few of the next
-                binned_map = hcs.bin_sparse(
-                    M=sparse_map, subsampling_factor=self.binning
-                )
+                binned_map = hcs.bin_sparse(M=sparse_map, subsampling_factor=self.binning)
                 if self.frags:
                     binned_frags = self.frags.iloc[:: self.binning, :]
                     binned_frags = binned_frags.reset_index(drop=True)
+
                     # Since matrix binning ignores chromosomes, we
                     # have to do the same procedure with fragments
                     # we just correct the coordinates to start at 0
@@ -538,9 +515,7 @@ class View(AbstractCommand):
                             pass
                         return x
 
-                    binned_frags.start_pos = binned_frags.groupby(
-                        "chrom", sort=False
-                    ).start_pos.apply(shift_min)
+                    binned_frags.start_pos = binned_frags.groupby("chrom", sort=False).start_pos.apply(shift_min)
                 else:
                     binned_frags = self.frags
 
@@ -559,32 +534,20 @@ class View(AbstractCommand):
             try:
                 trim_std = float(self.args["--trim"])
             except ValueError:
-                logger.error(
-                    "You must specify a number of standard deviations for "
-                    "trimming"
-                )
+                logger.error("You must specify a number of standard deviations for " "trimming")
                 raise
-            binned_map, chrom_starts = hcs.trim_sparse(
-                binned_map, n_mad=trim_std, chrom_start=chrom_starts
-            )
+            binned_map, chrom_starts = hcs.trim_sparse(binned_map, n_mad=trim_std, chrom_start=chrom_starts)
 
         # NORMALIZATION
         if self.args["--normalize"]:
-            binned_map = hcs.normalize_sparse(
-                binned_map, norm="ICE", n_mad=float(self.args["--n-mad"])
-            )
+            binned_map = hcs.normalize_sparse(binned_map, norm="ICE", n_mad=float(self.args["--n-mad"]))
 
         # ZOOM REGION
         if self.args["--region"]:
             if self.args["--lines"]:
-                raise NotImplementedError(
-                    "Chromosome lines are currently incompatible with a region zoom"
-                )
+                raise NotImplementedError("Chromosome lines are currently incompatible with a region zoom")
             if self.frags is None:
-                logger.error(
-                    "A fragment file must be provided to subset "
-                    "genomic regions. See hicstuff view --help"
-                )
+                logger.error("A fragment file must be provided to subset " "genomic regions. See hicstuff view --help")
                 sys.exit(1)
             # Load chromosomes and positions from fragments list
             reg_pos = binned_frags[["chrom", "start_pos"]]
@@ -611,10 +574,7 @@ class View(AbstractCommand):
         hic_fmt = hio.get_hic_format(input_map)
         cmap = self.args["--cmap"]
         # Switch to a divergent colormap for plotting ratios
-        if (
-            self.args["<contact_map2>"] is not None
-            and cmap not in DIVERGENT_CMAPS
-        ):
+        if self.args["<contact_map2>"] is not None and cmap not in DIVERGENT_CMAPS:
             # In case user specified a custom cmap incompatible with ratios
             if cmap != "Reds":
                 logger.warning(
@@ -622,8 +582,7 @@ class View(AbstractCommand):
                     "cmaps are:\n\t{}".format(" ".join(DIVERGENT_CMAPS))
                 )
             logger.info(
-                "Defaulting to seismic colormap for ratios. You can pick "
-                "another divergent colormap if you wish."
+                "Defaulting to seismic colormap for ratios. You can pick " "another divergent colormap if you wish."
             )
             cmap = "seismic"
         self.bp_unit = False
@@ -637,21 +596,16 @@ class View(AbstractCommand):
             if re.match(r"^[0-9]+[KMG]?B[P]?$", bin_str):
                 if hic_fmt == "graal" and not self.args["--frags"]:
                     logger.error(
-                        "A fragment file must be provided to perform "
-                        "basepair binning. See hicstuff view --help"
+                        "A fragment file must be provided to perform " "basepair binning. See hicstuff view --help"
                     )
                     sys.exit(1)
                 # Load positions from fragments list
                 self.binning = parse_bin_str(bin_str)
                 self.bp_unit = True
             else:
-                logger.error(
-                    "Please provide an integer or basepair value for binning."
-                )
+                logger.error("Please provide an integer or basepair value for binning.")
                 raise
-        sparse_map, self.frags, _ = hio.flexible_hic_loader(
-            input_map, fragments_file=self.args["--frags"], quiet=True
-        )
+        sparse_map, self.frags, _ = hio.flexible_hic_loader(input_map, fragments_file=self.args["--frags"], quiet=True)
         output_file = self.args["--output"]
         processed_map, chrom_starts = self.process_matrix(sparse_map)
         # If 2 matrices given compute log ratio
@@ -663,10 +617,7 @@ class View(AbstractCommand):
             )
             processed_map2, chrom_starts = self.process_matrix(sparse_map2)
             if sparse_map2.shape != sparse_map.shape:
-                logger.error(
-                    "You cannot compute the ratio of matrices with "
-                    "different dimensions"
-                )
+                logger.error("You cannot compute the ratio of matrices with " "different dimensions")
             # Get log of values for both maps
             processed_map.data = np.log2(processed_map.data)
             processed_map2.data = np.log2(processed_map2.data)
@@ -683,9 +634,7 @@ class View(AbstractCommand):
             processed_map = hcs.despeckle_simple(processed_map)
         try:
             if self.symmetric:
-                dense_map = hcv.sparse_to_dense(
-                    processed_map, remove_diag=False
-                )
+                dense_map = hcv.sparse_to_dense(processed_map, remove_diag=False)
             else:
                 dense_map = processed_map.toarray()
 
@@ -693,9 +642,7 @@ class View(AbstractCommand):
                 if "%" in v:
                     try:
                         valid_pixels = (mat > 0) & (np.isfinite(mat))
-                        val = np.percentile(
-                            mat[valid_pixels], float(v.strip("%"))
-                        )
+                        val = np.percentile(mat[valid_pixels], float(v.strip("%")))
                     # No nonzero / finite value
                     except IndexError:
                         val = 0
@@ -740,7 +687,7 @@ class Pipeline(AbstractCommand):
 
     Usage:
         pipeline [options] --genome=FILE <input1> [<input2>]
-        
+
     Arguments:
         input1:     Forward fastq file, if start_stage is "fastq", sam
                     file for aligned forward reads if start_stage is
@@ -754,10 +701,10 @@ class Pipeline(AbstractCommand):
                                       bowtie2, minimap2 or bwa. minimap2 should
                                       only be used for reads > 100 bp.
                                       [default: bowtie2]
-        -B, --balancing_args=STR      Arguments to pass to `cooler balance` 
+        -B, --balancing_args=STR      Arguments to pass to `cooler balance`
                                       (default: "") (only used if zoomify == True)
-        -b,--binning=INT              Bin the contact matrix to a given resolution. 
-                                      By default, the contact matrix is not binned. 
+        -b,--binning=INT              Bin the contact matrix to a given resolution.
+                                      By default, the contact matrix is not binned.
                                       (only used if `--matfmt cool")
         -c, --centromeres=FILE        Positions of the centromeres separated by
                                       a space and in the same order than the
@@ -777,9 +724,9 @@ class Pipeline(AbstractCommand):
                                       or chunk size (i.e. resolution) if a number.
                                       Can also be multiple comma-separated
                                       enzymes. [default: 5000]
-        -E, --exclude=STR             Exclude specific chromosomes from the 
-                                      generated matrix. Multiple chromosomes 
-                                      can be listed separated by commas (e.g. 
+        -E, --exclude=STR             Exclude specific chromosomes from the
+                                      generated matrix. Multiple chromosomes
+                                      can be listed separated by commas (e.g.
                                       `--exclude "chrM,2u"`) [default: None].
         -f, --filter                  Filter out spurious 3C events (loops and
                                       uncuts) using hicstuff filter. Requires
@@ -840,14 +787,14 @@ class Pipeline(AbstractCommand):
                                       to the output directory.
         -z, --zoomify=BOOL            Zoomify binned cool matrix [default: True]
                                       (only used if mat_fmt == "cool" and binning is set)
-    
-    Example commands: 
-    
-    ## To generate a multi-resolution `.mcool` matrix, binned and balanced from 1kb, for Arima Hi-C: 
+
+    Example commands:
+
+    ## To generate a multi-resolution `.mcool` matrix, binned and balanced from 1kb, for Arima Hi-C:
 
     hicstuff pipeline --enzyme "DpnII,HinfI" --binning 1000 --threads 8 --genome <reference>.fa <prefix>_R1.fq.gz <prefix>_R2.fq.gz
-    
-    ## Recommended command: 
+
+    ## Recommended command:
 
     hicstuff pipeline --enzyme "DpnII,HinfI" --binning 1000 --duplicates --filter --distance-law --plot --threads 8 --genome <reference>.fa <prefix>_R1.fq.gz <prefix>_R2.fq.gz
 
@@ -856,13 +803,9 @@ class Pipeline(AbstractCommand):
     def execute(self):
 
         if self.args["--filter"] and self.args["--enzyme"].isdigit():
-            raise ValueError(
-                "You cannot filter without specifying a restriction enzyme."
-            )
+            raise ValueError("You cannot filter without specifying a restriction enzyme.")
         elif self.args["--enzyme"] in ("mnase", "dnase"):
-            logger.info(
-                "## Enzyme provided is 'mnase', setting bin-size to 100bp"
-            )
+            logger.info("## Enzyme provided is 'mnase', setting bin-size to 100bp")
             self.args["--enzyme"] = 100
 
         if not self.args["--outdir"]:
@@ -873,7 +816,7 @@ class Pipeline(AbstractCommand):
 
         if not self.args["--zoomify"]:
             self.args["--zoomify"] = "True"
-            
+
         if not self.args["--balancing_args"]:
             self.args["--balancing_args"] = None
 
@@ -887,7 +830,7 @@ class Pipeline(AbstractCommand):
         read_len = self.args["--read-len"]
         if read_len is not None:
             read_len = int(read_len)
-        
+
         hpi.full_pipeline(
             genome=self.args["--genome"],
             input1=self.args["<input1>"],
@@ -956,14 +899,10 @@ class Scalogram(AbstractCommand):
     """
 
     def execute(self):
-        mat, frags, _ = hio.flexible_hic_loader(
-            self.args["<contact_map>"], fragments_file=self.args["--frags"]
-        )
+        mat, frags, _ = hio.flexible_hic_loader(self.args["<contact_map>"], fragments_file=self.args["--frags"])
         if frags is not None:
             # If fragments_list.txt is provided, load chrom start and end columns
-            frags = pd.read_csv(
-                self.args["--frags"], delimiter="\t", usecols=(1, 2, 3)
-            )
+            frags = pd.read_csv(self.args["--frags"], delimiter="\t", usecols=(1, 2, 3))
         if self.args["--range"]:
             shortest, longest = self.args["--range"].split("-")
             # If range given in number of bins
@@ -1097,9 +1036,7 @@ class Rebin(AbstractCommand):
                 binning = parse_bin_str(bin_str)
                 bp_unit = True
             else:
-                logger.error(
-                    "Please provide an integer or basepair value for binning."
-                )
+                logger.error("Please provide an integer or basepair value for binning.")
                 raise
         chromnames = np.unique(frags.chrom)
 
@@ -1115,22 +1052,15 @@ class Rebin(AbstractCommand):
                 bin_ends = binning * bin_id + binning
                 # Do not allow bin ends to be larger than chrom size
                 try:
-                    chromsize = chromlist.length[
-                        chromlist.contig == chrom
-                    ].values[0]
+                    chromsize = chromlist.length[chromlist.contig == chrom].values[0]
                 except AttributeError:
-                    chromsize = chromlist["length_kb"][
-                        chromlist.contig == chrom
-                    ].values[0]
+                    chromsize = chromlist["length_kb"][chromlist.contig == chrom].values[0]
                 bin_ends[bin_ends > chromsize] = chromsize
                 frags.loc[frags.chrom == chrom, "end_pos"] = bin_ends
 
             # Account for special cases where restriction fragments are larger than
             # bin size, resulting in missing bins (i.e. jumps in bin ids)
-            id_diff = (
-                np.array(frags.loc[:, "id"])[1:]
-                - np.array(frags.loc[:, "id"])[:-1]
-            )
+            id_diff = np.array(frags.loc[:, "id"])[1:] - np.array(frags.loc[:, "id"])[:-1]
             # Normal jump is 1, new chromosome (reset id) is < 0, abnormal is > 1
             # Get panda indices of abnormal jumps
             jump_frag_idx = np.where(id_diff > 1)[0]
@@ -1163,13 +1093,15 @@ class Rebin(AbstractCommand):
             existing_bins_idx = np.insert(existing_bins_idx, 0, 0)
             # Add missing bins to original table, and sort by idx
             # missing bins are "holes" in the continuous range of existing bins
-            missing_bins_idx = sorted(
-                set(range(existing_bins_idx[0], existing_bins_idx[-1]))
-                - set(existing_bins_idx)
-            )
-            miss_bins_df = pd.DataFrame(
-                miss_bins, columns=frags.columns, index=missing_bins_idx
-            )
+            missing_bins_idx = sorted(set(range(existing_bins_idx[0], existing_bins_idx[-1])) - set(existing_bins_idx))
+            miss_bins_df = pd.DataFrame(miss_bins, columns=frags.columns, index=missing_bins_idx)
+            # Cast to match frags dtypes to prevent object dtype after concat
+            for col in frags.columns:
+                if frags[col].dtype.name != "category":
+                    try:
+                        miss_bins_df[col] = pd.to_numeric(miss_bins_df[col])
+                    except (ValueError, TypeError):
+                        pass
             frags["tmp_idx"] = existing_bins_idx
             miss_bins_df["tmp_idx"] = missing_bins_idx
             frags = pd.concat([frags, miss_bins_df], axis=0, sort=False)
@@ -1209,18 +1141,12 @@ class Rebin(AbstractCommand):
             chrom_frags = frags.chrom == chrom
             n_bins = frags.start_pos[chrom_frags].shape[0]
             chromlist.loc[chromlist.contig == chrom, "n_frags"] = n_bins
-            chromlist.loc[
-                chromlist.contig == chrom, "cumul_length"
-            ] = cumul_bins
+            chromlist.loc[chromlist.contig == chrom, "cumul_length"] = cumul_bins
             cumul_bins += n_bins
             # Adjust each chromosome's last bin end to match chromsize
             last_frag_end = frags.loc[chrom_frags, "end_pos"].max()
-            chromlen = chromlist.loc[
-                chromlist.contig == chrom, "length"
-            ].values[0]
-            frags.loc[
-                chrom_frags & (frags.end_pos == last_frag_end), "end_pos"
-            ] = chromlen
+            chromlen = chromlist.loc[chromlist.contig == chrom, "length"].values[0]
+            frags.loc[chrom_frags & (frags.end_pos == last_frag_end), "end_pos"] = chromlen
 
         # Keep original column order
         frags = frags.reindex(columns=col_ordered)
@@ -1260,9 +1186,7 @@ class Subsample(AbstractCommand):
         # Get complete output filename and prevent overwriting unless --force is enabled
         out_name = prefix + self.fmt2ext[hic_fmt]
         self.check_output_path(out_name, force=self.args["--force"])
-        mat, frags, _ = hio.flexible_hic_loader(
-            self.args["<contact_map>"], quiet=True
-        )
+        mat, frags, _ = hio.flexible_hic_loader(self.args["<contact_map>"], quiet=True)
         subsampled = hcs.subsample_contacts(mat, float(self.args["--prop"]))
         subsampled = subsampled.tocoo()
         hio.flexible_hic_saver(
@@ -1387,7 +1311,7 @@ class Distancelaw(AbstractCommand):
         -f, --frags=FILE                    Tab-separated file with headers, containing
                                             columns id, chrom, start_pos, end_pos size.
                                             This is the file "fragments_list.txt" generated by
-                                            hicstuff pipeline. Required if pairs are given.
+                                            hicstuff pipeline.
         -i, --inf=INT                       Inferior born to plot the distance law. By
                                             default the value is 3000 bp (3 kb). Have to
                                             be strictly positive.
@@ -1421,14 +1345,14 @@ class Distancelaw(AbstractCommand):
             output_file_img = None
         # Compute the table of distance law if pairs given
         if self.args["--pairs"]:
-            # Sanity check : frags mandatory if pairs given.
-            if not self.args["--frags"] or self.args["--dist-tbl"]:
-                logger.error(
-                    "You have to give fragments and/or not give table of the distance law if pairs file given."
-                )
+            # --dist-tbl and --pairs are mutually exclusive
+            if self.args["--dist-tbl"]:
+                logger.error("Cannot use --pairs and --dist-tbl at the same time.")
                 sys.exit(1)
             pairs = self.args["--pairs"]
-            fragments = self.args["--frags"]
+            # --frags is optional: when omitted, distances are computed from
+            # read positions (pos2 - pos1) using chromsizes in the pairs header.
+            fragments = self.args["--frags"] if self.args["--frags"] else None
             # Give no file as output_file_tabl if no given.
             if self.args["--outputfile-tabl"]:
                 output_file_tabl = self.args["--outputfile-tabl"]
@@ -1473,9 +1397,7 @@ class Distancelaw(AbstractCommand):
             names = [None] * length_files
             # Iterate on the different file given by the user.
             for i in range(length_files):
-                xs[i], ps[i], names[i] = hcdl.import_distance_law(
-                    distance_law_files[i]
-                )
+                xs[i], ps[i], names[i] = hcdl.import_distance_law(distance_law_files[i])
             names = [name[0] for name in names]
         # Put the inf and sup according to the arguments given.
         if self.args["--inf"]:
@@ -1501,9 +1423,7 @@ class Distancelaw(AbstractCommand):
         for i in range(length_files):
             # Make the average if enabled
             if self.args["--average"]:
-                xs[i], ps[i] = hcdl.average_distance_law(
-                    xs[i], ps[i], arm_sup, big_arm_only
-                )
+                xs[i], ps[i] = hcdl.average_distance_law(xs[i], ps[i], arm_sup, big_arm_only)
                 # If not average, we should to remove one level of list to have the good dimension.
         if not self.args["--average"]:
             names = names[0]
@@ -1535,9 +1455,7 @@ class Distancelaw(AbstractCommand):
 
         # Export the new table if required.
         if self.args["--outputfile-tabl"]:
-            hcdl.export_distance_law(
-                xs, ps, labels, self.args["--outputfile-tabl"]
-            )
+            hcdl.export_distance_law(xs, ps, labels, self.args["--outputfile-tabl"])
 
 
 class Missview(AbstractCommand):
@@ -1631,9 +1549,7 @@ class Missview(AbstractCommand):
         # Check which bins are not at the median (i.e. drop in mapping rate)
         log_content = open(glob.glob(join(tmp_dir, "*.log"))[0]).read()
         # Get (int rounded) percentage of reads mapped and convert to proportion
-        prop_mapped = (
-            int(re.search(r".*INFO :: ([0-9]*)% reads.*", log_content)[1]) / 100
-        )
+        prop_mapped = int(re.search(r".*INFO :: ([0-9]*)% reads.*", log_content)[1]) / 100
         logger.info(
             "Bins with less than %s mapped reads will be considered undetectable",
             str(100 * prop_mapped) + "%",
@@ -1658,6 +1574,7 @@ class Missview(AbstractCommand):
         )
         logger.info("Output image saved at %s.", out)
 
+
 class Stats(AbstractCommand):
     """Extract stats from a hicstuff log file.
 
@@ -1672,6 +1589,7 @@ class Stats(AbstractCommand):
         log_file = self.args["<log>"]
         stats = hcstats.get_pipeline_stats(log_file)
         hcstats.print_pipeline_stats(stats)
+
 
 def parse_bin_str(bin_str):
     """Bin string parsing
@@ -1711,6 +1629,7 @@ def parse_bin_str(bin_str):
         binning = int(float(bin_str[:unit_pos]) * binsuffix[bp_unit[0]])
 
     return binning
+
 
 def parse_ucsc(ucsc_str, bins):
     """

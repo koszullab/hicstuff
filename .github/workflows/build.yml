@@ -1,9 +1,9 @@
-name: build
+name: CI
 
 on: [push]
 
 jobs:
-  build-linux:
+  ci:
     runs-on: ubuntu-latest
     strategy:
       max-parallel: 5
@@ -29,11 +29,19 @@ jobs:
         hicstuff --version
       shell: micromamba-shell {0}
 
-    - name: Lint and test
+    - name: Lint
       run: |
         pip install pytest-pylint pytest pytest-cov pylint codecov mappy
         pytest --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc --doctest-modules --doctest-modules hicstuff
+      shell: micromamba-shell {0}
+
+    - name: Test
+      run: |
         pytest --cov=hicstuff
+      shell: micromamba-shell {0}
+
+    - name: Code coverage
+      run: |
         codecov
       shell: micromamba-shell {0}
 

@@ -9,7 +9,7 @@ sparse matrices.
 
 from Bio import SeqIO, SeqUtils
 from Bio.Seq import Seq
-from Bio.Restriction import RestrictionBatch, Analysis
+from Bio.Restriction import RestrictionBatch
 import os, sys, csv
 import re
 import collections
@@ -287,7 +287,7 @@ def get_restriction_table(seq, enzyme, circular=False):
     >>> get_restriction_table("AA","HpaII")
     Traceback (most recent call last):
         ...
-    TypeError: Expected Seq or MutableSeq instance, got <class 'str'> instead
+    TypeError: expected Seq or MutableSeq, got <class 'str'>
 
     """
     chrom_len = len(seq)
@@ -308,15 +308,22 @@ def get_restriction_table(seq, enzyme, circular=False):
         if sites[-1] < chrom_len:
             sites.append(chrom_len)
     else:
-        # Find sites of all restriction enzymes given
-        ana = Analysis(cutter, seq, linear=not circular)
-        sites = ana.full()
-        # Gets all sites into a single flat list with 0-based index
-        sites = [site - 1 for enz in sites.values() for site in enz]
-        # Sort by position and allow first add start and end of seq
+        # Find sites of all restriction enzymes given.
+        # Always use linear=False (circular) search to capture terminal
+        # restriction sites, which biopython >=1.87 omits for linear sequences
+        # when the recognition site ends at the last base of the sequence.
+        # Wrapping positions beyond chrom_len are filtered out.
+        sites = []
+        for enz_obj in cutter:
+            sites.extend(
+                s - 1 for s in enz_obj.search(seq, linear=False) if s <= chrom_len
+            )
+        # Sort by position and add start/end of seq if not already present
         sites.sort()
-        sites.insert(0, 0)
-        sites.append(chrom_len)
+        if not sites or sites[0] != 0:
+            sites.insert(0, 0)
+        if sites[-1] != chrom_len:
+            sites.append(chrom_len)
 
     return np.array(sites)
 
@@ -361,7 +368,7 @@ def find_frag(pos, r_sites):
     # Last site = end of the chrom, index of last fragment is last site - 1
     index = min(len(r_sites) - 2, index)
 
-    return index
+    return int(index)
 
 
 def frag_len(

@@ -78,30 +78,18 @@ def distance_law_from_mat(matrix, indices=None, log_bins=True, base=1.1):
         included_bins[:] = True
     else:
         included_bins[indices] = True
-    D = np.array(
-        [
-            np.nanmean(matrix.diagonal(j)[included_bins[: n - j]])
-            for j in range(n)
-        ]
-    )
+    D = np.array([np.nanmean(matrix.diagonal(j)[included_bins[: n - j]]) for j in range(n)])
     if not log_bins:
         return np.array(range(len(D))), D
     else:
         n_bins = int(np.log(n) / np.log(base) + 1)
-        logbin = np.unique(
-            np.logspace(0, n_bins - 1, num=n_bins, base=base, dtype=int)
-        )
+        logbin = np.unique(np.logspace(0, n_bins - 1, num=n_bins, base=base, dtype=int))
         logbin = np.insert(logbin, 0, 0)
         logbin[-1] = min(n, logbin[-1])
         if n < logbin.shape[0]:
             print("Not enough bins. Increase logarithm base.")
             return np.array(range(len(D))), D
-        logD = np.array(
-            [
-                np.nanmean(D[logbin[i - 1] : logbin[i]])
-                for i in range(1, len(logbin))
-            ]
-        )
+        logD = np.array([np.nanmean(D[logbin[i - 1] : logbin[i]]) for i in range(1, len(logbin))])
         return logbin[:-1], logD
 
 
@@ -158,9 +146,7 @@ def despeckle_local(M, stds=2, width=2):
 
     N = np.array(M, dtype=np.float64)
     n, m = M.shape
-    for i, j in itertools.product(
-        range(width, n - width), range(width, m - width)
-    ):
+    for i, j in itertools.product(range(width, n - width), range(width, m - width)):
         square = M[i - width : i + width, j - width : j + width]
         avg = np.average(square)
         std = np.std(square)
@@ -229,9 +215,7 @@ def bin_sparse(M, subsampling_factor=3):
     # Sum data over duplicate entries
     binned = pd.DataFrame({"row": binned_row, "col": binned_col, "dat": data})
     binned = binned.groupby(["row", "col"], sort=False).sum().reset_index()
-    return coo_matrix(
-        (binned.dat, (binned.row, binned.col)), shape=(binned_n, binned_m)
-    )
+    return coo_matrix((binned.dat, (binned.row, binned.col)), shape=(binned_n, binned_m))
 
 
 def bin_matrix(M, subsampling_factor=3):
@@ -256,9 +240,7 @@ def bin_annotation(annotation=None, subsampling_factor=3):
     if annotation is None:
         annotation = np.array([])
     n = len(annotation)
-    binned_positions = [
-        annotation[i] for i in range(n) if i % subsampling_factor == 0
-    ]
+    binned_positions = [annotation[i] for i in range(n) if i % subsampling_factor == 0]
     if len(binned_positions) == 0:
         binned_positions.append(0)
     return np.array(binned_positions)
@@ -273,11 +255,7 @@ def bin_measurement(measurement=None, subsampling_factor=3):
     if measurement is None:
         measurement = np.array([])
     n = len(measurement)
-    binned_measurement = [
-        measurement[i - subs + 1 : i].sum()
-        for i in range(n)
-        if i % subs == 0 and i > 0
-    ]
+    binned_measurement = [measurement[i - subs + 1 : i].sum() for i in range(n) if i % subs == 0 and i > 0]
     return np.array(binned_measurement)
 
 
@@ -288,9 +266,7 @@ def build_pyramid(M, subsampling_factor=3):
 
     subs = int(subsampling_factor)
     if subs < 1:
-        raise ValueError(
-            "Subsampling factor needs to be an integer greater than 1."
-        )
+        raise ValueError("Subsampling factor needs to be an integer greater than 1.")
     N = [M]
     while min(N[-1].shape) > 1:
         N.append(bin_matrix(N[-1], subsampling_factor=subs))
@@ -394,19 +370,13 @@ def bin_bp_sparse(M, positions, bin_len=10000):
     bin_per_frag = {}
     # Use (chr, bin) as grouping key (coord) and indices of fragments
     # belonging to current bin (bin_frags)
-    for coords, bin_frags in itertools.groupby(
-        frag_idx, lambda x: tuple(frags[x, :])
-    ):
+    for coords, bin_frags in itertools.groupby(frag_idx, lambda x: tuple(frags[x, :])):
 
         bin_frags = list(bin_frags)
         first_frag, last_frag = bin_frags[0], bin_frags[-1] + 1
         # Pool row/col number by bin
-        row[
-            np.where((r.row >= first_frag) & (r.row < last_frag))
-        ] = actual_bin_No
-        col[
-            np.where((r.col >= first_frag) & (r.col < last_frag))
-        ] = actual_bin_No
+        row[np.where((r.row >= first_frag) & (r.row < last_frag))] = actual_bin_No
+        col[np.where((r.col >= first_frag) & (r.col < last_frag))] = actual_bin_No
         # Get bin position in basepair
         out_pos[actual_bin_No] = coords[1] * bin_len
         # Multiple bins to create in same fragment (rare)
@@ -429,9 +399,7 @@ def bin_bp_sparse(M, positions, bin_len=10000):
     col[np.where(r.col >= last_frag)] = actual_bin_No - 1
     # Sum data of duplicate row/col pairs
     # (i.e. combine contacts of all fragments in same bin)
-    binned = coo_matrix(
-        (r.data, (row, col)), shape=(actual_bin_No, actual_bin_No)
-    )
+    binned = coo_matrix((r.data, (row, col)), shape=(actual_bin_No, actual_bin_No))
     binned.sum_duplicates()
     binned.eliminate_zeros()
 
@@ -697,10 +665,7 @@ def normalize_dense(M, norm="SCN", order=1, iterations=40):
         except ImportError as e:
             print(str(e))
             print("I can't find mirnylib.")
-            print(
-                "Please install it from "
-                "https://bitbucket.org/mirnylab/mirnylib"
-            )
+            print("Please install it from " "https://bitbucket.org/mirnylab/mirnylib")
             print("I will use default norm as fallback.")
             return normalize_dense(M, order=order, iterations=iterations)
 
@@ -715,9 +680,7 @@ def normalize_dense(M, norm="SCN", order=1, iterations=40):
         s = norm(M)
 
     else:
-        raise Exception(
-            'Unknown norm, please specify one of ("mirnylib", "SCN", "frag")'
-        )
+        raise Exception('Unknown norm, please specify one of ("mirnylib", "SCN", "frag")')
 
     return (s + s.T) / 2
 
@@ -858,9 +821,7 @@ def GC_wide(genome: str, window=1000):
     from Bio import SeqIO
 
     with open(genome) as handle:
-        sequence = "".join(
-            [str(record.seq) for record in SeqIO.parse(handle, "fasta")]
-        )
+        sequence = "".join([str(record.seq) for record in SeqIO.parse(handle, "fasta")])
 
     n = len(sequence)
     for i in range(0, n, window):
@@ -878,10 +839,7 @@ def split_genome(genome, chunk_size=10000):
         for record in SeqIO.parse(handle, "fasta"):
             sequence = record.seq
             n = len(sequence)
-            chunks += [
-                str(sequence[i : min(i + chunk_size, n)])
-                for i in range(0, n, chunk_size)
-            ]
+            chunks += [str(sequence[i : min(i + chunk_size, n)]) for i in range(0, n, chunk_size)]
     return np.array(chunks)
 
 
@@ -938,10 +896,7 @@ def directional(M, window=None, circ=False, extrapolate=True, log=True):
     else:
         d = []
 
-    d += [
-        ttest_rel(N[i, i - window : i], N[i, i : i + window])[0]
-        for i in range(window, n - window)
-    ]
+    d += [ttest_rel(N[i, i - window : i], N[i, i : i + window])[0] for i in range(window, n - window)]
 
     if circ:
         d += [
@@ -996,38 +951,25 @@ def domainogram(M, window=None, circ=False, extrapolate=True):
     if circ:
         d = [
             (
-                np.sum(M[-i + window :, -i + window :])
-                + np.sum(M[: i - window + 1, : i - window + 1])
+                np.sum(M[-i + window :, -i + window :]) + np.sum(M[: i - window + 1, : i - window + 1])
                 for i in range(window)
             )
         ]
     elif extrapolate:
         d = [
-            (
-                np.sum(M[0 : 2 * i + 1, 0 : 2 * i + 1])
-                * ((2 * window + 1) ** 2.0)
-                / ((2 * i + 1) ** 2.0)
-            )
+            (np.sum(M[0 : 2 * i + 1, 0 : 2 * i + 1]) * ((2 * window + 1) ** 2.0) / ((2 * i + 1) ** 2.0))
             for i in range(window)
         ]
     else:
         d = []
 
-    d += [
-        np.sum(M[i - window : i + window + 1, i - window : i + window + 1])
-        for i in range(window, n - window)
-    ]
+    d += [np.sum(M[i - window : i + window + 1, i - window : i + window + 1]) for i in range(window, n - window)]
 
     if circ:
-        d += [
-            M[i:, i:].sum() + M[: n - i, n - i].sum()
-            for i in range(n - window, n)
-        ]
+        d += [M[i:, i:].sum() + M[: n - i, n - i].sum() for i in range(n - window, n)]
     elif extrapolate:
         d += [
-            M[i - window :, i - window :].sum()
-            * ((2 * window + 1) ** 2.0)
-            / ((2 * (n - i) + 1) ** 2.0)
+            M[i - window :, i - window :].sum() * ((2 * window + 1) ** 2.0) / ((2 * (n - i) + 1) ** 2.0)
             for i in range(n - window, n)
         ]
 
@@ -1045,9 +987,7 @@ def from_structure(structure):
             structure = p.get_structure("S", structure)
         if isinstance(structure, PDB.Structure.Structure):
             for _ in structure.get_chains():
-                atoms = [
-                    np.array(atom.get_coord()) for atom in structure.get_atoms()
-                ]
+                atoms = [np.array(atom.get_coord()) for atom in structure.get_atoms()]
     except ImportError:
         print("Biopython not found.")
         raise
@@ -1076,9 +1016,7 @@ def largest_connected_component(matrix):
     try:
         import scipy.sparse
 
-        n, components = scipy.sparse.csgraph.connected_components(
-            matrix, directed=False
-        )
+        n, components = scipy.sparse.csgraph.connected_components(matrix, directed=False)
         print("I found " + str(n) + " connected components.")
         component_dist = collections.Counter(components)
         print("Distribution of components: " + str(component_dist))
@@ -1115,17 +1053,12 @@ def to_structure(matrix, alpha=1):
     bary = np.sum(np.triu(distances, 1)) / (n**2)  # barycenters
     d = np.array(np.sum(distances**2, 0) / n - bary)  # distances to origin
     gram = np.array(
-        [
-            (d[i] + d[j] - distances[i][j] ** 2) / 2
-            for i, j in itertools.product(range(n), range(m))
-        ]
+        [(d[i] + d[j] - distances[i][j] ** 2) / 2 for i, j in itertools.product(range(n), range(m))]
     ).reshape(n, m)
     normalized = gram / np.linalg.norm(gram, "fro")
 
     try:
-        symmetric = np.array(
-            (normalized + normalized.T) / 2, dtype=np.longfloat
-        )  # just in case
+        symmetric = np.array((normalized + normalized.T) / 2, dtype=np.longfloat)  # just in case
     except AttributeError:
         symmetric = np.array((normalized + normalized.T) / 2)
 
@@ -1174,12 +1107,7 @@ def to_pdb(
     """
 
     n = len(structure)
-    letters = (
-        string.ascii_uppercase
-        + string.ascii_lowercase
-        + string.digits
-        + string.punctuation
-    ) * int(n / 94 + 1)
+    letters = (string.ascii_uppercase + string.ascii_lowercase + string.digits + string.punctuation) * int(n / 94 + 1)
     if contigs is None:
         contigs = np.ones(n + 1)
     if annotations is None:
@@ -1347,9 +1275,7 @@ def subsample_contacts(M, n_contacts):
     tot_contacts = int(cum_counts[-1])
 
     # Sample desired number of contacts from the range(0, n_contacts) array
-    sampled_contacts = np.random.choice(
-        int(tot_contacts), size=int(n_contacts), replace=False
-    )
+    sampled_contacts = np.random.choice(int(tot_contacts), size=int(n_contacts), replace=False)
 
     # Get indices of sampled contacts in the cum_counts array
     idx = np.searchsorted(cum_counts, sampled_contacts, side="right")
@@ -1379,9 +1305,7 @@ def shortest_path_interpolation(matrix, alpha=1, strict=True):
     Also known as Boost-Hi-C (https://www.ncbi.nlm.nih.gov/pubmed/30615061)
     """
     matrix = np.array(matrix, np.float64)
-    contacts = distance_to_contact(
-        to_distance(matrix, alpha=alpha), alpha=alpha
-    )
+    contacts = distance_to_contact(to_distance(matrix, alpha=alpha), alpha=alpha)
     if not strict:
         return contacts
     else:
@@ -1423,9 +1347,7 @@ def flatten_positions_to_contigs(positions):
         flattened_positions = positions.flatten()
     else:
         try:
-            flattened_positions = np.array(
-                [pos for contig in positions for pos in contig]
-            )
+            flattened_positions = np.array([pos for contig in positions for pos in contig])
         except TypeError:
             flattened_positions = np.array(positions)
 
@@ -1451,14 +1373,7 @@ def simple_distance_diagonal_law(matrix, circular=False):
         return np.array([np.average(np.diagonal(matrix, j)) for j in range(n)])
     else:
         n = len(matrix)
-        return [
-            (
-                np.average(np.diagonal(matrix, j))
-                + np.average(np.diagonal(matrix, n - j))
-            )
-            / 2.0
-            for j in range(n)
-        ]
+        return [(np.average(np.diagonal(matrix, j)) + np.average(np.diagonal(matrix, n - j))) / 2.0 for j in range(n)]
 
 
 def distance_diagonal_law(matrix, positions=None, circular=False):
@@ -1478,9 +1393,7 @@ def distance_diagonal_law(matrix, positions=None, circular=False):
     max_intra_distance = max((len(contigs == u) for u in set(contigs)))
 
     intra_contacts = []
-    inter_contacts = [
-        np.average(np.diagonal(matrix, j)) for j in range(max_intra_distance, n)
-    ]
+    inter_contacts = [np.average(np.diagonal(matrix, j)) for j in range(max_intra_distance, n)]
     for j in range(max_intra_distance):
         D = np.diagonal(matrix, j)
         for i in range(len(D)):
@@ -1510,13 +1423,9 @@ def rippe_parameters(matrix, positions, lengths=None, init=None, circ=False):
         for j in range(1, i):
             mean_length = (lengths[i] + lengths[j]) / 2.0
             if positions[i] < positions[j]:
-                d = (
-                    (positions[j] - positions[i] - lengths[i]) + mean_length
-                ) / 1000.0
+                d = ((positions[j] - positions[i] - lengths[i]) + mean_length) / 1000.0
             else:
-                d = (
-                    (positions[i] - positions[j] - lengths[j]) + mean_length
-                ) / 1000.0
+                d = ((positions[i] - positions[j] - lengths[j]) + mean_length) / 1000.0
 
             bins.append(np.abs(d))
             measurements.append(matrix[i, j])
@@ -1555,27 +1464,16 @@ def estimate_param_rippe(measurements, bins, init=None, circ=False):
             s = n * (n_l - n) / n_l
             s0 = n0 * (n_l - n0) / n_l
             norm_lin = param[3] * (
-                0.53
-                * (param[0] ** -3.0)
-                * np.power(n0, (param[2]))
-                * np.exp((d - 2) / ((np.power(n0, 2) + d)))
+                0.53 * (param[0] ** -3.0) * np.power(n0, (param[2])) * np.exp((d - 2) / ((np.power(n0, 2) + d)))
             )
 
             norm_circ = param[3] * (
-                0.53
-                * (param[0] ** -3.0)
-                * np.power(s0, (param[2]))
-                * np.exp((d - 2) / ((np.power(s0, 2) + d)))
+                0.53 * (param[0] ** -3.0) * np.power(s0, (param[2])) * np.exp((d - 2) / ((np.power(s0, 2) + d)))
             )
 
             rippe = (
                 param[3]
-                * (
-                    0.53
-                    * (param[0] ** -3.0)
-                    * np.power(s, (param[2]))
-                    * np.exp((d - 2) / ((np.power(s, 2) + d)))
-                )
+                * (0.53 * (param[0] ** -3.0) * np.power(s, (param[2])) * np.exp((d - 2) / ((np.power(s, 2) + d))))
                 * norm_lin
                 / norm_circ
             )
@@ -1586,9 +1484,7 @@ def estimate_param_rippe(measurements, bins, init=None, circ=False):
                 0.53
                 * (param[0] ** -3.0)
                 * np.power((param[1] * x / param[0]), (param[2]))
-                * np.exp(
-                    (d - 2) / ((np.power((param[1] * x / param[0]), 2) + d))
-                )
+                * np.exp((d - 2) / ((np.power((param[1] * x / param[0]), 2) + d)))
             )
 
         return rippe
@@ -1649,11 +1545,7 @@ def null_model(
     if model == "uniform":
         if positions_supplied:
             trans_contacts = np.array(
-                [
-                    matrix[i, j]
-                    for i, j in itertools.product(range(n), range(m))
-                    if is_inter(i, j)
-                ]
+                [matrix[i, j] for i, j in itertools.product(range(n), range(m)) if is_inter(i, j)]
             )
             mean_trans_contacts = np.average(trans_contacts)
         else:
@@ -1664,34 +1556,17 @@ def null_model(
 
     elif model == "distance":
         distances = distance_diagonal_law(matrix, positions)
-        N = np.array(
-            [
-                [distances[min(abs(i - j), n)] for i in range(n)]
-                for j in range(n)
-            ]
-        )
+        N = np.array([[distances[min(abs(i - j), n)] for i in range(n)] for j in range(n)])
 
     elif model == "rippe":
 
-        trans_contacts = np.array(
-            [
-                matrix[i, j]
-                for i, j in itertools.product(range(n), range(m))
-                if is_inter(i, j)
-            ]
-        )
+        trans_contacts = np.array([matrix[i, j] for i, j in itertools.product(range(n), range(m)) if is_inter(i, j)])
         mean_trans_contacts = np.average(trans_contacts)
         kuhn, lm, slope, d, A = rippe_parameters(matrix, positions, circ=circ)
 
         def jc(s, frag):
             dist = s - circ * (s**2) / lengths[frag]
-            computed_contacts = (
-                0.53
-                * A
-                * (kuhn ** (-3.0))
-                * (dist**slope)
-                * np.exp((d - 2) / (dist + d))
-            )
+            computed_contacts = 0.53 * A * (kuhn ** (-3.0)) * (dist**slope) * np.exp((d - 2) / (dist + d))
             return np.maximum(computed_contacts, mean_trans_contacts)
 
         for i in range(n):
@@ -1708,15 +1583,11 @@ def null_model(
         try:
             from Bio.Statistics import lowess
 
-            trend = lowess.lowess(
-                np.array(range(n), dtype=np.float64), contact_sum, f=0.03
-            )
+            trend = lowess.lowess(np.array(range(n), dtype=np.float64), contact_sum, f=0.03)
         except ImportError:
             expected_size = int(np.amax(contact_sum) / np.average(contact_sum))
             w = min(max(expected_size, 20), 100)
-            trend = np.array(
-                [np.average(contact_sum[i : min(i + w, n)]) for i in range(n)]
-            )
+            trend = np.array([np.average(contact_sum[i : min(i + w, n)]) for i in range(n)])
 
         cov_score = np.sqrt((trend - np.average(trend)) / np.std(trend))
 
@@ -1725,14 +1596,14 @@ def null_model(
     if noisy:
         if callable(noisy):
             noise_function = noisy
+        else:
+            noise_function = noise
         return noise_function(N)
     else:
         return N
 
 
-def model_norm(
-    matrix, positions=None, lengths=None, model="uniform", circ=False
-):
+def model_norm(matrix, positions=None, lengths=None, model="uniform", circ=False):
 
     N = null_model(
         matrix,
@@ -1753,9 +1624,7 @@ def trim_structure(struct, filtering="cube", n=2):
 
     if filtering == "sphere":
         R = (np.std(X) ** 2 + np.std(Y) ** 2 + np.std(Z) ** 2) * (n**2)
-        f = (X - np.mean(X)) ** 2 + (Y - np.mean(Y)) ** 2 + (
-            Z - np.mean(Z)
-        ) ** 2 < R
+        f = (X - np.mean(X)) ** 2 + (Y - np.mean(Y)) ** 2 + (Z - np.mean(Z)) ** 2 < R
 
     if filtering == "cube":
         R = min(np.std(X), np.std(Y), np.std(Z)) * n
@@ -1766,9 +1635,7 @@ def trim_structure(struct, filtering="cube", n=2):
     if filtering == "percentile":
         f = np.ones(len(X))
         for C in (X, Y, Z):
-            f *= np.abs(C - np.mean(C)) < np.percentile(
-                np.abs(C - np.mean(C)), n
-            )
+            f *= np.abs(C - np.mean(C)) < np.percentile(np.abs(C - np.mean(C)), n)
 
     return np.array([X[f], Y[f], Z[f]])
 
@@ -1827,11 +1694,7 @@ def scalogram(M, circ=False, max_range=False):
             elif circ and i >= j and i + j >= n:
                 N[i, j] = M[i, i - j :].sum() + M[i, : i + j - n + 1].sum()
             elif circ and i < j and i + j >= n:
-                N[i, j] = (
-                    M[i, i - j :].sum()
-                    + M[i, :].sum()
-                    + M[i, : i + j - n + 1].sum()
-                )
+                N[i, j] = M[i, i - j :].sum() + M[i, :].sum() + M[i, : i + j - n + 1].sum()
     return N
 
 
@@ -1910,7 +1773,7 @@ def compartments(M, normalize=True):
     N[np.isnan(N)] = 0.0
 
     # Computation of eigen vectors:
-    (eig_val, eig_vec) = eig(N)
+    eig_val, eig_vec = eig(N)
     PC1 = eig_vec[:, 0]
     PC2 = eig_vec[:, 1]
     return PC1, PC2
@@ -1943,8 +1806,8 @@ def corrcoef_sparse(A, B=None):
     rowsum = A.sum(axis=1)
     centering = rowsum.dot(rowsum.T) / n
     C = (A.dot(A.T) - coo_matrix(centering)) / (n - 1)
-    d = C.diagonal()
-    coeffs = C / np.sqrt(np.outer(d, d))
+    d = np.asarray(C.diagonal()).flatten()
+    coeffs = np.asarray(C.todense()) / np.sqrt(np.outer(d, d))
 
     return coeffs
 
@@ -2026,7 +1889,7 @@ def remove_intra(M, contigs, mask):
     assert n == len(contigs)
 
     # Naive implmentation for now
-    for (i, j) in itertools.product(range(n), range(n)):
+    for i, j in itertools.product(range(n), range(n)):
         if contigs[i] == contigs[j]:
             N[i, j] = 0
 
@@ -2063,7 +1926,7 @@ def remove_inter(M, contigs):
     assert n == len(contigs)
 
     # Naive implmentation for now
-    for (i, j) in itertools.product(range(n), range(n)):
+    for i, j in itertools.product(range(n), range(n)):
         if contigs[i] != contigs[j]:
             N[i, j] = 0
 

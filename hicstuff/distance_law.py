@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
+import io
 import numpy as np
 import sys
 import matplotlib.pyplot as plt
@@ -12,10 +13,11 @@ import os as os
 import csv as csv
 import hicstuff.io as hio
 from hicstuff.log import logger
+from hicstuff.version import __version__
 
 
 def export_distance_law(xs, ps, names, out_file=None):
-    """ Export the x(s) and p(s) from two list of numpy.ndarrays to a table
+    """Export the x(s) and p(s) from two list of numpy.ndarrays to a table
     in txt file with three columns separated by a tabulation. The first column
     contains the x(s), the second the p(s) and the third the name of the arm or
     chromosome. The file is created in the directory given by outdir or the
@@ -50,22 +52,18 @@ def export_distance_law(xs, ps, names, out_file=None):
         sys.exit(1)
     # Create the file and write it
     f = open(out_file, "w")
+    f.write(f"## hicstuff v{__version__}\n")
+    f.write("## distance_law\n")
+    f.write("## columns: start_bp\tp(s)\tchrom\n")
     for i in range(len(xs)):
         for j in range(len(xs[i])):
-            line = (
-                str(format(xs[i][j], "g"))
-                + "\t"
-                + str(format(ps[i][j], "g"))
-                + "\t"
-                + names[i]
-                + "\n"
-            )
+            line = str(format(xs[i][j], "g")) + "\t" + str(format(ps[i][j], "g")) + "\t" + names[i] + "\n"
             f.write(line)
     f.close()
 
 
 def import_distance_law(distance_law_file):
-    """ Import the table created by export_distance_law and return the list of
+    """Import the table created by export_distance_law and return the list of
     x(s) and p(s) in the order of the chromosomes.
 
     Parameters
@@ -89,6 +87,7 @@ def import_distance_law(distance_law_file):
         distance_law_file,
         sep="\t",
         header=None,
+        comment="#",
         dtype={"a": np.int32, "b": np.float32, "c": str},
     )
     names_idx = np.unique(file.iloc[:, 2], return_index=True)[1]
@@ -105,25 +104,25 @@ def import_distance_law(distance_law_file):
 
 
 def get_chr_segment_bins_index(fragments, centro_file=None, rm_centro=0):
-    """Get the index positions of the start and end bins of different 
+    """Get the index positions of the start and end bins of different
     chromosomes, or arms if the centromers position have been given from the
     fragments file made by hicstuff.
-    
+
     Parameters
     ----------
     fragments : pandas.DataFrame
-        Table containing in the first coulum the ID of the fragment, in the 
-        second the names of the chromosome in the third and fourth the start 
+        Table containing in the first coulum the ID of the fragment, in the
+        second the names of the chromosome in the third and fourth the start
         position and the end position of the fragment. The file have no header.
         (File like the 'fragments_list.txt' from hicstuff)
     centro_file : None or str
-        None or path to a file with the genomic positions of the centromers 
-        sorted as the chromosomes separated by a space. The file have only one 
+        None or path to a file with the genomic positions of the centromers
+        sorted as the chromosomes separated by a space. The file have only one
         line.
     rm_centro : int
         If a value is given, will remove the contacts close the centromeres.
         It will remove as many kb as the argument given. Default is zero.
-        
+
     Returns
     -------
     list of floats :
@@ -162,38 +161,32 @@ def get_chr_segment_bins_index(fragments, centro_file=None, rm_centro=0):
                 subfrags = fragments[chr_start_bins[i] :]
             # index of last fragment starting before centro in same chrom
             centro_bins[2 * i] = chr_start_bins[i] + max(
-                np.where(
-                    subfrags["start_pos"][:] // (int(centro_pos[i]) - rm_centro) == 0
-                )[0]
+                np.where(subfrags["start_pos"][:] // (int(centro_pos[i]) - rm_centro) == 0)[0]
             )
             centro_bins[2 * i + 1] = chr_start_bins[i] + max(
-                np.where(
-                    subfrags["start_pos"][:] // (int(centro_pos[i]) + rm_centro) == 0
-                )[0]
+                np.where(subfrags["start_pos"][:] // (int(centro_pos[i]) + rm_centro) == 0)[0]
             )
         # Combine centro and chrom bins into a single array. Values are the id
         # of the bins started and ending the arms.
-        chr_segment_bins = np.sort(
-            np.concatenate((chr_start_bins, chr_end_bins, centro_bins))
-        )
+        chr_segment_bins = np.sort(np.concatenate((chr_start_bins, chr_end_bins, centro_bins)))
     return list(chr_segment_bins)
 
 
 def get_chr_segment_length(fragments, chr_segment_bins):
-    """Compute a list of the length of the different objects (arm or 
+    """Compute a list of the length of the different objects (arm or
     chromosome) given by chr_segment_bins.
-    
+
     Parameters
     ----------
     fragments : pandas.DataFrame
-        Table containing in the first coulum the ID of the fragment, in the 
-        second the names of the chromosome in the third and fourth the start 
+        Table containing in the first coulum the ID of the fragment, in the
+        second the names of the chromosome in the third and fourth the start
         position and the end position of the fragment. The file have no header.
         (File like the 'fragments_list.txt' from hicstuff)
     chr_segment_bins : list of floats
         The start and end indices of chromosomes/arms to compute the distance
         law on each chromosome/arm separately.
-        
+
     Returns
     -------
     list of numpy.ndarray:
@@ -219,14 +212,14 @@ def get_chr_segment_length(fragments, chr_segment_bins):
 
 def logbins_xs(fragments, chr_segment_length, base=1.1, circular=False):
     """Compute the logbins of each chromosome/arm in order to have theme to
-    compute distance law. At the end you will have bins of increasing with a 
+    compute distance law. At the end you will have bins of increasing with a
     logspace with the base of the value given in base.
-    
+
     Parameters
     ----------
     fragments : pandas.DataFrame
-        Table containing in the first coulum the ID of the fragment, in the 
-        second the names of the chromosome in the third and fourth the start 
+        Table containing in the first coulum the ID of the fragment, in the
+        second the names of the chromosome in the third and fourth the start
         position and the end position of the fragment. The file have no header.
         (File like the 'fragments_list.txt' from hicstuff)
     chr_segment_length: list of floats
@@ -234,9 +227,9 @@ def logbins_xs(fragments, chr_segment_length, base=1.1, circular=False):
     base : float
         Base use to construct the logspace of the bins, 1.1 by default.
     circular : bool
-        If True, calculate the distance as the chromosome is circular. Default 
+        If True, calculate the distance as the chromosome is circular. Default
         value is False.
-        
+
     Returns
     -------
     list of numpy.ndarray :
@@ -254,9 +247,7 @@ def logbins_xs(fragments, chr_segment_length, base=1.1, circular=False):
         n_bins = int(np.log(n) / np.log(base))
         # For each chromosome/arm compute a logspace to have the logbin
         # equivalent to the size of the arms and increasing size of bins
-        xs[i] = np.unique(
-            np.logspace(0, n_bins, num=n_bins + 1, base=base, dtype=int)
-        )
+        xs[i] = np.unique(np.logspace(0, n_bins, num=n_bins + 1, base=base, dtype=int))
     return xs
 
 
@@ -277,7 +268,7 @@ def circular_distance_law(distance, chr_segment_length, chr_bin):
     Returns
     -------
     int :
-        The real distance in the chromosome circular and not the distance 
+        The real distance in the chromosome circular and not the distance
         between two genomic positions
 
     Examples
@@ -295,12 +286,50 @@ def circular_distance_law(distance, chr_segment_length, chr_bin):
     return distance
 
 
-def get_pairs_distance(
-    line, fragments, chr_segment_bins, chr_segment_length, xs, ps, circular=False
-):
-    """From a line of a pair reads file, filter -/+ or +/- reads, keep only the 
+def get_pairs_distance_pos(line, chr_to_idx, chr_segment_length, xs, ps, circular=False):
+    """Compute distance law from a plain pairs line using read positions directly.
+
+    For use when no fragments file is available. Uses abs(pos2 - pos1) as the
+    genomic distance between two reads, keeping only same-chromosome, same-strand
+    pairs (++ or --) to mirror the strand filter used in get_pairs_distance.
+
+    Parameters
+    ----------
+    line : dict
+        Line of a pairs file with keys readID, chr1, pos1, chr2, pos2,
+        strand1, strand2. Values are strings.
+    chr_to_idx : dict
+        Mapping of chromosome name to its index in xs/ps/chr_segment_length.
+    chr_segment_length : list of int
+        Length in base pairs of each chromosome.
+    xs : list of numpy.ndarray
+        The start coordinate of each logbin, one array per chromosome.
+    ps : list of list
+        Contact counts per logbin per chromosome. Modified in place.
+    circular : bool
+        If True, compute circular distance. Default is False.
+    """
+    if line["chr1"] != line["chr2"]:
+        return
+    if line["chr1"] not in chr_to_idx:
+        return
+    if line["strand1"] == line["strand2"]:
+        chr_bin = chr_to_idx[line["chr1"]]
+        distance = abs(int(line["pos2"]) - int(line["pos1"]))
+        if distance <= 0:
+            return
+        if circular:
+            distance = circular_distance_law(distance, chr_segment_length, chr_bin)
+        xs_temp = xs[chr_bin][:]
+        ps_indice = np.searchsorted(xs_temp, distance, side="right") - 1
+        if 0 <= ps_indice < len(ps[chr_bin]):
+            ps[chr_bin][ps_indice] += 1
+
+
+def get_pairs_distance(line, fragments, chr_segment_bins, chr_segment_length, xs, ps, circular=False):
+    """From a line of a pair reads file, filter -/+ or +/- reads, keep only the
     reads in the same chromosome/arm and compute the distance of the the two
-    fragments. It modify the input ps in order to count or not the line given. 
+    fragments. It modify the input ps in order to count or not the line given.
     It will add one in the logbin corresponding to the distance.
 
     Parameters
@@ -309,8 +338,8 @@ def get_pairs_distance(
         Line of a pair reads file with the these keys readID, chr1, pos1, chr2,
         pos2, strand1, strand2, frag1, frag2. The values are in a dictionnary.
     fragments : pandas.DataFrame
-        Table containing in the first coulum the ID of the fragment, in the 
-        second the names of the chromosome in the third and fourth the start 
+        Table containing in the first coulum the ID of the fragment, in the
+        second the names of the chromosome in the third and fourth the start
         position and the end position of the fragment. The file have no header.
         (File like the 'fragments_list.txt' from hicstuff)
     chr_segment_bins : list of floats
@@ -321,16 +350,16 @@ def get_pairs_distance(
     xs : list of lists
         The start coordinate of each bin one array per chromosome or arm.
     ps : list of lists
-        The sum of contact already count. xs and ps should have the same 
+        The sum of contact already count. xs and ps should have the same
         dimensions.
     circular : bool
-        If True, calculate the distance as the chromosome is circular. Default 
+        If True, calculate the distance as the chromosome is circular. Default
         value is False.
     """
     # Check this is a pairs_idx file and not simple pairs
-    if line['frag1'] is None:
+    if line["frag1"] is None:
         logger.error(
-            'Input pairs file must have frag1 and frag2 columns. In hicstuff '
+            "Input pairs file must have frag1 and frag2 columns. In hicstuff "
             'pipeline, this is the "valid_idx.pairs" file.'
         )
     # We only keep the event +/+ or -/-. This is done to avoid to have any
@@ -340,12 +369,8 @@ def get_pairs_distance(
     # biases as they should have the same distribution.
     if line["strand1"] == line["strand2"]:
         # Find in which chromosome/arm are the fragment 1 and 2.
-        chr_bin1 = (
-            np.searchsorted(chr_segment_bins, int(line["frag1"]), side="right") - 1
-        )
-        chr_bin2 = (
-            np.searchsorted(chr_segment_bins, int(line["frag2"]), side="right") - 1
-        )
+        chr_bin1 = np.searchsorted(chr_segment_bins, int(line["frag1"]), side="right") - 1
+        chr_bin2 = np.searchsorted(chr_segment_bins, int(line["frag2"]), side="right") - 1
         # We only keep the reads with the two fragments in the same chromosome
         # or arm.
         if chr_bin1 == chr_bin2:
@@ -368,9 +393,7 @@ def get_pairs_distance(
                         - np.array(fragments["end_pos"][int(line["frag2"])])
                     )
                 if circular:
-                    distance = circular_distance_law(
-                        distance, chr_segment_length, chr_bin1
-                    )
+                    distance = circular_distance_law(distance, chr_segment_length, chr_bin1)
                 xs_temp = xs[chr_bin1][:]
                 # Find the logbins in which the distance is and add one to the sum
                 # of contact.
@@ -384,17 +407,17 @@ def get_names(fragments, chr_segment_bins):
     Parameters
     ----------
     fragments : pandas.DataFrame
-        Table containing in the first coulum the ID of the fragment, in the 
-        second the names of the chromosome in the third and fourth the start 
+        Table containing in the first coulum the ID of the fragment, in the
+        second the names of the chromosome in the third and fourth the start
         position and the end position of the fragment. The file have no header.
         (File like the 'fragments_list.txt' from hicstuff)
     chr_segment_bins : list of floats
-        The start position of chromosomes/arms to compute the distance law on 
+        The start position of chromosomes/arms to compute the distance law on
         each chromosome/arm separately.
 
     Returns
     -------
-    list of floats : 
+    list of floats :
         List of the labels given to the curves. It will be the name of the arms
         or chromosomes.
     """
@@ -411,9 +434,42 @@ def get_names(fragments, chr_segment_bins):
     return chr_names
 
 
+def _get_chrom_info_from_pairs(pairs_reads_file):
+    """Parse chromosome names, sizes and column list from a pairs file header.
+
+    Reads ``#chromsize:`` and ``#columns:`` metadata lines from the pairs
+    header.  Supports plain and gzip-compressed files.
+
+    Parameters
+    ----------
+    pairs_reads_file : str
+        Path to a pairs file (plain or gzip-compressed).
+
+    Returns
+    -------
+    chrom_sizes : dict
+        Ordered mapping of chromosome name → size in bp, in header order.
+    columns : list of str or None
+        Column names from the ``#columns:`` header line, or None if absent.
+    """
+    chrom_sizes = {}
+    columns = None
+    with hio.read_compressed(pairs_reads_file) as fh:
+        for raw_line in fh:
+            if not raw_line.startswith("#"):
+                break
+            line = raw_line.rstrip()
+            if line.startswith("#chromsize:"):
+                parts = line.split()
+                chrom_sizes[parts[1]] = int(parts[2])
+            elif line.startswith("#columns:"):
+                columns = line.split()[1:]
+    return chrom_sizes, columns
+
+
 def get_distance_law(
     pairs_reads_file,
-    fragments_file,
+    fragments_file=None,
     centro_file=None,
     base=1.1,
     out_file=None,
@@ -421,36 +477,44 @@ def get_distance_law(
     rm_centro=0,
 ):
     """Compute distance law as a function of the genomic coordinate aka P(s).
-    Bin length increases exponentially with distance. Works on pairs file 
-    format from 4D Nucleome Omics Data Standards Working Group. If the genome 
-    is composed of several chromosomes and you want to compute the arms 
-    separately, provide a file with the positions of centromers. Create a file 
-    with three coulumns separated by a tabulation. The first column contains 
-    the xs, the second the ps and the third the name of the arm or chromosome. 
-    The file is create in the directory given in outdir or in the current 
+    Bin length increases exponentially with distance. Works on pairs file
+    format from 4D Nucleome Omics Data Standards Working Group. If the genome
+    is composed of several chromosomes and you want to compute the arms
+    separately, provide a file with the positions of centromers. Create a file
+    with three coulumns separated by a tabulation. The first column contains
+    the xs, the second the ps and the third the name of the arm or chromosome.
+    The file is create in the directory given in outdir or in the current
     directory if no directory given.
+
+    When ``fragments_file`` is not provided, chromosome sizes are read from the
+    ``#chromsize:`` lines of the pairs header and distances are computed
+    directly as ``abs(pos2 - pos1)``.  This mode is compatible with plain 4DN
+    standard pairs files (with or without frag columns) and with
+    gzip-compressed files.  Centromere splitting is not supported in this mode.
 
     Parameters
     ----------
     pairs_reads_file : string
-        Path of a pairs file format from 4D Nucleome Omics Data Standards 
-        Working Group with the 8th and 9th coulumns are the ID of the fragments
-        of the reads 1 and 2.
-    fragments_file : path
+        Path of a pairs file format from 4D Nucleome Omics Data Standards
+        Working Group. When ``fragments_file`` is provided, the 8th and 9th
+        columns are expected to contain the fragment IDs of reads 1 and 2.
+    fragments_file : path or None
         Path of a table containing in the first column the ID of the fragment,
-        in the second the names of the chromosome in the third and fourth 
-        the start position and the end position of the fragment. The file have 
-        no header. (File like the 'fragments_list.txt' from hicstuff)
+        in the second the names of the chromosome in the third and fourth
+        the start position and the end position of the fragment. The file have
+        no header. (File like the 'fragments_list.txt' from hicstuff).
+        When None, chromosome information is inferred from the pairs header and
+        distances are computed from read positions directly.
     centro_file : None or str
-        None or path to a file with the genomic positions of the centromers 
-        sorted as the chromosomes separated by a space. The file have only one 
-        line.
+        None or path to a file with the genomic positions of the centromers
+        sorted as the chromosomes separated by a space. The file have only one
+        line.  Requires ``fragments_file``.
     base : float
         Base use to construct the logspace of the bins - 1.1 by default.
     out_file : None or str
         Path of the output file. If no path given, the output is returned.
     circular : bool
-        If True, calculate the distance as the chromosome is circular. Default 
+        If True, calculate the distance as the chromosome is circular. Default
         value is False. Cannot be True if centro_file is not None
     rm_centro : int
         If a value is given, will remove the contacts close the centromeres.
@@ -471,6 +535,61 @@ def get_distance_law(
     if circular and centro_file != None:
         logger.error("Chromosomes cannot have a centromere and be circular")
         sys.exit(1)
+
+    if fragments_file is None:
+        # Position-based path: derive chromosome info from the pairs header and
+        # compute distances as abs(pos2 - pos1).
+        if centro_file is not None:
+            logger.error(
+                "Centromere splitting requires a fragments file (--frags). "
+                "Please provide --frags or omit --centromeres."
+            )
+            sys.exit(1)
+        chrom_sizes, columns = _get_chrom_info_from_pairs(pairs_reads_file)
+        if not chrom_sizes:
+            logger.error(
+                "No #chromsize entries found in pairs header. "
+                "Please provide --frags or add chromsize lines to the pairs header."
+            )
+            sys.exit(1)
+        chr_names = list(chrom_sizes.keys())
+        chr_segment_length = list(chrom_sizes.values())
+        chr_to_idx = {name: i for i, name in enumerate(chr_names)}
+        xs = logbins_xs(None, chr_segment_length, base, circular)
+        ps = [[0] * len(xs[i]) for i in range(len(xs))]
+        # Determine fieldnames from header columns, falling back to 7-column standard
+        if columns is not None:
+            fieldnames = columns
+        else:
+            fieldnames = ["readID", "chr1", "pos1", "chr2", "pos2", "strand1", "strand2"]
+        with hio.read_compressed(pairs_reads_file) as reads:
+            # Skip header lines
+            raw_line = reads.readline()
+            while raw_line.startswith("#"):
+                raw_line = reads.readline()
+            # raw_line now holds the first data line; re-read via DictReader
+            first_data = raw_line
+            rest = reads.read()
+            data_stream = io.StringIO(first_data + rest)
+            reader = csv.DictReader(
+                data_stream,
+                fieldnames=fieldnames,
+                delimiter="\t",
+            )
+            for line in reader:
+                get_pairs_distance_pos(line, chr_to_idx, chr_segment_length, xs, ps, circular)
+        # Normalise by logbin area (same formula as fragment-based path)
+        for i in range(len(xs)):
+            n = chr_segment_length[i]
+            for j in range(len(xs[i]) - 1):
+                ps[i][j] /= ((2 * n - xs[i][j + 1] - xs[i][j]) / 2) * ((1 / np.sqrt(2)) * (xs[i][j + 1] - xs[i][j]))
+            ps[i][-1] /= ((n - xs[i][-1]) ** 2) / 2
+        names = chr_names
+        if out_file:
+            export_distance_law(xs, ps, names, out_file)
+        return xs, ps, names
+
+    # Fragment-based path (original behaviour): requires fragments_file.
     # Import third columns of fragments file
     fragments = pd.read_csv(fragments_file, sep="\t", header=0, usecols=[0, 1, 2, 3])
     # Calculate the indice of the bins to separate into chromosomes/arms
@@ -483,17 +602,19 @@ def get_distance_law(
     ps = [None] * len(chr_segment_length)
     for i in range(len(xs)):
         ps[i] = [0] * len(xs[i])
-    # Read the pair reads file
-    with open(pairs_reads_file, "r", newline="") as reads:
-        # Remove the line of the header
-        header_length = len(hio.get_pairs_header(pairs_reads_file))
-        for i in range(header_length):
-            next(reads)
+    # Read the pair reads file (supports plain and gzip-compressed files)
+    with hio.read_compressed(pairs_reads_file) as reads:
+        # Skip header lines (lines starting with '#')
+        raw_line = reads.readline()
+        while raw_line.startswith("#"):
+            raw_line = reads.readline()
+        # raw_line is the first data line; feed it together with the rest into DictReader
+        data_stream = io.StringIO(raw_line + reads.read())
         # Reads all the others lines and put the values in a dictionnary with
         # the keys : 'readID', 'chr1', 'pos1', 'chr2', 'pos2', 'strand1',
         # 'strand2', 'frag1', 'frag2'
         reader = csv.DictReader(
-            reads,
+            data_stream,
             fieldnames=[
                 "readID",
                 "chr1",
@@ -509,18 +630,14 @@ def get_distance_law(
         )
         for line in reader:
             # Iterate in each line of the file after the header
-            get_pairs_distance(
-                line, fragments, chr_segment_bins, chr_segment_length, xs, ps, circular
-            )
+            get_pairs_distance(line, fragments, chr_segment_bins, chr_segment_length, xs, ps, circular)
     # Divide the number of contacts by the area of the logbin
     for i in range(len(xs)):
         n = chr_segment_length[i]
         for j in range(len(xs[i]) - 1):
             # Use the area of a trapezium to know the area of the logbin with n
             # the size of the matrix.
-            ps[i][j] /= ((2 * n - xs[i][j + 1] - xs[i][j]) / 2) * (
-                (1 / np.sqrt(2)) * (xs[i][j + 1] - xs[i][j])
-            )
+            ps[i][j] /= ((2 * n - xs[i][j + 1] - xs[i][j]) / 2) * ((1 / np.sqrt(2)) * (xs[i][j + 1] - xs[i][j]))
             # print(
             #    ((2 * n - xs[i][j + 1] - xs[i][j]) / 2)
             #    * ((1 / np.sqrt(2)) * (xs[i][j + 1] - xs[i][j]))
@@ -546,7 +663,7 @@ def normalize_distance_law(xs, ps, inf=3000, sup=None):
     xs : list of numpy.ndarray
         list of logbins corresponding to the ps.
     ps : list of numpy.ndarray
-        Average ps or list of ps of the chromosomes/arms. xs and ps have to 
+        Average ps or list of ps of the chromosomes/arms. xs and ps have to
         have the same shape.
     inf : integer
         Inferior value of the interval on which, the normalization is applied.
@@ -601,7 +718,7 @@ def average_distance_law(xs, ps, sup, big_arm_only=False):
         Value given to set the minimum size of the chromosomes/arms to make the
         average.
     big_arm_only : bool
-        By default False. If True, will only take into account the arms/chromosomes 
+        By default False. If True, will only take into account the arms/chromosomes
         longer than the value of sup. Sup mandatory if set.
 
     Returns
@@ -627,9 +744,7 @@ def average_distance_law(xs, ps, sup, big_arm_only=False):
         # Sanity check : sup strictly inferior to maw length arms.
         if big_arm_only:
             if sup >= xs[-1]:
-                logger.error(
-                    "sup have to be inferior to the max length of arms/chromsomes if big arm only set"
-                )
+                logger.error("sup have to be inferior to the max length of arms/chromsomes if big arm only set")
                 sys.exit(1)
             if sup <= xs[len(chrom_ps) - 1]:
                 ps_occur[: len(chrom_ps)] += 1
@@ -643,7 +758,7 @@ def average_distance_law(xs, ps, sup, big_arm_only=False):
 
 
 def slope_distance_law(xs, ps):
-    """Compute the slope of the loglog curve of the ps as the 
+    """Compute the slope of the loglog curve of the ps as the
     [log(ps(n+1)) - log(ps(n))] / [log(n+1) - log(n)].
     Compute only list of ps, not list of array.
 
@@ -716,23 +831,24 @@ def get_ylim(xs, curve, inf, sup):
         # Skip chromosome if total size smaller than inf
         if len(min_index) == 0:
             continue
+        min_index = int(min_index[0])
         # Search for the maximum index corresponding to the biggest bin
         # inferior or equal to sup (in pair base).
         max_value = max(logbins[logbins <= sup])
-        max_index = np.where(logbins == max_value)[0]
+        max_index = int(np.where(logbins == max_value)[0][0])
         # Add the values in the interval in the flattened list.
-        if int(max_index) != len(logbins) - 1:
+        if max_index != len(logbins) - 1:
             max_index += 1
-        for j in range(int(min_index), int(max_index)):
+        for j in range(min_index, max_index):
             flatten_list.append(curve[i][j])
-    # Caluclate the min and the max of this list.
-    min_tot = min(flatten_list)
-    max_tot = max(flatten_list)
+    # Calculate the min and the max of this list.
+    min_tot = float(min(flatten_list))
+    max_tot = float(max(flatten_list))
     return min_tot, max_tot
 
 
 def plot_ps_slope(xs, ps, labels, fig_path=None, inf=3000, sup=None):
-    """Compute two plots, one with the different distance law of each 
+    """Compute two plots, one with the different distance law of each
     arm/chromosome in loglog scale and one with the slope (derivative) of these
     curves. Generate a svg file with savefig.
 
@@ -747,12 +863,12 @@ def plot_ps_slope(xs, ps, labels, fig_path=None, inf=3000, sup=None):
     fig_path : str
         Path where the figure will be created. If None (default), the plot is
         shown in an interactive window.
-    inf : int 
+    inf : int
         Value of the mimimum x of the window of the plot. Have to be strictly
         positive. By default 3000.
-    sup : int 
+    sup : int
         Value of the maximum x of the window of the plot. By default None.
-        
+
     """
     # Give the max value for sup if no value have been attributed
     if sup is None:
