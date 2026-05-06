@@ -81,7 +81,7 @@ def get_pipeline_stats(log_file):
     if len(pcr_pairs) > 0:
         pcr_pairs = pcr_pairs[0]
         pcr_pairs = re.sub(r".*have been filtered out \(", "", pcr_pairs)
-        pcr_pairs = re.sub(" / .*", "", pcr_pairs)
+        pcr_pairs = re.sub(r"/.*", "", pcr_pairs)
         pcr_pairs = int(float(pcr_pairs))
     else:
         pcr_pairs = 0
