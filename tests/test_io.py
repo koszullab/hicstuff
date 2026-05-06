@@ -118,7 +118,7 @@ def test_check_fasta_index():
     for i in range(6):
         Path(f.name + f".{i}.bt2").touch()
     assert hio.check_fasta_index(f.name, mode="bowtie2") == f.name
-    assert hio.check_fasta_index(f.name, mode="bwa") == None
+    assert hio.check_fasta_index(f.name, mode="bwa") is None
     os.unlink(f.name)
     for i in range(6):
         os.unlink(f.name + f".{i}.bt2")
@@ -153,4 +153,4 @@ def test_get_pos_col():
     assert len(cols) == 3
     assert cols == (chrom, start, end)
 
-    bad_df = pd.DataFrame(dummy, columns=[l for l in "abcde"])
+    pd.DataFrame(dummy, columns=[l for l in "abcde"])

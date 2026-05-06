@@ -105,14 +105,7 @@ def write_frag_info(
                         end_pos = start_pos + frag_length
                         gc_content = SeqUtils.gc_fraction(frag) / 100.0
 
-                        current_fragment_line = "%s\t%s\t%s\t%s\t%s\t%s\n" % (
-                            current_id,
-                            contig_name,
-                            start_pos,
-                            end_pos,
-                            frag_length,
-                            gc_content,
-                        )
+                        current_fragment_line = f"{current_id}\t{contig_name}\t{start_pos}\t{end_pos}\t{frag_length}\t{gc_content}\n"
 
                         fragments_list.write(current_fragment_line)
 
@@ -127,12 +120,7 @@ def write_frag_info(
                         current_id += 1
                         n_frags += 1
 
-                current_contig_line = "%s\t%s\t%s\t%s\n" % (
-                    contig_name,
-                    contig_length,
-                    n_frags,
-                    total_frags,
-                )
+                current_contig_line = f"{contig_name}\t{contig_length}\t{n_frags}\t{total_frags}\n"
                 total_frags += n_frags
                 info_contigs.write(current_contig_line)
 
@@ -232,8 +220,7 @@ def attribute_fragments(pairs_file, idx_pairs_file, restriction_table):
             logger.warning(
                 "Pairs on the following contigs were discarded as "
                 "those contigs are not listed in the paris file header. "
-                "This is normal if you filtered out small contigs: %s"
-                % " ".join(list(missing_contigs))
+                "This is normal if you filtered out small contigs: {}".format(" ".join(list(missing_contigs)))
             )
 
 

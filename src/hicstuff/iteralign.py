@@ -111,7 +111,7 @@ def iterative_align(
     if read_len is None:
         with hio.read_compressed(uncomp_path) as inf:
             # Skip first line (read header)
-            size = inf.readline()
+            inf.readline()
             # Stripping newline from sequence line.
             read_len = len(inf.readline().rstrip())
 

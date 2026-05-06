@@ -32,7 +32,7 @@ def test_filter_pcr_dup():
             test_pairs.write(line)
             if lnum == 50:
                 # Making 30 duplicates of this pair
-                for i in range(30):
+                for _i in range(30):
                     test_pairs.write(line)
             lnum += 1
     test_pairs.close()

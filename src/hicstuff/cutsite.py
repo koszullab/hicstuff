@@ -258,12 +258,12 @@ def write_pair(
         for i in range(len(for_seq_list)):
             for j in range(len(rev_seq_list)):
                 final_number_of_pairs += 1
-                new_reads_for += "@%s\n%s\n+\n%s\n" % (
+                new_reads_for += "@{}\n{}\n+\n{}\n".format(
                     name + ":" + str(i) + str(j),
                     for_seq_list[i],
                     for_qual_list[i],
                 )
-                new_reads_rev += "@%s\n%s\n+\n%s\n" % (
+                new_reads_rev += "@{}\n{}\n+\n{}\n".format(
                     name + ":" + str(i) + str(j),
                     rev_seq_list[j],
                     rev_qual_list[j],
@@ -277,27 +277,27 @@ def write_pair(
             for j in range(i + 1, len(seq_list)):
                 final_number_of_pairs += 1
                 if i < len(for_seq_list):
-                    new_reads_for += "@%s\n%s\n+\n%s\n" % (
+                    new_reads_for += "@{}\n{}\n+\n{}\n".format(
                         name + ":" + str(i) + str(j),
                         seq_list[i],
                         qual_list[i],
                     )
                 # Reverse the forward read if comes from reverse.
                 else:
-                    new_reads_for += "@%s\n%s\n+\n%s\n" % (
+                    new_reads_for += "@{}\n{}\n+\n{}\n".format(
                         name + ":" + str(i) + str(j),
                         seq_list[i][::-1],
                         qual_list[i][::-1],
                     )
                 # Reverse the reverse read if comes from forward.
                 if j < len(for_seq_list):
-                    new_reads_rev += "@%s\n%s\n+\n%s\n" % (
+                    new_reads_rev += "@{}\n{}\n+\n{}\n".format(
                         name + ":" + str(i) + str(j),
                         seq_list[j][::-1],
                         qual_list[j][::-1],
                     )
                 else:
-                    new_reads_rev += "@%s\n%s\n+\n%s\n" % (
+                    new_reads_rev += "@{}\n{}\n+\n{}\n".format(
                         name + ":" + str(i) + str(j),
                         seq_list[j],
                         qual_list[j],
@@ -310,34 +310,34 @@ def write_pair(
         for i in range(len(seq_list) - 1):
             final_number_of_pairs += 1
             if i < len(for_seq_list) - 1:
-                new_reads_for += "@%s\n%s\n+\n%s\n" % (
+                new_reads_for += "@{}\n{}\n+\n{}\n".format(
                     name + ":" + str(i) + str(i + 1),
                     seq_list[i],
                     qual_list[i],
                 )
-                new_reads_rev += "@%s\n%s\n+\n%s\n" % (
+                new_reads_rev += "@{}\n{}\n+\n{}\n".format(
                     name + ":" + str(i) + str(i + 1),
                     seq_list[i + 1][::-1],
                     qual_list[i + 1][::-1],
                 )
             elif i == len(for_seq_list) - 1:
-                new_reads_for += "@%s\n%s\n+\n%s\n" % (
+                new_reads_for += "@{}\n{}\n+\n{}\n".format(
                     name + ":" + str(i) + str(i + 1),
                     seq_list[i],
                     qual_list[i],
                 )
-                new_reads_rev += "@%s\n%s\n+\n%s\n" % (
+                new_reads_rev += "@{}\n{}\n+\n{}\n".format(
                     name + ":" + str(i) + str(i + 1),
                     seq_list[i + 1],
                     qual_list[i + 1],
                 )
             else:
-                new_reads_for += "@%s\n%s\n+\n%s\n" % (
+                new_reads_for += "@{}\n{}\n+\n{}\n".format(
                     name + ":" + str(i) + str(i + 1),
                     seq_list[i][::-1],
                     qual_list[i][::-1],
                 )
-                new_reads_rev += "@%s\n%s\n+\n%s\n" % (
+                new_reads_rev += "@{}\n{}\n+\n{}\n".format(
                     name + ":" + str(i) + str(i + 1),
                     seq_list[i + 1],
                     qual_list[i + 1],

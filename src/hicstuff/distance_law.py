@@ -541,7 +541,7 @@ def get_distance_law(
     """
     # Sanity check : centro_fileition should be None if chromosomes are
     # circulars (no centromeres is circular chromosomes).
-    if circular and centro_file != None:
+    if circular and centro_file is not None:
         logger.error("Chromosomes cannot have a centromere and be circular")
         sys.exit(1)
 
@@ -914,7 +914,7 @@ def plot_ps_slope(xs, ps, labels, fig_path=None, inf=3000, sup=None):
     for i in range(len(ps)):
         # Iterate on the different distance law array and take them by order of
         # size in order to have the color scale equivalent to the size scale
-        col = next(cols)
+        next(cols)
         ax1.loglog(xs[i], ps[i], label=labels[i])
     # Make the same plot with the slope
     cols = iter(cm.rainbow(np.linspace(0, 1, len(slope))))
@@ -927,7 +927,7 @@ def plot_ps_slope(xs, ps, labels, fig_path=None, inf=3000, sup=None):
     xs2 = [None] * len(xs)
     for i in range(len(slope)):
         xs2[i] = xs[i][:-1]
-        col = next(cols)
+        next(cols)
         ax2.semilogx(xs2[i], slope[i], label=labels[i], subs=[2, 3, 4, 5, 6, 7, 8, 9])
     ax2.legend(loc="upper left", bbox_to_anchor=(1.02, 1.00), ncol=1, fontsize="large")
     # Save the figure in svg

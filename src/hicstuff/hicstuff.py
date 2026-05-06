@@ -738,7 +738,7 @@ def normalize_sparse(M, norm="SCN", iterations=40, n_mad=3.0):
         # Similar to ICE, but division is done sequentially by row and then column
         # sums instead of using product.
         row_indices, col_indices = r.nonzero()
-        for i in range(iterations):
+        for _i in range(iterations):
             bin_sums = sum_mat_bins(r)
             r.data /= bin_sums[row_indices]
             bin_sums = sum_mat_bins(r)
@@ -1075,7 +1075,7 @@ def to_structure(matrix, alpha=1):
 
     eigen_values, eigen_vectors = linalg.eigh(symmetric)
     if not (eigen_values >= 0).all():
-        warnings.warn("Negative eigen values were found.")
+        warnings.warn("Negative eigen values were found.", stacklevel=2)
     idx = eigen_values.argsort()[-3:][::-1]
     values = eigen_values[idx]
     vectors = eigen_vectors[:, idx]
@@ -1363,7 +1363,7 @@ def flatten_positions_to_contigs(positions):
             flattened_positions = np.array(positions)
 
     if (np.diff(positions) == 0).any() and 0 not in set(positions):
-        warnings.warn("I detected identical consecutive nonzero values.")
+        warnings.warn("I detected identical consecutive nonzero values.", stacklevel=2)
         return positions
 
     n = len(flattened_positions)
@@ -1530,7 +1530,7 @@ def estimate_param_rippe(measurements, bins, init=None, circ=False):
     np_plsq = np.array(plsq_out)
 
     if np.any(np.isnan(np_plsq)) or slope_x >= 0:
-        warnings.warn("Problem in parameters estimation")
+        warnings.warn("Problem in parameters estimation", stacklevel=2)
         plsq_out = p0
 
     return plsq_out, y_estim
@@ -1823,9 +1823,9 @@ def corrcoef_sparse(A, B=None):
     scipy.sparse.csr_matrix
         The correlation matrix.
     """
-    M = A.copy()
+    A.copy()
     if B is not None:
-        M = sparse.vstack((A, B), format="csr")
+        sparse.vstack((A, B), format="csr")
 
     A = A.astype(np.float64)
     n = A.shape[1]

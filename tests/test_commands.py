@@ -44,7 +44,7 @@ def test_pipeline():
 
 @pytest.mark.parametrize(*MATS)
 def test_rebin(mat):
-    args = "-b 1kb -f {0} -c {1} {2} {3}".format(FRAG, CHROM, mat, str(Path(OUT) / "rebinned"))
+    args = "-b 1kb -f {} -c {} {} {}".format(FRAG, CHROM, mat, str(Path(OUT) / "rebinned"))
     proc = hcmd.Rebin(args.split(" ") + ["-F"], {})
     proc.execute()
     with pytest.raises(IOError):
@@ -53,7 +53,7 @@ def test_rebin(mat):
 
 
 def test_convert():
-    args = "-f {0} -c {1} {2} {3}".format(FRAG, CHROM, GRAAL, str(Path(OUT) / "converted"))
+    args = "-f {} -c {} {} {}".format(FRAG, CHROM, GRAAL, str(Path(OUT) / "converted"))
     proc = hcmd.Convert(args.split(" ") + ["-F"], {})
     proc.execute()
     with pytest.raises(IOError):
@@ -117,7 +117,7 @@ def test_scalogram():
 
 @pytest.mark.parametrize(*MATS)
 def test_subsample(mat):
-    args = "-p 0.5 {0} {1}".format(mat, str(Path(OUT) / "subsampled"))
+    args = "-p 0.5 {} {}".format(mat, str(Path(OUT) / "subsampled"))
     proc = hcmd.Subsample(args.split(" ") + ["-F"], {})
     proc.execute()
     with pytest.raises(IOError):

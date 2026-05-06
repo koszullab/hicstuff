@@ -298,8 +298,8 @@ class Cutsite(AbstractCommand):
         output_rev = prefix + "_R2.fq.gz"
         # Digestion of the reads.
         logger.info("Digestion of the reads:")
-        logger.info("Enzyme used: {0}".format(self.args["--enzyme"]))
-        logger.info("Mode used to cut the reads: {0}".format(self.args["--mode"]))
+        logger.info("Enzyme used: {}".format(self.args["--enzyme"]))
+        logger.info("Mode used to cut the reads: {}".format(self.args["--mode"]))
         hcc.cut_ligation_sites(
             self.args["--forward"],
             self.args["--reverse"],

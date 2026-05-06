@@ -243,7 +243,7 @@ def _check_cooler(fun):
 
 
 @_check_cooler
-def add_cool_column(clr, column, column_name, table_name="bins", metadata={}, dtype=None):
+def add_cool_column(clr, column, column_name, table_name="bins", metadata=None, dtype=None):
     """
     Adds a new column to a loaded Cooler store. If the column exists,
     it is replaced. This will affect the .cool file.
@@ -262,6 +262,8 @@ def add_cool_column(clr, column, column_name, table_name="bins", metadata={}, dt
     metadata : dict
         A dictionary of metadata to associate with the new column.
     """
+    if metadata is None:
+        metadata = {}
     with clr.open("r+") as c:
         if column_name in c[table_name]:
             del c[table_name][column_name]
@@ -314,7 +316,7 @@ def load_cool(cool):
 
 
 @_check_cooler
-def save_cool(cool_out, mat, frags, metadata={}):
+def save_cool(cool_out, mat, frags, metadata=None):
     """
     Writes a .cool file from graal style tables.
 
@@ -329,6 +331,8 @@ def save_cool(cool_out, mat, frags, metadata={}):
     metadata : dict
         Potential metadata to associate with the cool file.
     """
+    if metadata is None:
+        metadata = {}
     up_tri = False
     # Check if symmetric matrix is symmetric
     # (i.e. only upper triangle or full mat)
@@ -670,12 +674,7 @@ def dade_to_graal(
         for contig in collections.OrderedDict.fromkeys(contig_names):
             length_tig = np.sum(frag_lengths[contig_names == contig])
             n_frags = collections.Counter(contig_names)[contig]
-            line_to_write = "%s\t%s\t%s\t%s\n" % (
-                contig,
-                length_tig,
-                n_frags,
-                cumul_length,
-            )
+            line_to_write = f"{contig}\t{length_tig}\t{n_frags}\t{cumul_length}\n"
             info_contigs.write(line_to_write)
             cumul_length += n_frags
 
@@ -684,14 +683,7 @@ def dade_to_graal(
         bogus_gc = 0.5
 
         for i in range(total_length):
-            line_to_write = "%s\t%s\t%s\t%s\t%s\t%s\n" % (
-                int(local_frag_ids[i]) + 1,
-                contig_names[i],
-                frag_starts[i],
-                frag_ends[i],
-                frag_lengths[i],
-                bogus_gc,
-            )
+            line_to_write = f"{int(local_frag_ids[i]) + 1}\t{contig_names[i]}\t{frag_starts[i]}\t{frag_ends[i]}\t{frag_lengths[i]}\t{bogus_gc}\n"
             fragments_list.write(line_to_write)
 
 
@@ -1136,7 +1128,7 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
         sort_ver = list(map(int, sort_ver))
         if sort_ver[0] < 8 or (sort_ver[0] == 8 and sort_ver[1] < 23):
             logger.warning(
-                "GNU sort version is {0} but >8.23 is required for parallel "
+                "GNU sort version is {} but >8.23 is required for parallel "
                 "sort. Sorting on a single thread.".format(".".join(map(str, sort_ver)))
             )
             parallel_ok = False
@@ -1169,14 +1161,14 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
     with open(out_file, "w") as output:
         for line in header:
             if line.startswith("#sorted"):
-                output.write("#sorted: {0}\n".format("-".join(keys)))
+                output.write("#sorted: {}\n".format("-".join(keys)))
             else:
                 output.write(line + "\n")
 
     # Sort pairs and append to file.
     with open(out_file, "a") as output:
         grep_proc = sp.Popen(["grep", "-v", "^#", in_file], stdout=sp.PIPE)
-        sort_cmd = ["sort", "-S %s" % buffer] + list(sort_keys)
+        sort_cmd = ["sort", f"-S {buffer}"] + list(sort_keys)
         if tmp_dir is not None:
             sort_cmd.append(f"--temporary-directory={tmp_dir}")
         if parallel_ok:
@@ -1393,8 +1385,7 @@ def check_bam_entries(in_file):
 
     n_reads = sp.run(
         ["samtools", "view", "-c", in_file],
-        stdout=sp.PIPE,
-        stderr=sp.PIPE,
+        capture_output=True,
         encoding="utf-8",
     ).stdout[:-2]
 
