@@ -57,7 +57,7 @@ import hicstuff.digest as hcd
 import hicstuff.iteralign as hci
 import hicstuff.filter as hcf
 import hicstuff.stats as hcstats
-from hicstuff.version import __version__
+from hicstuff import __version__
 import hicstuff.io as hio
 from hicstuff.log import logger
 import hicstuff.pipeline as hpi

@@ -29,7 +29,7 @@ import matplotlib
 import pathlib
 import pairtools
 from packaging.version import Version
-from hicstuff.version import __version__
+from hicstuff import __version__
 import hicstuff.log as hcl
 from hicstuff.log import logger
 

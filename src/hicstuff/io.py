@@ -22,7 +22,7 @@ from scipy.sparse import coo_matrix
 from Bio import SeqIO, SeqUtils
 import hicstuff.hicstuff as hcs
 from hicstuff.log import logger
-from hicstuff.version import __version__
+from hicstuff import __version__
 import scipy.stats as ss
 
 DEFAULT_MAX_MATRIX_SHAPE = 10000

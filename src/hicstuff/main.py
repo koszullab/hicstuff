@@ -24,13 +24,13 @@ The subcommands are:
     stats           Extract mapping statistics from a hicstuff pipeline log file.
     rebin           Bin the matrix and regenerate files accordingly.
     subsample       Bootstrap subsampling of contacts from a Hi-C map.
-    view            Visualize a Hi-C matrix.    
+    view            Visualize a Hi-C matrix.
 """
 
 from docopt import docopt
 from docopt import DocoptExit
 import hicstuff.commands as commands
-from hicstuff.version import __version__
+from hicstuff import __version__
 
 
 def main():

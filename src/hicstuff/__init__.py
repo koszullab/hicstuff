@@ -4,6 +4,13 @@ A simple library/pipeline to generate and handle simple Hi-C data.
 
 """
 
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("hicstuff")
+except PackageNotFoundError:
+    __version__ = "unknown"
+
 from .hicstuff import *
 
 __author__ = "Lyam Baudry, \

@@ -13,7 +13,7 @@ import os as os
 import csv as csv
 import hicstuff.io as hio
 from hicstuff.log import logger
-from hicstuff.version import __version__
+from hicstuff import __version__
 
 
 def export_distance_law(xs, ps, names, out_file=None):

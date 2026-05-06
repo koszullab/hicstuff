@@ -3,12 +3,12 @@
 [![PyPI version](https://badge.fury.io/py/hicstuff.svg)](https://badge.fury.io/py/hicstuff)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/hicstuff.svg)
 [![install with bioconda](https://img.shields.io/badge/install%20with-bioconda-brightgreen.svg?style=flat)](http://bioconda.github.io/recipes/hicstuff/README.html)
-[![Build Status](https://github.com/koszullab/hicstuff/actions/workflows/build.yml/badge.svg?branch=master)](https://github.com/koszullab/hicstuff/actions/workflows/build.yml)
+[![CI](https://github.com/koszullab/hicstuff/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/koszullab/hicstuff/actions/workflows/ci.yml)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.2620608.svg)](https://doi.org/10.5281/zenodo.2620608)
 [![codecov](https://codecov.io/gh/koszullab/hicstuff/branch/master/graph/badge.svg)](https://codecov.io/gh/koszullab/hicstuff)
 [![Read the docs](https://readthedocs.org/projects/hicstuff/badge)](https://hicstuff.readthedocs.io)
 [![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/koszullab/hicstuff/master?filepath=doc%2Fnotebooks%2Fdemo_api.ipynb)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/ambv/black)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 A lightweight library that generates and handles Hi-C contact maps in either cooler-compatible 2Dbedgraph or [instaGRAAL](https://github.com/koszullab/instaGRAAL) format. It is essentially a merge of the [yahcp](https://github.com/baudrly/yahcp) pipeline, the [hicstuff](https://github.com/baudrly/hicstuff) library and extra features illustrated in the [3C tutorial](https://github.com/axelcournac/3C_tutorial) and the [DADE pipeline](https://github.com/scovit/dade), all packaged together for extra convenience.
 
@@ -34,13 +34,15 @@ The goal is to make generation and manipulation of Hi-C matrices as simple as po
 
 To install a stable version:
 ```sh
-pip3 install -U hicstuff
+pip install hicstuff
 ```
 
 or, for the latest development version:
 
 ```sh
-    pip3 install -e git+https://github.com/koszullab/hicstuff.git@master#egg=hicstuff
+git clone https://github.com/koszullab/hicstuff.git
+cd hicstuff
+uv sync --extra dev
 ```
 
 `bowtie2`, `bwa` and/or `minimap2` as well as `samtools` are required by the `pipeline` command.
@@ -366,11 +368,18 @@ seq2	20000	155	409
 All contributions are welcome, in the form of bug reports, suggestions, documentation or pull requests.
 We use the [numpy standard](https://numpydoc.readthedocs.io/en/latest/format.html) for docstrings when documenting functions.
 
-The code formatting standard we use is [black](https://github.com/psf/black), with --line-length=79 to follow PEP8 recommendations. We use `pytest` with the `pytest-doctest` and `pytest-pylint` plugins as our testing framework. Ideally, new functions should have associated unit tests, placed in the `tests` folder.
+The code formatting standard we use is [ruff](https://github.com/astral-sh/ruff) (line-length 100). We use `pytest` as our testing framework. Ideally, new functions should have associated unit tests, placed in the `tests` folder.
 To test the code, you can run:
 
 ```bash
-pytest --doctest-modules --pylint --pylint-error-types=EF --pylint-rcfile=.pylintrc hicstuff tests
+uv run pytest tests/
+```
+
+To lint and format:
+
+```bash
+uv run ruff check src/
+uv run ruff format src/
 ```
 
 ### Citation
