@@ -78,7 +78,9 @@ def test_save_bedgraph2d():
 
 def test_load_bedgraph2d():
     """Test loading sparse matrices from 2D bedgraph files"""
-    mat_bg = hio.load_bedgraph2d("test_data/mat.bg2", fragments_file="test_data/fragments_list.txt")[0]
+    mat_bg = hio.load_bedgraph2d(
+        "test_data/mat.bg2", fragments_file="test_data/fragments_list.txt"
+    )[0]
     assert np.allclose(MAT_GRAAL.todense(), mat_bg.todense())
 
     # Load using fixed bin sizes

@@ -35,7 +35,9 @@ from hicstuff.log import logger
 click.rich_click.USE_RICH_MARKUP = True
 click.rich_click.SHOW_ARGUMENTS = True
 click.rich_click.MAX_WIDTH = 100
-click.rich_click.ERRORS_SUGGESTION = "Run [bold cyan]hicstuff --help[/bold cyan] for usage information."
+click.rich_click.ERRORS_SUGGESTION = (
+    "Run [bold cyan]hicstuff --help[/bold cyan] for usage information."
+)
 click.rich_click.COMMAND_GROUPS = {
     "hicstuff": [
         {
@@ -193,15 +195,41 @@ def cli():
 
 @cli.command("iteralign")
 @click.argument("reads_fq")
-@click.option("-g", "--genome", required=True, metavar="FILE", help="Reference genome or aligner index path.")
-@click.option("-o", "--out-bam", required=True, metavar="FILE", help="Output BAM file path.")
-@click.option("-t", "--threads", default="1", show_default=True, metavar="INT", help="Number of parallel threads.")
-@click.option("-T", "--tempdir", default=None, metavar="DIR", help="Temporary directory (default: current directory).")
 @click.option(
-    "-a", "--aligner", default="bowtie2", show_default=True, metavar="STR", help="Aligner: bowtie2, minimap2 or bwa."
+    "-g", "--genome", required=True, metavar="FILE", help="Reference genome or aligner index path."
+)
+@click.option("-o", "--out-bam", required=True, metavar="FILE", help="Output BAM file path.")
+@click.option(
+    "-t",
+    "--threads",
+    default="1",
+    show_default=True,
+    metavar="INT",
+    help="Number of parallel threads.",
 )
 @click.option(
-    "-l", "--min-len", default=20, show_default=True, type=int, metavar="INT", help="Minimum truncated read length."
+    "-T",
+    "--tempdir",
+    default=None,
+    metavar="DIR",
+    help="Temporary directory (default: current directory).",
+)
+@click.option(
+    "-a",
+    "--aligner",
+    default="bowtie2",
+    show_default=True,
+    metavar="STR",
+    help="Aligner: bowtie2, minimap2 or bwa.",
+)
+@click.option(
+    "-l",
+    "--min-len",
+    default=20,
+    show_default=True,
+    type=int,
+    metavar="INT",
+    help="Minimum truncated read length.",
 )
 @click.option(
     "-R",
@@ -249,13 +277,27 @@ def iteralign(reads_fq, genome, out_bam, threads, tempdir, aligner, min_len, rea
     metavar="ENZ[,ENZ2,...]",
     help="Restriction enzyme name(s) or fixed chunk size in bp.",
 )
-@click.option("-o", "--outdir", default=None, metavar="DIR", help="Output directory (default: current directory).")
 @click.option(
-    "-s", "--size", default=0, show_default=True, type=int, metavar="INT", help="Minimum fragment size to keep."
+    "-o",
+    "--outdir",
+    default=None,
+    metavar="DIR",
+    help="Output directory (default: current directory).",
+)
+@click.option(
+    "-s",
+    "--size",
+    default=0,
+    show_default=True,
+    type=int,
+    metavar="INT",
+    help="Minimum fragment size to keep.",
 )
 @click.option("-c", "--circular", is_flag=True, help="Genome is circular.")
 @click.option("-p", "--plot", is_flag=True, help="Show fragment length distribution histogram.")
-@click.option("-f", "--figdir", default=None, metavar="DIR", help="Directory to save the distribution figure.")
+@click.option(
+    "-f", "--figdir", default=None, metavar="DIR", help="Directory to save the distribution figure."
+)
 @click.option("-F", "--force", is_flag=True, help="Overwrite existing output directory.")
 def digest(fasta, enzyme, outdir, size, circular, plot, figdir, force):
     """Digest a genome FASTA into restriction fragments.
@@ -284,9 +326,15 @@ def digest(fasta, enzyme, outdir, size, circular, plot, figdir, force):
 @click.option("-F", "--forward", required=True, metavar="FILE", help="Forward reads FASTQ file.")
 @click.option("-R", "--reverse", required=True, metavar="FILE", help="Reverse reads FASTQ file.")
 @click.option(
-    "-p", "--prefix", required=True, metavar="STR", help="Output prefix (suffixed with _R1.fq.gz / _R2.fq.gz)."
+    "-p",
+    "--prefix",
+    required=True,
+    metavar="STR",
+    help="Output prefix (suffixed with _R1.fq.gz / _R2.fq.gz).",
 )
-@click.option("-e", "--enzyme", required=True, metavar="STR", help="Comma-separated restriction enzyme(s).")
+@click.option(
+    "-e", "--enzyme", required=True, metavar="STR", help="Comma-separated restriction enzyme(s)."
+)
 @click.option(
     "-m",
     "--mode",
@@ -297,10 +345,22 @@ def digest(fasta, enzyme, outdir, size, circular, plot, figdir, force):
     help="Fragment pairing mode.",
 )
 @click.option(
-    "-s", "--seed-size", default=20, show_default=True, type=int, metavar="INT", help="Minimum read size after cutting."
+    "-s",
+    "--seed-size",
+    default=20,
+    show_default=True,
+    type=int,
+    metavar="INT",
+    help="Minimum read size after cutting.",
 )
 @click.option(
-    "-t", "--threads", default=1, show_default=True, type=int, metavar="INT", help="Number of parallel threads."
+    "-t",
+    "--threads",
+    default=1,
+    show_default=True,
+    type=int,
+    metavar="INT",
+    help="Number of parallel threads.",
 )
 def cutsite(forward, reverse, prefix, enzyme, mode, seed_size, threads):
     """Preprocess FASTQ files by cutting reads at religation sites.
@@ -332,10 +392,25 @@ def cutsite(forward, reverse, prefix, enzyme, mode, seed_size, threads):
 @click.argument("input_pairs")
 @click.argument("output_pairs")
 @click.option("-f", "--figdir", default=None, metavar="DIR", help="Directory for output figures.")
-@click.option("-i", "--interactive", is_flag=True, help="Ask for thresholds interactively after showing plots.")
-@click.option("-p", "--plot", is_flag=True, help="Show library composition and 3C event abundance plots.")
-@click.option("-P", "--prefix", default=None, metavar="STR", help="Library name displayed on figures.")
-@click.option("-t", "--thresholds", default=None, metavar="INT-INT", help="Manual thresholds as UNCUT-LOOP (e.g. 4-5).")
+@click.option(
+    "-i",
+    "--interactive",
+    is_flag=True,
+    help="Ask for thresholds interactively after showing plots.",
+)
+@click.option(
+    "-p", "--plot", is_flag=True, help="Show library composition and 3C event abundance plots."
+)
+@click.option(
+    "-P", "--prefix", default=None, metavar="STR", help="Library name displayed on figures."
+)
+@click.option(
+    "-t",
+    "--thresholds",
+    default=None,
+    metavar="INT-INT",
+    help="Manual thresholds as UNCUT-LOOP (e.g. 4-5).",
+)
 def filter(input_pairs, output_pairs, figdir, interactive, plot, prefix, thresholds):
     """Filter spurious Hi-C events (loops and uncuts) from a pairs file."""
     if thresholds:
@@ -386,17 +461,36 @@ def filter(input_pairs, output_pairs, figdir, interactive, plot, prefix, thresho
     metavar="INT[bp|kb|Mb]",
     help="Merge bins by factor or generate fixed-size bins.",
 )
-@click.option("-c", "--cmap", default="Reds", show_default=True, metavar="STR", help="Matplotlib colormap name.")
+@click.option(
+    "-c",
+    "--cmap",
+    default="Reds",
+    show_default=True,
+    metavar="STR",
+    help="Matplotlib colormap name.",
+)
 @click.option("-C", "--circular", is_flag=True, help="Genome is circular.")
 @click.option("-d", "--despeckle", is_flag=True, help="Remove speckle artefacts.")
-@click.option("-D", "--dpi", default=300, show_default=True, type=int, metavar="INT", help="Output image DPI.")
 @click.option(
-    "-f", "--frags", default=None, metavar="FILE", help="fragments_list.txt (required for bp binning and --lines)."
+    "-D", "--dpi", default=300, show_default=True, type=int, metavar="INT", help="Output image DPI."
 )
 @click.option(
-    "-T", "--transform", default=None, metavar="STR", help="Pixel transform: log2, log10, ln, sqrt, exp<val>."
+    "-f",
+    "--frags",
+    default=None,
+    metavar="FILE",
+    help="fragments_list.txt (required for bp binning and --lines).",
 )
-@click.option("-l", "--lines", is_flag=True, help="Draw chromosome separator lines (requires --frags).")
+@click.option(
+    "-T",
+    "--transform",
+    default=None,
+    metavar="STR",
+    help="Pixel transform: log2, log10, ln, sqrt, exp<val>.",
+)
+@click.option(
+    "-l", "--lines", is_flag=True, help="Draw chromosome separator lines (requires --frags)."
+)
 @click.option(
     "-M",
     "--max",
@@ -406,7 +500,15 @@ def filter(input_pairs, output_pairs, figdir, interactive, plot, prefix, thresho
     metavar="NUM[%]",
     help="Colorscale maximum (percentile with %).",
 )
-@click.option("-m", "--min", "vmin", default="0", show_default=True, metavar="NUM[%]", help="Colorscale minimum.")
+@click.option(
+    "-m",
+    "--min",
+    "vmin",
+    default="0",
+    show_default=True,
+    metavar="NUM[%]",
+    help="Colorscale minimum.",
+)
 @click.option(
     "-N",
     "--n-mad",
@@ -418,13 +520,26 @@ def filter(input_pairs, output_pairs, figdir, interactive, plot, prefix, thresho
 )
 @click.option("-n", "--normalize", is_flag=True, help="Perform ICE normalization before rendering.")
 @click.option(
-    "-o", "--output", default=None, metavar="FILE", help="Output image path (display interactively if omitted)."
+    "-o",
+    "--output",
+    default=None,
+    metavar="FILE",
+    help="Output image path (display interactively if omitted).",
 )
 @click.option(
-    "-r", "--region", default=None, metavar="STR[;STR]", help="UCSC region to zoom into (e.g. chr1:1000-12000)."
+    "-r",
+    "--region",
+    default=None,
+    metavar="STR[;STR]",
+    help="UCSC region to zoom into (e.g. chr1:1000-12000).",
 )
 @click.option(
-    "-t", "--trim", default=None, type=float, metavar="FLOAT", help="Trim bins deviating by more than this many MADs."
+    "-t",
+    "--trim",
+    default=None,
+    type=float,
+    metavar="FLOAT",
+    help="Trim bins deviating by more than this many MADs.",
 )
 def view(
     contact_map,
@@ -455,7 +570,9 @@ def view(
                 "Non-divergent colormap selected for ratio plot. Divergent options: %s",
                 " ".join(DIVERGENT_CMAPS),
             )
-        logger.info("Defaulting to seismic colormap for ratio. Specify another divergent colormap if desired.")
+        logger.info(
+            "Defaulting to seismic colormap for ratio. Specify another divergent colormap if desired."
+        )
         cmap = "seismic"
 
     bin_str = binning.upper()
@@ -485,7 +602,9 @@ def view(
         if binning_val > 1:
             if bp_unit:
                 pos = frags_df.iloc[:, 2]
-                binned_map, binned_pos = hcs.bin_bp_sparse(M=sparse_map_in, positions=pos, bin_len=binning_val)
+                binned_map, binned_pos = hcs.bin_bp_sparse(
+                    M=sparse_map_in, positions=pos, bin_len=binning_val
+                )
                 binned_start = np.append(np.where(binned_pos == 0)[0], len(binned_pos))
                 num_binned = binned_start[1:] - binned_start[:-1]
                 chr_names_idx = np.unique(frags_df.iloc[:, 1], return_index=True)[1]
@@ -495,9 +614,9 @@ def view(
                 binned_frags["end_pos"] = binned_frags.groupby("chrom")["start_pos"].shift(-1)
                 chrom_ends = frags_df.groupby("chrom").end_pos.max()
                 for cn in chrom_ends.index:
-                    binned_frags.loc[np.isnan(binned_frags.end_pos) & (binned_frags.chrom == cn), "end_pos"] = (
-                        chrom_ends[cn]
-                    )
+                    binned_frags.loc[
+                        np.isnan(binned_frags.end_pos) & (binned_frags.chrom == cn), "end_pos"
+                    ] = chrom_ends[cn]
             else:
                 binned_map = hcs.bin_sparse(M=sparse_map_in, subsampling_factor=binning_val)
                 if frags_df is not None:
@@ -510,7 +629,9 @@ def view(
                             pass
                         return x
 
-                    binned_frags.start_pos = binned_frags.groupby("chrom", sort=False).start_pos.apply(_shift_min)
+                    binned_frags.start_pos = binned_frags.groupby(
+                        "chrom", sort=False
+                    ).start_pos.apply(_shift_min)
                 else:
                     binned_frags = frags_df
         else:
@@ -524,7 +645,9 @@ def view(
 
         # Trimming
         if trim is not None:
-            binned_map, chrom_starts = hcs.trim_sparse(binned_map, n_mad=trim, chrom_start=chrom_starts)
+            binned_map, chrom_starts = hcs.trim_sparse(
+                binned_map, n_mad=trim, chrom_start=chrom_starts
+            )
 
         # Normalization
         if normalize:
@@ -535,7 +658,9 @@ def view(
             if lines:
                 raise NotImplementedError("Chromosome lines are incompatible with a region zoom.")
             if frags_df is None:
-                raise click.UsageError("A fragment file (--frags) is required to zoom into a genomic region.")
+                raise click.UsageError(
+                    "A fragment file (--frags) is required to zoom into a genomic region."
+                )
             reg_pos = binned_frags[["chrom", "start_pos"]]
             if ";" in region:
                 symmetric = False
@@ -616,11 +741,24 @@ def view(
 @cli.command("pipeline")
 @click.argument("input1")
 @click.argument("input2", required=False, default=None)
-@click.option("-g", "--genome", required=True, metavar="FILE", help="Reference genome or aligner index.")
 @click.option(
-    "-a", "--aligner", default="bowtie2", show_default=True, metavar="STR", help="Aligner: bowtie2, minimap2 or bwa."
+    "-g", "--genome", required=True, metavar="FILE", help="Reference genome or aligner index."
 )
-@click.option("-B", "--balancing-args", default=None, metavar="STR", help="Extra arguments passed to `cooler balance`.")
+@click.option(
+    "-a",
+    "--aligner",
+    default="bowtie2",
+    show_default=True,
+    metavar="STR",
+    help="Aligner: bowtie2, minimap2 or bwa.",
+)
+@click.option(
+    "-B",
+    "--balancing-args",
+    default=None,
+    metavar="STR",
+    help="Extra arguments passed to `cooler balance`.",
+)
 @click.option(
     "-b",
     "--binning",
@@ -630,7 +768,9 @@ def view(
     metavar="INT",
     help="Bin the cool matrix to this resolution (bp). 0 means no binning.",
 )
-@click.option("-c", "--centromeres", default=None, metavar="FILE", help="Centromere positions file.")
+@click.option(
+    "-c", "--centromeres", default=None, metavar="FILE", help="Centromere positions file."
+)
 @click.option("-C", "--circular", is_flag=True, help="Genome is circular.")
 @click.option("-d", "--distance-law", is_flag=True, help="Generate a distance law output file.")
 @click.option("-D", "--duplicates", is_flag=True, help="Filter PCR duplicates.")
@@ -643,9 +783,19 @@ def view(
     help="Restriction enzyme name, 'mnase'/'dnase', or chunk size in bp.",
 )
 @click.option(
-    "-E", "--exclude", default=None, metavar="STR", help="Comma-separated chromosomes to exclude (e.g. chrM,2u)."
+    "-E",
+    "--exclude",
+    default=None,
+    metavar="STR",
+    help="Comma-separated chromosomes to exclude (e.g. chrM,2u).",
 )
-@click.option("-f", "--filter", "filter_events", is_flag=True, help="Filter spurious 3C events (loops and uncuts).")
+@click.option(
+    "-f",
+    "--filter",
+    "filter_events",
+    is_flag=True,
+    help="Filter spurious 3C events (loops and uncuts).",
+)
 @click.option("-F", "--force", is_flag=True, help="Overwrite existing output files.")
 @click.option(
     "-m",
@@ -666,11 +816,23 @@ def view(
     help="Output matrix format.",
 )
 @click.option("-n", "--no-cleanup", is_flag=True, help="Keep intermediary files.")
-@click.option("-o", "--outdir", default=None, metavar="DIR", help="Output directory (default: current directory).")
+@click.option(
+    "-o",
+    "--outdir",
+    default=None,
+    metavar="DIR",
+    help="Output directory (default: current directory).",
+)
 @click.option("-p", "--plot", is_flag=True, help="Generate plots at pipeline steps.")
 @click.option("-P", "--prefix", default=None, metavar="STR", help="Prefix for all output files.")
 @click.option(
-    "-q", "--quality-min", default=30, show_default=True, type=int, metavar="INT", help="Minimum mapping quality."
+    "-q",
+    "--quality-min",
+    default=30,
+    show_default=True,
+    type=int,
+    metavar="INT",
+    help="Minimum mapping quality.",
 )
 @click.option(
     "-r",
@@ -690,7 +852,13 @@ def view(
     help="Maximum read length (estimated from first read if omitted).",
 )
 @click.option(
-    "-s", "--size", default=0, show_default=True, type=int, metavar="INT", help="Minimum contig size threshold."
+    "-s",
+    "--size",
+    default=0,
+    show_default=True,
+    type=int,
+    metavar="INT",
+    help="Minimum contig size threshold.",
 )
 @click.option(
     "-S",
@@ -702,7 +870,13 @@ def view(
     help="Pipeline start stage.",
 )
 @click.option(
-    "-t", "--threads", default=1, show_default=True, type=int, metavar="INT", help="Number of parallel threads."
+    "-t",
+    "--threads",
+    default=1,
+    show_default=True,
+    type=int,
+    metavar="INT",
+    help="Number of parallel threads.",
 )
 @click.option("-T", "--tmpdir", default=None, metavar="DIR", help="Temporary directory.")
 @click.option(
@@ -798,17 +972,48 @@ def pipeline(
 
 @cli.command("scalogram")
 @click.argument("contact_map")
-@click.option("-C", "--cmap", default="viridis", show_default=True, metavar="STR", help="Matplotlib colormap.")
-@click.option("-d", "--despeckle", is_flag=True, help="Remove speckle artefacts before plotting.")
-@click.option("-f", "--frags", default=None, metavar="FILE", help="fragments_list.txt for coordinate conversion.")
-@click.option("-i", "--indices", default=None, metavar="INT-INT", help="Bin range or UCSC coordinates to display.")
 @click.option(
-    "-o", "--output", default=None, metavar="FILE", help="Output image path (display interactively if omitted)."
+    "-C", "--cmap", default="viridis", show_default=True, metavar="STR", help="Matplotlib colormap."
+)
+@click.option("-d", "--despeckle", is_flag=True, help="Remove speckle artefacts before plotting.")
+@click.option(
+    "-f",
+    "--frags",
+    default=None,
+    metavar="FILE",
+    help="fragments_list.txt for coordinate conversion.",
+)
+@click.option(
+    "-i",
+    "--indices",
+    default=None,
+    metavar="INT-INT",
+    help="Bin range or UCSC coordinates to display.",
+)
+@click.option(
+    "-o",
+    "--output",
+    default=None,
+    metavar="FILE",
+    help="Output image path (display interactively if omitted).",
 )
 @click.option("-n", "--normalize", is_flag=True, help="ICE-normalize the matrix before plotting.")
-@click.option("-r", "--range", "range_str", default=None, metavar="INT-INT", help="Contact distance range to display.")
 @click.option(
-    "-t", "--threads", default=1, show_default=True, type=int, metavar="INT", help="Parallel threads for despeckling."
+    "-r",
+    "--range",
+    "range_str",
+    default=None,
+    metavar="INT-INT",
+    help="Contact distance range to display.",
+)
+@click.option(
+    "-t",
+    "--threads",
+    default=1,
+    show_default=True,
+    type=int,
+    metavar="INT",
+    help="Parallel threads for despeckling.",
 )
 def scalogram(contact_map, cmap, despeckle, frags, indices, output, normalize, range_str, threads):
     """Generate a scalogram from a Hi-C contact matrix."""
@@ -894,7 +1099,9 @@ def rebin(contact_map, out_prefix, binning, frags, chroms, force):
         chroms_file=chroms,
     )
     if hic_fmt == "graal" and (frags_df is None or chromlist is None):
-        raise click.UsageError("Graal format requires --frags (fragments_list.txt) and --chroms (info_contigs.txt).")
+        raise click.UsageError(
+            "Graal format requires --frags (fragments_list.txt) and --chroms (info_contigs.txt)."
+        )
     if dirname(out_prefix):
         os.makedirs(dirname(out_prefix), exist_ok=True)
 
@@ -907,7 +1114,9 @@ def rebin(contact_map, out_prefix, binning, frags, chroms, force):
             binning_val = _parse_bin_str(bin_str)
             bp_unit = True
         else:
-            raise click.BadParameter(f"Invalid binning '{binning}'.", param_hint="--binning") from None
+            raise click.BadParameter(
+                f"Invalid binning '{binning}'.", param_hint="--binning"
+            ) from None
 
     chromnames = np.unique(frags_df.chrom)
 
@@ -948,7 +1157,9 @@ def rebin(contact_map, out_prefix, binning, frags, chroms, force):
         idx_shift[idx_shift < 1] = 1
         existing_bins_idx = np.cumsum(idx_shift)
         existing_bins_idx = np.insert(existing_bins_idx, 0, 0)
-        missing_bins_idx = sorted(set(range(existing_bins_idx[0], existing_bins_idx[-1])) - set(existing_bins_idx))
+        missing_bins_idx = sorted(
+            set(range(existing_bins_idx[0], existing_bins_idx[-1])) - set(existing_bins_idx)
+        )
         miss_bins_df = pd.DataFrame(miss_bins, columns=frags_df.columns, index=missing_bins_idx)
         for col in frags_df.columns:
             if frags_df[col].dtype.name != "category":
@@ -1023,7 +1234,9 @@ def subsample(contact_map, subsampled_prefix, prop, force):
     _check_output_path(out_name, force=force)
     mat, frags_df, _ = hio.flexible_hic_loader(contact_map, quiet=True)
     subsampled = hcs.subsample_contacts(mat, prop).tocoo()
-    hio.flexible_hic_saver(subsampled, subsampled_prefix, frags=frags_df, hic_fmt=hic_fmt, quiet=True)
+    hio.flexible_hic_saver(
+        subsampled, subsampled_prefix, frags=frags_df, hic_fmt=hic_fmt, quiet=True
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1037,7 +1250,13 @@ def subsample(contact_map, subsampled_prefix, prop, force):
 @click.option("-f", "--frags", default=None, metavar="FILE", help="fragments_list.txt file.")
 @click.option("-c", "--chroms", default=None, metavar="FILE", help="info_contigs.txt file.")
 @click.option("-F", "--force", is_flag=True, help="Overwrite existing output.")
-@click.option("-g", "--genome", default=None, metavar="FILE", help="Genome FASTA to compute GC content column.")
+@click.option(
+    "-g",
+    "--genome",
+    default=None,
+    metavar="FILE",
+    help="Genome FASTA to compute GC content column.",
+)
 @click.option(
     "-T",
     "--to",
@@ -1083,7 +1302,9 @@ def convert(contact_map, prefix, frags, chroms, force, genome, out_fmt):
 
 
 @cli.command("distancelaw")
-@click.option("-p", "--pairs", "pairs_file", default=None, metavar="FILE", help="Input indexed pairs file.")
+@click.option(
+    "-p", "--pairs", "pairs_file", default=None, metavar="FILE", help="Input indexed pairs file."
+)
 @click.option(
     "-d",
     "--dist-tbl",
@@ -1094,7 +1315,12 @@ def convert(contact_map, prefix, frags, chroms, force, genome, out_fmt):
 @click.option("-f", "--frags", default=None, metavar="FILE", help="fragments_list.txt file.")
 @click.option("-a", "--average", is_flag=True, help="Average distance law across chromosomes/arms.")
 @click.option(
-    "-b", "--big-arm-only", default=None, type=int, metavar="INT", help="Only use arms larger than this value (bp)."
+    "-b",
+    "--big-arm-only",
+    default=None,
+    type=int,
+    metavar="INT",
+    help="Only use arms larger than this value (bp).",
 )
 @click.option(
     "-B",
@@ -1105,13 +1331,25 @@ def convert(contact_map, prefix, frags, chroms, force, genome, out_fmt):
     metavar="FLOAT",
     help="Log base for genomic bin spacing.",
 )
-@click.option("-c", "--centromeres", default=None, metavar="FILE", help="Centromere positions file.")
+@click.option(
+    "-c", "--centromeres", default=None, metavar="FILE", help="Centromere positions file."
+)
 @click.option("-C", "--circular", is_flag=True, help="Genome is circular.")
 @click.option(
-    "-i", "--inf", default=3000, show_default=True, type=int, metavar="INT", help="Minimum distance to plot (bp)."
+    "-i",
+    "--inf",
+    default=3000,
+    show_default=True,
+    type=int,
+    metavar="INT",
+    help="Minimum distance to plot (bp).",
 )
 @click.option(
-    "-l", "--labels", default=None, metavar="STR1,STR2,...", help="Comma-separated sample labels for the plot."
+    "-l",
+    "--labels",
+    default=None,
+    metavar="STR1,STR2,...",
+    help="Comma-separated sample labels for the plot.",
 )
 @click.option("-o", "--outputfile-img", default=None, metavar="FILE", help="Output image path.")
 @click.option("-O", "--outputfile-tabl", default=None, metavar="FILE", help="Output table path.")
@@ -1124,7 +1362,9 @@ def convert(contact_map, prefix, frags, chroms, force, genome, out_fmt):
     metavar="INT",
     help="kb to remove around centromere positions.",
 )
-@click.option("-s", "--sup", default=None, type=int, metavar="INT", help="Maximum distance to plot (bp).")
+@click.option(
+    "-s", "--sup", default=None, type=int, metavar="INT", help="Maximum distance to plot (bp)."
+)
 def distancelaw(
     pairs_file,
     dist_tbl,
@@ -1180,7 +1420,9 @@ def distancelaw(
 
     for i in range(length_files):
         if average:
-            xs[i], ps_list[i] = hcdl.average_distance_law(xs[i], ps_list[i], arm_sup, big_arm_only is not None)
+            xs[i], ps_list[i] = hcdl.average_distance_law(
+                xs[i], ps_list[i], arm_sup, big_arm_only is not None
+            )
 
     if not average:
         names = names[0]
@@ -1209,16 +1451,34 @@ def distancelaw(
 @cli.command("missview")
 @click.argument("genome")
 @click.argument("output")
-@click.option("-R", "--read-len", required=True, type=int, metavar="INT", help="Simulated read length (bp).")
 @click.option(
-    "-a", "--aligner", default="bowtie2", show_default=True, metavar="STR", help="Aligner: bowtie2, minimap2 or bwa."
+    "-R", "--read-len", required=True, type=int, metavar="INT", help="Simulated read length (bp)."
 )
 @click.option(
-    "-b", "--binning", default="5000", show_default=True, metavar="INT", help="Resolution for the preview map."
+    "-a",
+    "--aligner",
+    default="bowtie2",
+    show_default=True,
+    metavar="STR",
+    help="Aligner: bowtie2, minimap2 or bwa.",
+)
+@click.option(
+    "-b",
+    "--binning",
+    default="5000",
+    show_default=True,
+    metavar="INT",
+    help="Resolution for the preview map.",
 )
 @click.option("-F", "--force", is_flag=True, help="Overwrite existing output.")
 @click.option(
-    "-t", "--threads", default=1, show_default=True, type=int, metavar="INT", help="Number of parallel threads."
+    "-t",
+    "--threads",
+    default=1,
+    show_default=True,
+    type=int,
+    metavar="INT",
+    help="Number of parallel threads.",
 )
 @click.option("-T", "--tmpdir", default=None, metavar="DIR", help="Temporary directory.")
 def missview(genome, output, read_len, aligner, binning, force, threads, tmpdir):
@@ -1239,7 +1499,9 @@ def missview(genome, output, read_len, aligner, binning, force, threads, tmpdir)
     with open(tmp_fq, "w") as fq_handle:
         for rec in SeqIO.parse(genome, "fasta"):
             for i in range(len(rec.seq) - read_len):
-                fq_handle.write(f"@NS_SIM_{rec.id}_{i}\n{str(rec.seq[i : i + read_len])}\n+\n{phred}\n")
+                fq_handle.write(
+                    f"@NS_SIM_{rec.id}_{i}\n{str(rec.seq[i : i + read_len])}\n+\n{phred}\n"
+                )
 
     hpi.align_reads(tmp_fq, genome, tmp_bam, tmp_dir=tmpdir, threads=threads, aligner=aligner)
     ps.sort("-@", str(threads), "-n", "-O", "BAM", "-o", tmp_bam + ".sorted", tmp_bam)

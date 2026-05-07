@@ -151,7 +151,9 @@ def iterative_align(
         elif re.match(r"^(bwa)$", aligner, flags=re.IGNORECASE):
             cmd = "bwa mem -t {cpus} -v 1 {idx} {fq}".format(**map_args)
         elif re.match(r"^(bowtie[2]?|bt[2]?)$", aligner, flags=re.IGNORECASE):
-            cmd = ("bowtie2 -x {idx} -p {cpus} --quiet --very-sensitive-local -U {fq}").format(**map_args)
+            cmd = ("bowtie2 -x {idx} -p {cpus} --quiet --very-sensitive-local -U {fq}").format(
+                **map_args
+            )
         else:
             raise ValueError("Unknown aligner. Select bowtie2, minimap2 or bwa.")
 
@@ -211,7 +213,9 @@ def iterative_align(
 
     # Merge all aligned reads and unmapped reads into a single bam
     ps.merge("-n", "-O", "BAM", "-@", str(n_cpu), bam_out, *iter_out)
-    logger.info(f"{int(total_reads - len(remaining_reads))} reads aligned / {int(total_reads)} total reads.")
+    logger.info(
+        f"{int(total_reads - len(remaining_reads))} reads aligned / {int(total_reads)} total reads."
+    )
 
     return 0
 

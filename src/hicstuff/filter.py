@@ -420,8 +420,13 @@ def filter_events(
     kept = lrange_intra + lrange_inter
     discarded = n_loops + n_uncuts + n_weirds
     total = kept + discarded
-    logger.info(f"Proportion of inter contacts: {ratio_inter}% (intra: {lrange_intra}, " f"inter: {lrange_inter})")
-    logger.info(f"{discarded} pairs discarded: Loops: {n_loops}, Uncuts: {n_uncuts}, Weirds: {n_weirds}")
+    logger.info(
+        f"Proportion of inter contacts: {ratio_inter}% (intra: {lrange_intra}, "
+        f"inter: {lrange_inter})"
+    )
+    logger.info(
+        f"{discarded} pairs discarded: Loops: {n_loops}, Uncuts: {n_uncuts}, Weirds: {n_weirds}"
+    )
     logger.info(f"{kept} pairs kept ({round(100 * kept / (kept + discarded), 2)}%)")
 
     # Visualize summary if requested by user
@@ -483,7 +488,9 @@ def filter_events(
                 fontdict=None,
             )
             percentage = round(
-                100 * float(lrange_inter + lrange_intra) / (n_loops + n_uncuts + n_weirds + lrange_inter + lrange_intra)
+                100
+                * float(lrange_inter + lrange_intra)
+                / (n_loops + n_uncuts + n_weirds + lrange_inter + lrange_intra)
             )
             plt.text(
                 -1.5,

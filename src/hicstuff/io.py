@@ -219,7 +219,8 @@ def generate_temp_dir(path):
         os.makedirs(full_path)
     except PermissionError:
         raise PermissionError(
-            f"The temporary directory cannot be created in {path}. " "Make sure you have write permission."
+            f"The temporary directory cannot be created in {path}. "
+            "Make sure you have write permission."
         ) from None
     return full_path
 
@@ -234,7 +235,9 @@ def _check_cooler(fun):
 
             fun.__globals__["cooler"] = cooler
         except ImportError:
-            logger.error(f"The cooler package is required to use {fun.__name__}, please install it first")
+            logger.error(
+                f"The cooler package is required to use {fun.__name__}, please install it first"
+            )
             raise ImportError("The cooler package is required.") from None
         return fun(*args, **kwargs)
 
@@ -647,7 +650,8 @@ def dade_to_graal(
         logger.warning(f"Sorry, I don't understand this matrix's binning: I read {str(bin_type)}")
 
     header_data = [
-        header_elt.replace("'", "").replace('"', "").replace("\n", "").split("~") for header_elt in header[1:]
+        header_elt.replace("'", "").replace('"', "").replace("\n", "").split("~")
+        for header_elt in header[1:]
     ]
 
     (
@@ -860,7 +864,8 @@ def flexible_hic_loader(mat, fragments_file=None, chroms_file=None, quiet=False)
         except ValueError:
             if not quiet:
                 logger.warning(
-                    "fragments_file was not provided when " "loading a matrix in COO/graal format. frags will be None."
+                    "fragments_file was not provided when "
+                    "loading a matrix in COO/graal format. frags will be None."
                 )
             frags = None
         try:
@@ -868,7 +873,8 @@ def flexible_hic_loader(mat, fragments_file=None, chroms_file=None, quiet=False)
         except ValueError:
             if not quiet:
                 logger.warning(
-                    "chroms_file was not provided when " "loading a matrix in COO/graal format. chroms will be None."
+                    "chroms_file was not provided when "
+                    "loading a matrix in COO/graal format. chroms will be None."
                 )
 
             chroms = None
@@ -1301,7 +1307,9 @@ def check_fasta_index(ref, mode="bowtie2"):
     elif mode == "bwa":
         refdir = str(ref.parent)
         refdir_files = os.listdir(refdir)
-        bwa_idx_files = [join(refdir, f) for f in refdir_files if re.search(r".*\.(sa|pac|bwt|ann|amb)$", f)]
+        bwa_idx_files = [
+            join(refdir, f) for f in refdir_files if re.search(r".*\.(sa|pac|bwt|ann|amb)$", f)
+        ]
         index = None if len(bwa_idx_files) < 5 else bwa_idx_files
     else:
         index = [ref]

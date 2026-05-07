@@ -105,14 +105,19 @@ def write_frag_info(
                         end_pos = start_pos + frag_length
                         gc_content = SeqUtils.gc_fraction(frag) / 100.0
 
-                        current_fragment_line = (
-                            f"{current_id}\t{contig_name}\t{start_pos}\t{end_pos}\t{frag_length}\t{gc_content}\n"
-                        )
+                        current_fragment_line = f"{current_id}\t{contig_name}\t{start_pos}\t{end_pos}\t{frag_length}\t{gc_content}\n"
 
                         fragments_list.write(current_fragment_line)
 
-                        if not ((current_id == 1 and start_pos == 0) or (current_id > 1 and start_pos > 0)):
-                            logger.error("Fragment ID/position inconsistency: id=%d, start=%d", current_id, start_pos)
+                        if not (
+                            (current_id == 1 and start_pos == 0)
+                            or (current_id > 1 and start_pos > 0)
+                        ):
+                            logger.error(
+                                "Fragment ID/position inconsistency: id=%d, start=%d",
+                                current_id,
+                                start_pos,
+                            )
                             raise ValueError(
                                 f"Fragment ID/position inconsistency: id={current_id}, start_pos={start_pos}"
                             )
@@ -220,7 +225,9 @@ def attribute_fragments(pairs_file, idx_pairs_file, restriction_table):
             logger.warning(
                 "Pairs on the following contigs were discarded as "
                 "those contigs are not listed in the paris file header. "
-                "This is normal if you filtered out small contigs: {}".format(" ".join(list(missing_contigs)))
+                "This is normal if you filtered out small contigs: {}".format(
+                    " ".join(list(missing_contigs))
+                )
             )
 
 
@@ -453,7 +460,9 @@ def gen_enzyme_religation_regex(enzyme):
         for accept_site in accept_list:
             # Replace "N" by "." for regex searching of the sites
             ligation_list.append((give_site + accept_site).replace("N", "."))
-            ligation_list.append(str(Seq(give_site + accept_site).reverse_complement()).replace("N", "."))
+            ligation_list.append(
+                str(Seq(give_site + accept_site).reverse_complement()).replace("N", ".")
+            )
 
     # Build the regex for any ligation sites.
     pattern = "|".join(sorted(list(set(ligation_list))))
