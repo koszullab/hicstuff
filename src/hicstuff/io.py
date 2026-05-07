@@ -1403,6 +1403,6 @@ def check_bam_entries(in_file):
         ["samtools", "view", "-c", in_file],
         capture_output=True,
         encoding="utf-8",
-    ).stdout[:-2]
+    ).stdout[:-1]
 
     return int(n_reads)
