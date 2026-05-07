@@ -610,6 +610,9 @@ def get_distance_law(
     # Fragment-based path (original behaviour): requires fragments_file.
     # Import third columns of fragments file
     fragments = pd.read_csv(fragments_file, sep="\t", header=0, usecols=[0, 1, 2, 3])
+    # Make sure chrom names column in fragment df are character
+    col = fragments.columns[1]
+    fragments[col] = fragments[col].astype(str)
     # Calculate the indice of the bins to separate into chromosomes/arms
     chr_segment_bins = _get_chr_segment_bins_index(fragments, centro_file, rm_centro)
     # Calculate the length of each chromosoms/arms
@@ -647,7 +650,6 @@ def get_distance_law(
             delimiter="\t",
         )
         for line in reader:
-            # Iterate in each line of the file after the header
             _get_pairs_distance(
                 line, fragments, chr_segment_bins, chr_segment_length, xs, ps, circular
             )
@@ -655,17 +657,9 @@ def get_distance_law(
     for i in range(len(xs)):
         n = chr_segment_length[i]
         for j in range(len(xs[i]) - 1):
-            # Use the area of a trapezium to know the area of the logbin with n
-            # the size of the matrix.
             ps[i][j] /= ((2 * n - xs[i][j + 1] - xs[i][j]) / 2) * (
                 (1 / np.sqrt(2)) * (xs[i][j + 1] - xs[i][j])
             )
-            # print(
-            #    ((2 * n - xs[i][j + 1] - xs[i][j]) / 2)
-            #    * ((1 / np.sqrt(2)) * (xs[i][j + 1] - xs[i][j]))
-            # )
-        # Case of the last logbin which is an isosceles rectangle triangle
-        # print(ps[i][-5:-1], ((n - xs[i][-1]) ** 2) / 2)
         ps[i][-1] /= ((n - xs[i][-1]) ** 2) / 2
     names = _get_names(fragments, chr_segment_bins)
     if out_file:
