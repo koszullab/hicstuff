@@ -146,8 +146,7 @@ def save_sparse_matrix(s_mat, path):
     if s_mat.format != "coo":
         raise ValueError("Sparse matrix must be in coo format")
     dtype = s_mat.dtype
-    # E721 Use `is` and `is not` for type comparisons, or `isinstance()` for isinstance checks
-    fmt = "%i" if dtype is int else "%.10e"
+    fmt = "%i" if isinstance(dtype, int) else "%.10e"
     sparse_arr = np.vstack([s_mat.row, s_mat.col, s_mat.data]).T
 
     np.savetxt(
@@ -1053,6 +1052,8 @@ def get_pos_cols(df):
     def _col_getter(cols, pat):
         """Helper to get column index from the start of its name"""
         mask = cols.str.startswith(pat)
+        if not np.any(mask):
+            raise ValueError(f"Could not find a column starting with {pat}")
         idx = np.flatnonzero(mask)[0]
         return idx
 

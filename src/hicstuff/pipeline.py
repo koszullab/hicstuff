@@ -242,7 +242,7 @@ def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30):
             unmatched_reads,
         )
     logger.info(
-        f"{100 * round(100 * n_reads['mapped'] / n_reads['total'], 2):.2f}% reads (single ends) mapped with Q >= {min_qual} ({n_reads['mapped']}/{n_reads['total']})"
+        f"{100 * round(n_reads['mapped'] / n_reads['total'], 2):.2f}% reads (single ends) mapped with Q >= {min_qual} ({n_reads['mapped']}/{n_reads['total']})"
     )
 
 

@@ -10,7 +10,7 @@ import pytest
 import hicstuff.pipeline as hpi
 
 MAPPING_PARAMETERS = ("mapping", ["normal", "iterative"])
-ALIGNER_PARAMETERS = ("aligner", ["bowtie2", "bwa"])
+ALIGNER_PARAMETERS = ("aligner", ["bowtie2", "bwa", "minimap2"])
 
 
 def test_sam2pairs(): ...

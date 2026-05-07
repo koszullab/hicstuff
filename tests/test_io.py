@@ -153,4 +153,6 @@ def test_get_pos_col():
     assert len(cols) == 3
     assert cols == (chrom, start, end)
 
-    pd.DataFrame(dummy, columns=[el for el in "abcde"])
+    bad_df = pd.DataFrame(dummy, columns=[el for el in "abcde"])
+    with pytest.raises(ValueError):
+        hio.get_pos_cols(bad_df)

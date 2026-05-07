@@ -122,16 +122,16 @@ def write_pipeline_stats(stats, out_file):
     uncuts_pairs = stats["Uncuts"]
     abnormal_pairs = stats["Weirds"]
     pcr_pairs = stats["PCR duplicates"]
-    pct_pairs = round(tot_pairs / fastq_pairs * 100, 2)
-    pct_mapped = round(tot_mapped / (fastq_pairs * 2) * 100, 2)
-    pct_unmapped = round(tot_unmapped / (fastq_pairs * 2) * 100, 2)
-    pct_filtered = round(filtered_pairs / tot_pairs * 100, 2)
-    pct_loops_pairs = round(loops_pairs / tot_pairs * 100, 2)
-    pct_uncuts_pairs = round(uncuts_pairs / tot_pairs * 100, 2)
-    pct_abnormal_pairs = round(abnormal_pairs / tot_pairs * 100, 2)
-    pct_pcr = round(pcr_pairs / tot_pairs * 100, 2)
-    pct_removed = round(removed_pairs / tot_pairs * 100, 2)
-    pct_final = round(final_pairs / tot_pairs * 100, 2)
+    pct_pairs = round(tot_pairs / fastq_pairs * 100, 2) if fastq_pairs > 0 else 0.0
+    pct_mapped = round(tot_mapped / (fastq_pairs * 2) * 100, 2) if fastq_pairs > 0 else 0.0
+    pct_unmapped = round(tot_unmapped / (fastq_pairs * 2) * 100, 2) if fastq_pairs > 0 else 0.0
+    pct_filtered = round(filtered_pairs / tot_pairs * 100, 2) if tot_pairs > 0 else 0.0
+    pct_loops_pairs = round(loops_pairs / tot_pairs * 100, 2) if tot_pairs > 0 else 0.0
+    pct_uncuts_pairs = round(uncuts_pairs / tot_pairs * 100, 2) if tot_pairs > 0 else 0.0
+    pct_abnormal_pairs = round(abnormal_pairs / tot_pairs * 100, 2) if tot_pairs > 0 else 0.0
+    pct_pcr = round(pcr_pairs / tot_pairs * 100, 2) if tot_pairs > 0 else 0.0
+    pct_removed = round(removed_pairs / tot_pairs * 100, 2) if tot_pairs > 0 else 0.0
+    pct_final = round(final_pairs / tot_pairs * 100, 2) if tot_pairs > 0 else 0.0
 
     # Open the log file and read its contents
     _, file_extension = splitext(out_file)
