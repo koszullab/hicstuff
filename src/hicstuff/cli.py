@@ -888,6 +888,12 @@ def view(
     metavar="BOOL",
     help="Generate multi-resolution .mcool from the binned cool matrix.",
 )
+@click.option(
+    "--skip-count",
+    is_flag=True,
+    default=False,
+    help="Skip the read-count check on input FASTQ files.",
+)
 def pipeline(
     input1,
     input2,
@@ -917,6 +923,7 @@ def pipeline(
     threads,
     tmpdir,
     zoomify,
+    skip_count,
 ):
     """Run the full Hi-C pipeline from FASTQ to contact matrix.
 
@@ -962,6 +969,7 @@ def pipeline(
         start_stage=start_stage,
         threads=threads,
         tmp_dir=tmpdir,
+        skip_count=skip_count,
     )
 
 

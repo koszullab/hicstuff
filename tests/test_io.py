@@ -156,3 +156,12 @@ def test_get_pos_col():
     bad_df = pd.DataFrame(dummy, columns=[el for el in "abcde"])
     with pytest.raises(ValueError):
         hio.get_pos_cols(bad_df)
+
+
+def test_check_fastq_entries():
+    """Test function to check number of entries in fastq files"""
+    filen = "test_data/sample.reads_for.fastq.gz"
+    nreads = hio.check_fastq_entries(filen)
+    assert nreads == 10000
+    nreads = hio.check_fastq_entries(filen, threads=2)
+    assert nreads == 10000

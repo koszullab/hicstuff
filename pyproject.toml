@@ -57,6 +57,7 @@ dev = [
     "pre-commit>=3.0",
     "sphinx",
     "sphinx-rtd-theme",
+    "ipython>=8.12.3",
 ]
 
 [project.urls]

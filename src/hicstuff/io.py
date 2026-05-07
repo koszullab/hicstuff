@@ -13,6 +13,7 @@ import sys
 import zipfile
 from os.path import exists, join
 from random import getrandbits
+from shutil import which
 
 import cooler
 import numpy as np
@@ -1344,7 +1345,7 @@ def check_is_fasta(in_file):
     return fasta
 
 
-def check_fastq_entries(in_file):
+def check_fastq_entries(in_file, threads=1) -> int:
     """
     Check how many reads are in the input fastq.
 
@@ -1352,6 +1353,10 @@ def check_fastq_entries(in_file):
     ----------
     in_file : str
         Path to the input file.
+    threads : int, optional
+        Number of decompression threads to use when the file is gzipped and
+        ``pigz`` is installed.  Values > 1 enable parallel decompression.
+        Default is 1, which falls back to ``zcat``.
 
     Returns
     -------
@@ -1362,13 +1367,21 @@ def check_fastq_entries(in_file):
     with open(in_file, "rb") as f:
         is_gzip = f.read(2) == b"\x1f\x8b"
     if is_gzip:
-        with gzip.open(in_file, "rt") as input_fastq:
-            n_lines = sum(1 for line in input_fastq)
+        if threads > 1 and which("pigz") is not None:
+            decomp = sp.Popen(
+                ["pigz", "-dc", "-p", str(threads), in_file],
+                stdout=sp.PIPE,
+                stderr=sp.DEVNULL,
+            )
+        else:
+            decomp = sp.Popen(["zcat", in_file], stdout=sp.PIPE, stderr=sp.DEVNULL)
+        wc = sp.Popen(["wc", "-l"], stdin=decomp.stdout, stdout=sp.PIPE)
+        decomp.stdout.close()
+        n_lines = int(wc.communicate()[0].strip())
     else:
-        with open(in_file) as input_fastq:
-            n_lines = sum(1 for line in input_fastq)
+        n_lines = int(sp.check_output(["wc", "-l", in_file]).split()[0])
     n_reads = int(n_lines) / 4
-    return n_reads
+    return int(n_reads)
 
 
 def check_bam_entries(in_file):

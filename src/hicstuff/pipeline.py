@@ -578,6 +578,7 @@ def full_pipeline(
     start_stage="fastq",
     threads=1,
     tmp_dir=None,
+    skip_count=False,
 ):
     """
     Run the whole hicstuff pipeline. Starting from fastq files and a genome to
@@ -665,6 +666,9 @@ def full_pipeline(
     remove_centros : None or int
         If the distance law is computed, this is the number of kb that will be removed
         around the centromere position given by in the centromere file.
+    skip_count : bool
+        If True, skip counting reads in the input FASTQ files. Useful for very
+        large files where counting is slow.
     """
     # Check if third parties can be run
     if aligner in ("bowtie2", "minimap2", "bwa"):
@@ -880,14 +884,17 @@ def full_pipeline(
     # Perform genome alignment
     nreads_input1 = 0
     if start_stage == 0:
-        # Check number of reads in both fastqs
-        logger.info("Checking content of fastq files.")
-        nreads_input1 = hio.check_fastq_entries(reads1)
-        nreads_input2 = hio.check_fastq_entries(reads2)
-        if nreads_input1 != nreads_input2:
-            logger.error("Fastq files do not have the same number of reads.")
+        if skip_count:
+            logger.info("Skipping read count check (--skip-count).")
         else:
-            logger.info(f"{int(nreads_input1)} reads found in each fastq file.")
+            # Check number of reads in both fastqs
+            logger.info("Checking content of fastq files.")
+            nreads_input1 = hio.check_fastq_entries(reads1, threads)
+            nreads_input2 = hio.check_fastq_entries(reads2, threads)
+            if nreads_input1 != nreads_input2:
+                logger.error("Fastq files do not have the same number of reads.")
+            else:
+                logger.info(f"{int(nreads_input1)} reads found in each fastq file.")
 
         # Define mapping choice (default normal):
         if mapping == "normal":
@@ -923,6 +930,7 @@ def full_pipeline(
             logger.error("mapping must be either normal, iterative or cutsite.")
             raise ValueError
 
+        logger.info("Now separately mapping R1 and R2 reads...")
         align_reads(
             reads1,
             genome,
