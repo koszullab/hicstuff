@@ -7,7 +7,6 @@
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.2620608.svg)](https://doi.org/10.5281/zenodo.2620608)
 [![codecov](https://codecov.io/gh/koszullab/hicstuff/branch/master/graph/badge.svg)](https://codecov.io/gh/koszullab/hicstuff)
 [![Read the docs](https://readthedocs.org/projects/hicstuff/badge)](https://hicstuff.readthedocs.io)
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/koszullab/hicstuff/master?filepath=doc%2Fnotebooks%2Fdemo_api.ipynb)
 [![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
 
 A lightweight library that generates and handles Hi-C contact maps in either cooler-compatible 2Dbedgraph or [instaGRAAL](https://github.com/koszullab/instaGRAAL) format. It is essentially a merge of the [yahcp](https://github.com/baudrly/yahcp) pipeline, the [hicstuff](https://github.com/baudrly/hicstuff) library and extra features illustrated in the [3C tutorial](https://github.com/axelcournac/3C_tutorial) and the [DADE pipeline](https://github.com/scovit/dade), all packaged together for extra convenience.
@@ -16,17 +15,22 @@ The goal is to make generation and manipulation of Hi-C matrices as simple as po
 
 ## Table of contents
 
-* [Installation](#installation)
-  * [pip](#pip)
-  * [conda](#conda)
-  * [docker](#docker)
-* [Usage](#usage)
-  * [Full pipeline](#full-pipeline)
-  * [Individual components](#individual-components)
-* [Library](#library)
-* [Connecting the modules](#connecting-the-modules)
-* [File formats](#file-formats)
-* [Contributing](#contributing)
+1. [Table of contents](#table-of-contents)
+2. [Installation](#installation)
+   1. [pip](#pip)
+   2. [Conda](#conda)
+   3. [Docker](#docker)
+3. [Usage](#usage)
+   1. [Full pipeline](#full-pipeline)
+   2. [Individual components](#individual-components)
+      1. [Digestion of fastq reads](#digestion-of-fastq-reads)
+      2. [Iterative alignment](#iterative-alignment)
+      3. [Digestion of the genome](#digestion-of-the-genome)
+      4. [Filtering of 3C events](#filtering-of-3c-events)
+      5. [Viewing the contact map](#viewing-the-contact-map)
+   3. [File formats](#file-formats)
+   4. [Contributing](#contributing)
+   5. [Citation](#citation)
 
 ## Installation
 
@@ -45,112 +49,144 @@ cd hicstuff
 uv sync --extra dev
 ```
 
-`bowtie2`, `bwa` and/or `minimap2` as well as `samtools` are required by the `pipeline` command.
+If `hicstuff` is installed via pip, additional system dependencies such as 
+`bowtie2`, `bwa`, `minimap2` and `samtools` will be needed. You can install 
+them as follows on Debian/Ubuntu:
 
-You can install them via the conda package manager:
-```bash
-conda install -c bioconda bowtie2 bwa minimap2 samtools
-```
-Alternatively, on ubuntu you can also install them along with additional dependencies through APT:
 ```bash
 apt-get install bowtie2 bwa minimap2 samtools libbz2-dev liblzma-dev
 ```
 
 ### Conda
 
-hicstuff is available as a bioconda package. It can be installed, along with all dependencies using:
+hicstuff is also available on bioconda, which will automatically handle all 
+dependencies:
 
 ```bash
-conda install -c bioconda hicstuff
+conda install bioconda::hicstuff
 ```
 
 ### Docker
 
-A pre-built docker image is made available on quay.io via [biocontainers](https://biocontainers.pro/) and can be ran using:
+Docker images are automatically built and published to GitHub Container 
+Registry (GHCR) when releases are tagged:
 
 ```bash
-docker pull quay.io/biocontainers/hicstuff:<tag>
+docker pull ghcr.io/baudrly/hicstuff:latest
+docker pull ghcr.io/baudrly/hicstuff:<version>
 ```
 
 ## Usage
 
-The hicstuff command line interface is composed of multiple subcommands. You can always get a summary of all available commands by running:
+The hicstuff command line interface is composed of multiple subcommands. 
+You can always get a summary of all available commands by running:
 
-```bash
+```txt
 hicstuff --help
-
-Simple Hi-C pipeline for generating and manipulating contact matrices.
-
-usage:
-    hicstuff [-hv] <command> [<args>...]
-
-options:
-    -h, --help                  shows the help
-    -v, --version               shows the version
-
-The subcommands are:
-    convert         Convert Hi-C data between different formats.
-    digest          Digest genome into a list of fragments.
-    cutsite         Preprocess fastq files by digesting reads at religation site.
-    distancelaw     Analyse and plot distance law.
-    filter          Filters Hi-C pairs to exclude spurious events.
-    iteralign       Iteratively aligns reads to a reference genome.
-    missview        Preview missing Hi-C bins in based on the genome and read length.
-    pipeline        Hi-C pipeline to generate contact matrix from fastq files.
-    rebin           Bin the matrix and regenerate files accordingly.
-    subsample       Bootstrap subsampling of contacts from a Hi-C map.
-    view            Visualize a Hi-C matrix.
+                                                                                                    
+ Usage: hicstuff [OPTIONS] COMMAND [ARGS]...                                                        
+                                                                                                    
+ Simple Hi-C pipeline for generating and manipulating contact matrices.                             
+                                                                                                    
+╭─ Options ────────────────────────────────────────────────────────────────────────────────────────╮
+│ --version      Show the version and exit.                                                        │
+│ --help     -h  Show this message and exit.                                                       │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Alignment ──────────────────────────────────────────────────────────────────────────────────────╮
+│ iteralign      Iteratively align reads to a reference genome.                                    │
+│ cutsite        Preprocess FASTQ files by cutting reads at religation sites.                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Processing ─────────────────────────────────────────────────────────────────────────────────────╮
+│ digest       Digest a genome FASTA into restriction fragments.                                   │
+│ filter       Filter spurious Hi-C events (loops and uncuts) from a pairs file.                   │
+│ pipeline     Run the full Hi-C pipeline from FASTQ to contact matrix.                            │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Matrix operations ──────────────────────────────────────────────────────────────────────────────╮
+│ rebin           Rebin a Hi-C matrix to a coarser resolution.                                     │
+│ subsample       Subsample contacts from a Hi-C matrix.                                           │
+│ convert         Convert between Hi-C matrix formats (graal, bg2, cool).                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Analysis & Visualization ───────────────────────────────────────────────────────────────────────╮
+│ view             Visualize a Hi-C matrix as a heatmap.                                           │
+│ scalogram        Generate a scalogram from a Hi-C contact matrix.                                │
+│ distancelaw      Analyse and plot the Hi-C distance law (P(s) curve).                            │
+│ missview         Preview unmappable Hi-C bins for a given read length.                           │
+│ stats            Extract mapping statistics from a hicstuff pipeline log file.                   │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ### Full pipeline
 
-All components of the pipeline can be run at once using the `hicstuff pipeline` command. This allows to generate a contact matrix from reads in a single command. By default, the output is in GRAAL compatible COO sparse matrix format, but it can be a 2D bedgraph or cool file instead using the `--matfmt` option. More detailed documentation can be found on the readthedocs website: https://hicstuff.readthedocs.io/en/latest/index.html
+All components of the pipeline can be run at once using the `hicstuff pipeline` command. 
+This allows to generate a contact matrix from reads in a single command. 
+By default, the output is a `cool` file. 
 
-    usage:
-        pipeline [--aligner=bowtie2] [--centromeres=FILE] [--circular] [--distance-law]
-                 [--duplicates] [--enzyme=5000] [--filter] [--force] [--mapping=normal]
-                 [--matfmt=graal] [--no-cleanup] [--outdir=DIR] [--plot] [--prefix=PREFIX]
-                 [--quality-min=30] [--read-len=INT] [--remove-centromeres=0] [--size=0]
-                 [--start-stage=fastq] [--threads=1] [--tmpdir=DIR] --genome=FILE <input1> [<input2>]
-
-    arguments:
-        input1:             Forward fastq file, if start_stage is "fastq", sam
-                            file for aligned forward reads if start_stage is
-                            "bam", or a .pairs file if start_stage is "pairs".
-        input2:             Reverse fastq file, if start_stage is "fastq", sam
-                            file for aligned reverse reads if start_stage is
-                            "bam", or nothing if start_stage is "pairs".
-
-For example, to run the pipeline with minimap2 using 8 threads and generate a matrix in instagraal format in the directory `out`:
-
+```txt
+hicstuff pipeline --help
+                                                                                                    
+ Usage: hicstuff pipeline [OPTIONS] INPUT1 [INPUT2]                                                 
+                                                                                                    
+ Run the full Hi-C pipeline from FASTQ to contact matrix.                                           
+ Example — generate a multi-resolution .mcool for Arima Hi-C:                                       
+                                                                                                    
+                                                                                                    
+ hicstuff pipeline --enzyme "DpnII,HinfI" --binning 1000 --threads 8 \                              
+     --genome ref.fa R1.fq.gz R2.fq.gz                                                              
+                                                                                                    
+╭─ Arguments ──────────────────────────────────────────────────────────────────────────────────────╮
+│ *  INPUT1  TEXT  [required]                                                                      │
+│    INPUT2  TEXT                                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────────────────────────╮
+│ *  --genome              -g  FILE       Reference genome or aligner index. [required]            │
+│    --aligner             -a  STR        Aligner: bowtie2, minimap2 or bwa. [default: bowtie2]    │
+│    --balancing-args      -B  STR        Extra arguments passed to `cooler balance`.              │
+│    --binning             -b  INT        Bin the cool matrix to this resolution (bp). 0 means no  │
+│                                         binning. [default: 0]                                    │
+│    --centromeres         -c  FILE       Centromere positions file.                               │
+│    --circular            -C             Genome is circular.                                      │
+│    --distance-law        -d             Generate a distance law output file.                     │
+│    --duplicates          -D             Filter PCR duplicates.                                   │
+│    --enzyme              -e  {STR|INT}  Restriction enzyme name, 'mnase'/'dnase', or chunk size  │
+│                                         in bp. [default: 5000]                                   │
+│    --exclude             -E  STR        Comma-separated chromosomes to exclude (e.g. chrM,2u).   │
+│    --filter              -f             Filter spurious 3C events (loops and uncuts).            │
+│    --force               -F             Overwrite existing output files.                         │
+│    --mapping             -m  STR        Mapping mode. [default: normal]                          │
+│    --matfmt              -M  STR        Output matrix format. [default: cool]                    │
+│    --no-cleanup          -n             Keep intermediary files.                                 │
+│    --outdir              -o  DIR        Output directory (default: current directory).           │
+│    --plot                -p             Generate plots at pipeline steps.                        │
+│    --prefix              -P  STR        Prefix for all output files.                             │
+│    --quality-min         -q  INT        Minimum mapping quality. [default: 30]                   │
+│    --remove-centromeres  -r  INT        kb to remove around centromere positions. [default: 0]   │
+│    --read-len            -R  INT        Maximum read length (estimated from first read if        │
+│                                         omitted).                                                │
+│    --size                -s  INT        Minimum contig size threshold. [default: 0]              │
+│    --start-stage         -S  STR        Pipeline start stage. [default: fastq]                   │
+│    --threads             -t  INT        Number of parallel threads. [default: 1]                 │
+│    --tmpdir              -T  DIR        Temporary directory.                                     │
+│    --zoomify             -z  BOOL       Generate multi-resolution .mcool from the binned cool    │
+│                                         matrix. [default: True]                                  │
+│    --help                -h             Show this message and exit.                              │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
+
+For example, to run the pipeline with `minimap2` using 8 threads and save output
+files to the directory `out`:
+
+```sh
 hicstuff pipeline -t 8 -a minimap2 -e DpnII -o out/ -g genome.fa reads_for.fq reads_rev.fq
 ```
 
 If you have already aligned your reads, hicstuff pipeline can also take bam files as input. For example,
-to generate a matrix in cool format with a fixed bin size of 5kb:
+to generate a matrix in mcool file with multiple resolutions starting from 5kb, you can run:
 
-```
+```sh
 # Note the bam files have to be name-sorted, this can be done using samtools
 samtools sort -n aligned_for.bam -o namesorted_for.bam
 samtools sort -n aligned_rev.bam -o namesorted_rev.bam
-hicstuff pipeline -S bam -e 5000 -M cool -o out/ -g genome.fa namesorted_for.bam namesorted_rev.bam
-```
-
-
-The pipeline can also be run from python, using the `hicstuff.pipeline` submodule. For example, this would run the pipeline with bowtie2 (default) using cutsiste alignment and keep all intermediate files. For more examples using the API, see the [API demo](https://hicstuff.readthedocs.io/en/latest/notebooks/demo_api.html)
-
-```python
-from hicstuff import pipeline as hpi
-
-hpi.full_pipeline(
-    'genome.fa', 
-    'end1.fq', 
-    'end2.fq', 
-    no_cleanup=True
-    mapping='cutsite',
-    out_dir='out', 
-    enzyme="DpnII")
+hicstuff pipeline -S bam -b 5000 -o out/ -g genome.fa namesorted_for.bam namesorted_rev.bam
 ```
 
 The general steps of the pipeline are as follows:
@@ -161,21 +197,58 @@ The general steps of the pipeline are as follows:
 
 For more advanced usage, different scripts can be used independently on the command line to perform individual parts of the pipeline. This readme contains quick descriptions and example usages. To obtain detailed instructions on any subcommand, one can use `hicstuff <subcommand> --help`.
 
-### Digestion of the reads
+#### Digestion of fastq reads
  
 Generates new gzipped fastq files from original fastq. The function will cut the reads at their religation sites and creates new pairs of reads with the different fragments obtained after cutting at the digestion sites.
 
-    usage:
-        cutsite --forward=FILE --reverse=FILE  --prefix=STR --enzyme=STR
-        [--mode=for_vs_rev] [--seed-size=20] [--threads=1]
+```
+hicstuff cutsite --help
+                                                                                                    
+ Usage: hicstuff cutsite [OPTIONS]                                                                  
+                                                                                                    
+ Preprocess FASTQ files by cutting reads at religation sites.                                       
+ Generates gzipped FASTQ files with reads cut at ligation junctions, creating new fragment pairs    
+ for mapping.                                                                                       
+                                                                                                    
+╭─ Options ────────────────────────────────────────────────────────────────────────────────────────╮
+│ *  --forward    -F  FILE  Forward reads FASTQ file. [required]                                   │
+│ *  --reverse    -R  FILE  Reverse reads FASTQ file. [required]                                   │
+│ *  --prefix     -p  STR   Output prefix (suffixed with _R1.fq.gz / _R2.fq.gz). [required]        │
+│ *  --enzyme     -e  STR   Comma-separated restriction enzyme(s). [required]                      │
+│    --mode       -m  STR   Fragment pairing mode. [default: for_vs_rev]                           │
+│    --seed-size  -s  INT   Minimum read size after cutting. [default: 20]                         │
+│    --threads    -t  INT   Number of parallel threads. [default: 1]                               │
+│    --help       -h        Show this message and exit.                                            │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
 
 #### Iterative alignment
 
 Truncate reads from a fastq file to 20 basepairs and iteratively extend and re-align the unmapped reads to optimize the proportion of uniquely aligned reads in a 3C library.
 
-    usage:
-        iteralign [--aligner=bowtie2] [--threads=1] [--min-len=20] [--read-len=INT]
-                  [--tempdir=DIR] --out-bam=FILE --genome=FILE <reads.fq>
+```
+hicstuff iteralign --help
+                                                                                                    
+ Usage: hicstuff iteralign [OPTIONS] READS_FQ                                                       
+                                                                                                    
+ Iteratively align reads to a reference genome.                                                     
+ Truncates reads to 20 bp then iteratively extends and re-aligns unmapped reads to maximise the     
+ proportion of uniquely aligned reads in a 3C library.                                              
+                                                                                                    
+╭─ Arguments ──────────────────────────────────────────────────────────────────────────────────────╮
+│ *  READS_FQ  TEXT  [required]                                                                    │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────────────────────────╮
+│ *  --genome    -g  FILE  Reference genome or aligner index path. [required]                      │
+│ *  --out-bam   -o  FILE  Output BAM file path. [required]                                        │
+│    --threads   -t  INT   Number of parallel threads. [default: 1]                                │
+│    --tempdir   -T  DIR   Temporary directory (default: current directory).                       │
+│    --aligner   -a  STR   Aligner: bowtie2, minimap2 or bwa. [default: bowtie2]                   │
+│    --min-len   -l  INT   Minimum truncated read length. [default: 20]                            │
+│    --read-len  -R  INT   Maximum read length (estimated from first read if omitted).             │
+│    --help      -h        Show this message and exit.                                             │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
 
 #### Digestion of the genome
 
@@ -183,22 +256,60 @@ Digests a fasta file into fragments based on a restriction enzyme or a
 fixed chunk size. Generates two output files into the target directory
 named "info_contigs.txt" and "fragments_list.txt"
 
-    usage:
-        digest [--plot] [--figdir=FILE] [--force] [--circular] [--size=0]
-               [--outdir=DIR] --enzyme=ENZ <fasta>
-
+```
+hicstuff digest --help
+                                                                                                    
+ Usage: hicstuff digest [OPTIONS] FASTA                                                             
+                                                                                                    
+ Digest a genome FASTA into restriction fragments.                                                  
+ Writes ``fragments_list.txt`` and ``info_contigs.txt`` to the output directory.                    
+                                                                                                    
+╭─ Arguments ──────────────────────────────────────────────────────────────────────────────────────╮
+│ *  FASTA  TEXT  [required]                                                                       │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────────────────────────╮
+│ *  --enzyme    -e  ENZ[,ENZ2,...]  Restriction enzyme name(s) or fixed chunk size in bp.         │
+│                                    [required]                                                    │
+│    --outdir    -o  DIR             Output directory (default: current directory).                │
+│    --size      -s  INT             Minimum fragment size to keep. [default: 0]                   │
+│    --circular  -c                  Genome is circular.                                           │
+│    --plot      -p                  Show fragment length distribution histogram.                  │
+│    --figdir    -f  DIR             Directory to save the distribution figure.                    │
+│    --force     -F                  Overwrite existing output directory.                          │
+│    --help      -h                  Show this message and exit.                                   │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
  
  For example, to digest the yeast genome with MaeII and HinfI and show histogram of fragment lengths:
 
-`hicstuff digest --plot --outdir output_dir --enzyme MaeII,HinfI Sc_ref.fa`
+```sh
+hicstuff digest --plot --outdir output_dir --enzyme MaeII,HinfI Sc_ref.fa
+```
 
 #### Filtering of 3C events
 
 Filters spurious 3C events such as loops and uncuts from the library based on a minimum distance threshold automatically estimated from the library by default. Can also plot 3C library statistics. This module takes a pairs file with 9 columns as input (readID, chr1, pos1, chr2, pos2, strand1, strand2, frag1, frag2) and filters it. 
 
-    usage:
-        filter [--interactive | --thresholds INT-INT] [--plot]
-               [--figdir FILE] [--prefix STR] <input> <output>
+```
+hicstuff filter --help
+                                                                                                    
+ Usage: hicstuff filter [OPTIONS] INPUT_PAIRS OUTPUT_PAIRS                                          
+                                                                                                    
+ Filter spurious Hi-C events (loops and uncuts) from a pairs file.                                  
+                                                                                                    
+╭─ Arguments ──────────────────────────────────────────────────────────────────────────────────────╮
+│ *  INPUT_PAIRS   TEXT  [required]                                                                │
+│ *  OUTPUT_PAIRS  TEXT  [required]                                                                │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────────────────────────╮
+│ --figdir       -f  DIR      Directory for output figures.                                        │
+│ --interactive  -i           Ask for thresholds interactively after showing plots.                │
+│ --plot         -p           Show library composition and 3C event abundance plots.               │
+│ --prefix       -P  STR      Library name displayed on figures.                                   │
+│ --thresholds   -t  INT-INT  Manual thresholds as UNCUT-LOOP (e.g. 4-5).                          │
+│ --help         -h           Show this message and exit.                                          │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
 
 #### Viewing the contact map
 
@@ -206,144 +317,66 @@ Visualize a Hi-C matrix file as a heatmap of contact frequencies. Allows to
 tune visualisation by binning and normalizing the matrix, and to save the
 output image to disk. If no output is specified, the output is displayed.
 
-    usage:
-        view [--binning=1] [--despeckle] [--frags FILE] [--trim INT] [--n-mad 3.0] [--lines]
-             [--normalize] [--min=0] [--max=99%] [--output=IMG] [--cmap=Reds] [--dpi=300]
-             [--transform=STR] [--circular] [--region=STR] <contact_map> [<contact_map2>]
-
-    arguments:
-        contact_map             Sparse contact matrix in bg2, cool or graal format
-        contact_map2            Sparse contact matrix in bg2, cool or graal format,
-                                if given, the log ratio of contact_map/contact_map2
-                                will be shown.
+```
+hicstuff view --help
+                                                                                                    
+ Usage: hicstuff view [OPTIONS] CONTACT_MAP [CONTACT_MAP2]                                          
+                                                                                                    
+ Visualize a Hi-C matrix as a heatmap.                                                              
+                                                                                                    
+╭─ Arguments ──────────────────────────────────────────────────────────────────────────────────────╮
+│ *  CONTACT_MAP   TEXT  [required]                                                                │
+│    CONTACT_MAP2  TEXT                                                                            │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ────────────────────────────────────────────────────────────────────────────────────────╮
+│ --binning    -b  INT[bp|kb|Mb]  Merge bins by factor or generate fixed-size bins. [default: 1]   │
+│ --cmap       -c  STR            Matplotlib colormap name. [default: Reds]                        │
+│ --circular   -C                 Genome is circular.                                              │
+│ --despeckle  -d                 Remove speckle artefacts.                                        │
+│ --dpi        -D  INT            Output image DPI. [default: 300]                                 │
+│ --frags      -f  FILE           fragments_list.txt (required for bp binning and --lines).        │
+│ --transform  -T  STR            Pixel transform: log2, log10, ln, sqrt, exp<val>.                │
+│ --lines      -l                 Draw chromosome separator lines (requires --frags).              │
+│ --max        -M  NUM[%]         Colorscale maximum (percentile with %). [default: 99%]           │
+│ --min        -m  NUM[%]         Colorscale minimum. [default: 0]                                 │
+│ --n-mad      -N  FLOAT          MAD threshold for ICE normalization bin filtering. [default:     │
+│                                 3.0]                                                             │
+│ --normalize  -n                 Perform ICE normalization before rendering.                      │
+│ --output     -o  FILE           Output image path (display interactively if omitted).            │
+│ --region     -r  STR[;STR]      UCSC region to zoom into (e.g. chr1:1000-12000).                 │
+│ --trim       -t  FLOAT          Trim bins deviating by more than this many MADs.                 │
+│ --help       -h                 Show this message and exit.                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
 
 For example, to view a 1Mb region of chromosome 1 from a full genome Hi-C matrix rebinned at 10kb:
 
 ```sh
-    hicstuff view --normalize --binning 10kb --region chr1:10,000,000-11,000,000 --frags fragments_list.txt contact_map.tsv
-```
-### Library
-
-All components of the hicstuff program can be used as python modules. See the documentation on [reathedocs](https://hicstuff.readthedocs.io). The expected contact map format for the library is a simple CSV file, and the objects handled by the library are simple ```numpy``` arrays. The various submodules of hicstuff contain various utilities.
-
-```python
-import hicstuff.cutsite # Functions to digest fastq librairies
-import hicstuff.digest # Functions to work with restriction fragments
-import hicstuff.iteralign # Functions related to iterative alignment
-import hicstuff.hicstuff # Contains utilities to modify and operate on contact maps as numpy arrays
-import hicstuff.filter # Functions for filtering 3C events by type (uncut, loop)
-import hicstuff.view # Utilities to visualise contact maps
-import hicstuff.io # Reading and writing hicstuff files
-import hicstuff.pipeline # Generation and processing of files to generate matrices.
-```
-
-### Connecting the modules
-
-All the steps described here are handled automatically when running the `hicstuff pipeline`. But if you want to connect the different modules manually, the intermediate input and output files can be processed using some python scripting.
-
-#### Aligning the reads
-
-You can generate SAM files independently using your favorite read mapping software, use the command line utility `hicstuff iteralign`, or use the helper function `align_reads` in the submodule `hicstuff.pipeline`. For example, to perform iterative alignment using bwa (instead of bowtie2 by default):
-
-**Using the python function:**
-
-```python
-from hicstuff import pipeline as hpi
-
-hpi.align_reads("end1.fastq", "genome.fasta", "end1.bam", iterative=True, aligner='bwa')
-```
-
-**Using the command line tool:**
-
-```bash
-hicstuff iteralign --aligner bwa --genome genome.fasta --out-bam end1.bam end1.fastq
-```
-
-#### Extracting contacts from the alignment
-
-The output from `hicstuff iteralign` is a BAM file. In order to retrieve Hi-C pairs, you need to run iteralign separately on the two fastq files and process the resulting alignment files into a name-sorted BAM file as follows using the `pipeline` submodules of hicstuff.
-
-```python
-from hicstuff import pipeline as hpi
-import pysam as ps
-# Sort alignments by read names and get into BAM format
-ps.sort("-n", "-O", "BAM", "-o", "end1.bam.sorted", "end1.bam")
-ps.sort("-n", "-O", "BAM", "-o", "end2.bam.sorted", "end2.bam")
-# Combine BAM files
-hpi.bam2pairs("end1.sorted.bam", "end2.sorted.bam", "output.pairs", "info_contigs.txt", min_qual=30)
-
-```
-This will generate a "pairs" file containing all read pairs where both reads have been aligned with a mapping quality of at least 30.
-
-#### Attributing each read to a restriction fragment
-To build a a contact matrix, we need to attribute each read to a fragment in the genome. This is done under the hood by performing a binary search for each read position against the list of restriction sites in the genome.
-
-```python
-from hicstuff import digest as hcd
-from Bio import SeqIO
-
-# Build a list of restriction sites for each chromosome
-restrict_table = {}
-for record in SeqIO.parse("genome.fasta", "fasta"):
-    # Get chromosome restriction table
-    restrict_table[record.id] = hcd.get_restriction_table(
-        record.seq, enzyme, circular=circular
-    )
-
-# Add fragment index to pairs (readID, chr1, pos1, chr2,
-# pos2, strand1, strand2, frag1, frag2)
-hcd.attribute_fragments("output.pairs", "output_indexed.pairs", restrict_table)
-
-```
-
-#### Filtering pairs
-The resulting pairs file can then be filtered, either in the command line using the `hicstuff filter` command, or in python using the `hicstuff.filter` submodule. Otherwise, the matrix can be built directly from the unfiltered pairs. 
-
-**Filtering on the command line:**
-```bash
-hicstuff filter output_indexed.pairs output_filtered.pairs
-```
-**Filtering in python:**
-```python
-from hicstuff import filter as hcf
-
-uncut_thr, loop_thr = hcf.get_thresholds("output_indexed.pairs")
-hcf.filter_events("output_indexed.pairs", "output_filtered.pairs", uncut_thr, loop_thr)
-```
-Note that both the command and the python function have various options to generate figure or tweak the filtering thresholds. These options can be displayed using `hicstuff filter -h`
-
-#### Matrix generation
-A Hi-C sparse contact matrix can then be generated using the python submodule `hicstuff.pipeline`. The matrix can be generated in GRAAL-compatible COO format, bedgraph2 or cool format.
-
-```python
-from hicstuff import pipeline as hpi
-
-n_frags = sum(1 for line in open(fragments_list, "r")) - 1
-hpi.pairs2matrix("output_filtered.pairs", "abs_fragments_contacts_weighted.txt", 'fragments_list.txt', mat_fmt="GRAAL")
+hicstuff view --normalize --binning 10kb --region chr1:10,000,000-11,000,000 --frags fragments_list.txt contact_map.tsv
 ```
 
 ### File formats
 
-* pairs files: This format is used for all intermediate files in the pipeline and is also used by `hicstuff filter`. It is a tab-separated format holding informations about Hi-C pairs. It has an [official specification](https://github.com/4dn-dcic/pairix/blob/master/pairs_format_specification.md) defined by the 4D Nucleome data coordination and integration center.
-* 2D bedgraph: This is an optional output format of `hicstuff pipeline` for the sparse matrix. It has two fragment per line, and the number of times they are found together. It has the following fields: **chr1, start1, end1, chr2, start2, end2, occurences**
-    - Those files can be [loaded by cooler](https://cooler.readthedocs.io/en/latest/cli.html?highlight=load#cooler-load) using `cooler load -f bg2 <chrom.sizes>:<binsize> in.bg2.gz out.cool` where chrom.sizes is a tab delimited file with chromosome names and length on each line, and binsize is the size of bins in the matrix.
-* GRAAL sparse matrix: This is a simple tab-separated file with 3 columns: **frag1, frag2, contacts**. The id columns correspond to the absolute id of the restriction fragments (0-indexed). The first row is a header containing the number of rows, number of columns and number of nonzero entries in the matrix. Example:
+* `pairs` files: This format is used for all intermediate files in the pipeline and is also used by `hicstuff filter`. It is a tab-separated format holding informations about Hi-C pairs. It has an [official specification](https://github.com/4dn-dcic/pairix/blob/master/pairs_format_specification.md) defined by the 4D Nucleome data coordination and integration center.
+* `bedgraph2` bedgraph: This is an optional output format of `hicstuff pipeline` for the sparse matrix. It has two fragment per line, and the number of times they are found together. It has the following fields: **chr1, start1, end1, chr2, start2, end2, occurences**
+    - Those files can be [loaded by cooler](https://cooler.readthedocs.io/en/latest/cli.html?highlight=load#cooler-load) using `cooler load -f bg2 <chrom.sizes>:<binsize> in.bg2.gz out.cool` where `chrom.sizes` is a tab delimited file with chromosome names and length on each line, and binsize is the size of bins in the matrix.
+* `GRAAL` sparse matrix: This is a simple tab-separated file with 3 columns: **frag1, frag2, contacts**. The id columns correspond to the absolute id of the restriction fragments (0-indexed). The first row is a header containing the number of rows, number of columns and number of nonzero entries in the matrix. Example:
 
 ```
 564	564	6978
 0	0	3
 1	2	4
 1	3	3
-
 ```
 
-* fragments_list.txt: This tab separated file provides information about restriction fragments positions, size and GC content. Note the coordinates are 0 point basepairs, unlike the pairs format, which has 1 point basepairs. Example:
+* `fragments_list.txt`: This tab separated file provides information about restriction fragments positions, size and GC content. Note the coordinates are 0 point basepairs, unlike the pairs format, which has 1 point basepairs. Example:
    - id: 1 based restriction fragment index within chromosome.
    - chrom: Chromosome identifier. Order should be the same as in info_contigs.txt or pairs files.
    - start_pos: 0-based start of fragment, in base pairs.
    - end_pos: 0-based end of fragment, in base pairs.
    - size: Size of fragment, in base pairs.
    - gc_content: Proportion of G and C nucleotide in the fragment.
+
 ```
 id	chrom	start_pos	end_pos	size	gc_content
 1	seq1	0	21	21	0.5238095238095238
@@ -351,7 +384,7 @@ id	chrom	start_pos	end_pos	size	gc_content
 3	seq1	80	328	248	0.5201612903225806
 ```
 
-* info_contigs.txt: This tab separated file gives information on contigs, such as number of restriction fragments and size. Example:
+* `info_contigs.txt`: This tab separated file gives information on contigs, such as number of restriction fragments and size. Example:
    - contig: Chromosome identified. Order should be the same in pairs files or fragments_list.txt.
    - length: Chromosome length, in base pairs.
    - n_frags: Number of restriction fragments in chromosome.
