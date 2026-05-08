@@ -1,11 +1,12 @@
 # Test functions for the pipeline submodule
 
-from tempfile import NamedTemporaryFile
-import os, shutil
-import pandas as pd
-import pytest
 import filecmp
-import numpy as np
+import os
+import shutil
+from tempfile import NamedTemporaryFile
+
+import pytest
+
 import hicstuff.pipeline as hpi
 
 MAPPING_PARAMETERS = ("mapping", ["normal", "iterative"])
@@ -26,12 +27,12 @@ def test_filter_pcr_dup():
     test_rm = NamedTemporaryFile(mode="w", delete=False)
     lnum = 0
     # Copy the test valid_idx file, but generate PCR dups of the pair at line 50
-    with open("test_data/valid_idx.pairs", "r") as pairs:
+    with open("test_data/valid_idx.pairs") as pairs:
         for line in pairs:
             test_pairs.write(line)
             if lnum == 50:
                 # Making 30 duplicates of this pair
-                for i in range(30):
+                for _i in range(30):
                     test_pairs.write(line)
             lnum += 1
     test_pairs.close()
@@ -163,6 +164,38 @@ def test_full_pipeline_frags_with_binning_balancing():
         force=True,
         binning=1000,
         exclude="seq2",
+        balancing_args="--min-nnz 1 --mad-max 1",
+    )
+    hpi.full_pipeline(
+        input1="test_data/sample.reads_for.fastq.gz",
+        input2="test_data/sample.reads_rev.fastq.gz",
+        genome="test_data/genome/seq_chromnames-as-number",
+        enzyme="DpnII,HpaII",
+        mapping="normal",
+        out_dir="test_out",
+        plot=True,
+        pcr_duplicates=True,
+        filter_events=True,
+        no_cleanup=False,
+        force=True,
+        binning=1000,
+        distance_law=True,
+        balancing_args="--min-nnz 1 --mad-max 1",
+    )
+    hpi.full_pipeline(
+        input1="test_data/sample.reads_for.fastq.gz",
+        input2="test_data/sample.reads_rev.fastq.gz",
+        genome="test_data/genome/seq_chromnames-as-number",
+        enzyme="DpnII,HpaII",
+        mapping="normal",
+        out_dir="test_out",
+        plot=True,
+        pcr_duplicates=True,
+        filter_events=True,
+        no_cleanup=False,
+        force=True,
+        binning=1000,
+        distance_law=True,
         balancing_args="--min-nnz 1 --mad-max 1",
     )
 

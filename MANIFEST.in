@@ -1,3 +1,0 @@
-include requirements.txt
-recursive-exclude test_data *
-recursive-exclude tests *

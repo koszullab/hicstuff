@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "hicstuff"
+version = "3.2.4"
+description = "General purpose stuff to generate and handle Hi-C data in its simplest form."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "BSD-3-Clause" }
+authors = [
+    { name = "Jacques Serizay", email = "jacques.serizay@pasteur.fr" },
+    { name = "Cyril Matthey-Doret", email = "cyril.matthey-doret@pasteur.fr" },
+    { name = "Lyam Baudry", email = "lyam.baudry@pasteur.fr" },
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Visualization",
+    "Operating System :: POSIX",
+    "Operating System :: Unix",
+    "Operating System :: MacOS",
+]
+dependencies = [
+    "numpy",
+    "scipy",
+    "pandas>=1.5.0",
+    "matplotlib>=3.4.0",
+    "rich-click>=1.7",
+    "biopython",
+    "requests",
+    "scikit-learn",
+    "pysam",
+    "pyfastx",
+    "cooler",
+    "pairtools",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.4",
+    "pre-commit>=3.0",
+    "sphinx",
+    "sphinx-rtd-theme",
+    "ipython>=8.12.3",
+]
+
+[project.urls]
+Homepage = "https://github.com/koszullab/hicstuff"
+Documentation = "https://hicstuff.readthedocs.io/en/latest"
+Repository = "https://github.com/koszullab/hicstuff"
+
+[project.scripts]
+hicstuff = "hicstuff.cli:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+hicstuff = ["*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py38"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = [
+    "E501",   # line-length handled by formatter
+    "B008",   # function calls in default args
+    "UP007",  # X | Y union syntax (py3.10+)
+    "UP006",  # use `type` instead of `Type` (py3.9+)
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["hicstuff"]
+omit = ["*/tests/*"]
+
+[tool.coverage.report]
+show_missing = true

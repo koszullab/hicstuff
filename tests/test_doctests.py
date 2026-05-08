@@ -1,4 +1,5 @@
 import doctest
+
 from hicstuff import (
     digest,
     filter,

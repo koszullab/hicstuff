@@ -1,12 +1,14 @@
 # Tests for the hicstuff digest module
 # 20190402
-from tempfile import NamedTemporaryFile
-import os
-import pandas as pd
-from os.path import join
-from hicstuff import digest as hcd
-from Bio import SeqIO
 import filecmp
+import os
+from os.path import join
+from tempfile import NamedTemporaryFile
+
+import pandas as pd
+from Bio import SeqIO
+
+from hicstuff import digest as hcd
 
 
 def test_write_frag_info():
@@ -42,11 +44,7 @@ def test_attribute_fragments():
     restriction_table = {}
     for record in SeqIO.parse("test_data/genome/seq.fa", "fasta"):
         # Get chromosome restriction table
-        restriction_table[record.id] = hcd.get_restriction_table(
-            record.seq, "DpnII"
-        )
-    hcd.attribute_fragments(
-        "test_data/valid.pairs", idx_pairs.name, restriction_table
-    )
+        restriction_table[record.id] = hcd.get_restriction_table(record.seq, "DpnII")
+    hcd.attribute_fragments("test_data/valid.pairs", idx_pairs.name, restriction_table)
 
     assert filecmp.cmp("test_data/valid_idx.pairs", idx_pairs.name)

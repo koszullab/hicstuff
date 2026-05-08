@@ -1,24 +1,24 @@
 # test input/output functions from hicstuff
 # 20190402
-from tempfile import NamedTemporaryFile
+import bz2
+import filecmp
+import gzip
 import os
 import re
-import gzip
 import zipfile
-import bz2
-import pandas as pd
-import filecmp
-import numpy as np
-import hicstuff.io as hio
+from pathlib import Path
+from tempfile import NamedTemporaryFile
+
 import cooler
+import numpy as np
+import pandas as pd
 import pytest
 from Bio import SeqIO
-from pathlib import Path
+
+import hicstuff.io as hio
 
 GENOME = "test_data/genome/seq.fa"
-MAT_GRAAL = hio.load_sparse_matrix(
-    "test_data/abs_fragments_contacts_weighted.txt"
-)
+MAT_GRAAL = hio.load_sparse_matrix("test_data/abs_fragments_contacts_weighted.txt")
 FRAGS_GRAAL = pd.read_csv("test_data/fragments_list.txt", delimiter="\t")
 
 
@@ -67,7 +67,7 @@ def test_save_bedgraph2d():
     """Test saving 2D bedgraph files"""
     # Create temp file and write a 2D bedgraph matrix inside
     f = NamedTemporaryFile("w", delete=False)
-    f.close
+    f.close()
     # Load GRAAL Matrix from test_data
     hio.save_bedgraph2d(MAT_GRAAL, FRAGS_GRAAL, f.name)
     # Check if the file created is identical to the 2D bedgraph matrix
@@ -92,7 +92,7 @@ def test_load_bedgraph2d():
 def test_cooler_io():
     """Test input output operations on cool files"""
     f = NamedTemporaryFile("w", delete=False)
-    f.close
+    f.close()
     # Write cool from GRAAL objects
     hio.save_cool(f.name, MAT_GRAAL, FRAGS_GRAAL)
     c = cooler.Cooler(f.name)
@@ -106,25 +106,22 @@ def test_cooler_io():
 
 def test_hic_format():
     assert hio.get_hic_format("test_data/mat_5kb.bg2") == "bg2"
-    assert (
-        hio.get_hic_format("test_data/abs_fragments_contacts_weighted.txt")
-        == "graal"
-    )
+    assert hio.get_hic_format("test_data/abs_fragments_contacts_weighted.txt") == "graal"
     with pytest.raises(ValueError):
         assert hio.get_hic_format("test_data/valid.pairs")
 
 
 def test_check_fasta_index():
     f = NamedTemporaryFile("w", delete=False)
-    f.close
+    f.close()
     assert hio.check_fasta_index(f.name, mode="minimap2") == f.name
     for i in range(6):
-        Path(f.name + ".{}.bt2".format(i)).touch()
+        Path(f.name + f".{i}.bt2").touch()
     assert hio.check_fasta_index(f.name, mode="bowtie2") == f.name
-    assert hio.check_fasta_index(f.name, mode="bwa") == None
+    assert hio.check_fasta_index(f.name, mode="bwa") is None
     os.unlink(f.name)
     for i in range(6):
-        os.unlink(f.name + ".{}.bt2".format(i))
+        os.unlink(f.name + f".{i}.bt2")
 
 
 def test_gc_bins():
@@ -149,13 +146,22 @@ def test_gc_bins():
 
 def test_get_pos_col():
     """Test function to guess chrom, start, end columns"""
-    dummy = np.random.random((10, 5)) # pylint: disable=no-member
+    dummy = np.random.random((10, 5))  # pylint: disable=no-member
     chrom, start, end = "CHROMOSOME", "sTaRt", "EnD"
-    df = pd.DataFrame(
-        dummy, columns=["something", "different", start, end, chrom]
-    )
+    df = pd.DataFrame(dummy, columns=["something", "different", start, end, chrom])
     cols = hio.get_pos_cols(df)
     assert len(cols) == 3
     assert cols == (chrom, start, end)
 
-    bad_df = pd.DataFrame(dummy, columns=[l for l in "abcde"])
+    bad_df = pd.DataFrame(dummy, columns=[el for el in "abcde"])
+    with pytest.raises(ValueError):
+        hio.get_pos_cols(bad_df)
+
+
+def test_check_fastq_entries():
+    """Test function to check number of entries in fastq files"""
+    filen = "test_data/sample.reads_for.fastq.gz"
+    nreads = hio.check_fastq_entries(filen)
+    assert nreads == 10000
+    nreads = hio.check_fastq_entries(filen, threads=2)
+    assert nreads == 10000

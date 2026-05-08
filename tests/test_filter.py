@@ -1,10 +1,11 @@
 # Tests for the hicstuff filter module.
 # 20190402
 
-from hicstuff import filter as hcf
-from tempfile import NamedTemporaryFile
 import hashlib
 import os
+from tempfile import NamedTemporaryFile
+
+from hicstuff import filter as hcf
 
 
 def hash_file(filename):
@@ -56,9 +57,7 @@ def test_filter_pairs():
     )
 
     # Test if the filtered pairs file mathes expectations
-    assert hash_file("test_data/valid_idx_filtered.pairs") == hash_file(
-        filt_pairs.name
-    )
+    assert hash_file("test_data/valid_idx_filtered.pairs") == hash_file(filt_pairs.name)
 
     # Remove figure if it was created
     if os.path.isfile(fig_file):
