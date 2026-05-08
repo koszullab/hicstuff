@@ -156,9 +156,7 @@ def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30):
     cols = "#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n"
     # Chromosome order will be identical in info_contigs and pair files
     # UP031 Use format specifiers instead of percent format
-    chroms = pd.read_csv(info_contigs, sep="\t").apply(
-        lambda x: f"#chromsize: {x.contig} {x.length}\n", axis=1
-    )
+    chroms = pd.read_csv(info_contigs, sep="\t").apply(lambda x: f"#chromsize: {x.contig} {x.length}\n", axis=1)
     with open(out_pairs, "w") as pairs:
         pairs.writelines([format_version, sorting, cols] + chroms.tolist())
         pairs_writer = csv.writer(pairs, delimiter="\t")
@@ -220,8 +218,7 @@ def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30):
             if end1_passed and end2_passed:
                 # Flipping to get upper triangle
                 if (
-                    end1.reference_id == end2.reference_id
-                    and end1.reference_start > end2.reference_start
+                    end1.reference_id == end2.reference_id and end1.reference_start > end2.reference_start
                 ) or end1.reference_id > end2.reference_id:
                     end1, end2 = end2, end1
                 pairs_writer.writerow(
@@ -423,15 +420,17 @@ def balance(cool_file, balancing_args):
                 sp.call(
                     cooler_cmd + balancing_args.split(" ") + [cool_file + "::" + path],
                     shell=False,
+                    stderr=sp.DEVNULL,
                 )
             else:
-                sp.call(cooler_cmd + [cool_file + "::" + path], shell=False)
+                sp.call(cooler_cmd + [cool_file + "::" + path], shell=False, stderr=sp.DEVNULL)
     else:
         cooler_cmd = "cooler balance".split(" ")
         if balancing_args is not None:
-            sp.call(cooler_cmd + balancing_args.split(" ") + [cool_file], shell=False)
+            sp.call(cooler_cmd + balancing_args.split(" ") + [cool_file], shell=False, stderr=sp.DEVNULL)
         else:
-            sp.call(cooler_cmd + [cool_file], shell=False)
+            sp.call(cooler_cmd + [cool_file], shell=False, stderr=sp.DEVNULL)
+    logger.info("Matrix balanced with cooler balance.")
 
 
 def pairs2matrix(pairs_file, mat_file, fragments_file, mat_fmt="graal", threads=1, tmp_dir=None):
@@ -685,9 +684,7 @@ def full_pipeline(
         try:
             import cooler
         except ImportError:
-            logger.error(
-                "The cooler package is require to return matrix in cool format, please install it first."
-            )
+            logger.error("The cooler package is require to return matrix in cool format, please install it first.")
             raise ImportError("The cooler package is required.") from None
 
     # Pipeline can start from 3 input types
@@ -702,9 +699,7 @@ def full_pipeline(
             sys.exit(1)
     else:
         if input2 is not None:
-            logger.error(
-                "You must provide a single input file when --start-stage is pairs or pairs_idx."
-            )
+            logger.error("You must provide a single input file when --start-stage is pairs or pairs_idx.")
             sys.exit(1)
     # sanitize enzyme
     enzyme = str(enzyme)
@@ -992,9 +987,7 @@ def full_pipeline(
         restrict_table = {}
         for record in SeqIO.parse(hio.read_compressed(fasta), "fasta"):
             # Get chromosome restriction table
-            restrict_table[record.id] = hcd.get_restriction_table(
-                record.seq, enzyme, circular=circular
-            )
+            restrict_table[record.id] = hcd.get_restriction_table(record.seq, enzyme, circular=circular)
 
         # Add fragment index to pairs (readID, chr1, pos1, chr2,
         # pos2, strand1, strand2, frag1, frag2)
@@ -1019,17 +1012,13 @@ def full_pipeline(
             else:
                 tot_pairs += 1
     if nreads_input1 != 0:
-        logger.info(
-            f"{tot_pairs} pairs successfully mapped ({round(100 * tot_pairs / (nreads_input1), 2)}%)"
-        )
+        logger.info(f"{tot_pairs} pairs successfully mapped ({round(100 * tot_pairs / (nreads_input1), 2)}%)")
     else:
         logger.info(f"{tot_pairs} pairs successfully mapped")
 
     # Filter pairs if requested
     if filter_events:
-        uncut_thr, loop_thr = hcf.get_thresholds(
-            pairs_idx, plot_events=plot, fig_path=dist_plot, prefix=prefix
-        )
+        uncut_thr, loop_thr = hcf.get_thresholds(pairs_idx, plot_events=plot, fig_path=dist_plot, prefix=prefix)
         hcf.filter_events(
             pairs_idx,
             pairs_filtered,
@@ -1195,6 +1184,4 @@ def full_pipeline(
 
     end_time = datetime.now()
     duration = relativedelta(end_time, start_time)
-    logger.info(
-        f"Contact map generated after {duration.hours}h {duration.minutes}m {duration.seconds}s"
-    )
+    logger.info(f"Contact map generated after {duration.hours}h {duration.minutes}m {duration.seconds}s")
