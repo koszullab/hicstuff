@@ -2079,7 +2079,7 @@ wheels = [
 
 [[package]]
 name = "hicstuff"
-version = "3.2.4"
+version = "3.2.5"
 source = { editable = "." }
 dependencies = [
     { name = "biopython", version = "1.83", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.9'" },
