@@ -87,6 +87,9 @@ ignore = [
     "UP006",  # use `type` instead of `Type` (py3.9+)
 ]
 
+[tool.ruff.format]
+quote-style = "double"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
@@ -96,3 +99,4 @@ omit = ["*/tests/*"]
 
 [tool.coverage.report]
 show_missing = true
+fail_under = 60

@@ -778,7 +778,6 @@ def estimate_param_rippe(measurements, bins, init=None, circ=False):
         return err
 
     def peval(x, param):
-
         if circ:
             l_cont = x.max()
             n = param[1] * x / param[0]
@@ -940,7 +939,6 @@ def null_model(
 
 
 def model_norm(matrix, positions=None, lengths=None, model="uniform", circ=False):
-
     N = null_model(
         matrix,
         positions,

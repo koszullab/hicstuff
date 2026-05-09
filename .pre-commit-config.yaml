@@ -12,8 +12,7 @@ repos:
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.11.8
     hooks:
+      - id: ruff-format
+        args: [--exit-non-zero-on-format]
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]
-      - id: ruff-check
-        args: [--exit-non-zero-on-fix]
-      - id: ruff-format

@@ -49,8 +49,8 @@ cd hicstuff
 uv sync --extra dev
 ```
 
-If `hicstuff` is installed via pip, additional system dependencies such as 
-`bowtie2`, `bwa`, `minimap2` and `samtools` will be needed. You can install 
+If `hicstuff` is installed via pip, additional system dependencies such as
+`bowtie2`, `bwa`, `minimap2` and `samtools` will be needed. You can install
 them as follows on Debian/Ubuntu:
 
 ```bash
@@ -59,7 +59,7 @@ apt-get install bowtie2 bwa minimap2 samtools libbz2-dev liblzma-dev
 
 ### Conda
 
-hicstuff is also available on bioconda, which will automatically handle all 
+hicstuff is also available on bioconda, which will automatically handle all
 dependencies:
 
 ```bash
@@ -68,7 +68,7 @@ conda install bioconda::hicstuff
 
 ### Docker
 
-Docker images are automatically built and published to GitHub Container 
+Docker images are automatically built and published to GitHub Container
 Registry (GHCR) when releases are tagged:
 
 ```bash
@@ -78,16 +78,16 @@ docker pull ghcr.io/baudrly/hicstuff:<version>
 
 ## Usage
 
-The hicstuff command line interface is composed of multiple subcommands. 
+The hicstuff command line interface is composed of multiple subcommands.
 You can always get a summary of all available commands by running:
 
 ```txt
 hicstuff --help
-                                                                                                    
- Usage: hicstuff [OPTIONS] COMMAND [ARGS]...                                                        
-                                                                                                    
- Simple Hi-C pipeline for generating and manipulating contact matrices.                             
-                                                                                                    
+
+ Usage: hicstuff [OPTIONS] COMMAND [ARGS]...
+
+ Simple Hi-C pipeline for generating and manipulating contact matrices.
+
 ╭─ Options ────────────────────────────────────────────────────────────────────────────────────────╮
 │ --version      Show the version and exit.                                                        │
 │ --help     -h  Show this message and exit.                                                       │
@@ -117,22 +117,22 @@ hicstuff --help
 
 ### Full pipeline
 
-All components of the pipeline can be run at once using the `hicstuff pipeline` command. 
-This allows to generate a contact matrix from reads in a single command. 
-By default, the output is a `cool` file. 
+All components of the pipeline can be run at once using the `hicstuff pipeline` command.
+This allows to generate a contact matrix from reads in a single command.
+By default, the output is a `cool` file.
 
 ```txt
 hicstuff pipeline --help
-                                                                                                    
- Usage: hicstuff pipeline [OPTIONS] INPUT1 [INPUT2]                                                 
-                                                                                                    
- Run the full Hi-C pipeline from FASTQ to contact matrix.                                           
- Example — generate a multi-resolution .mcool for Arima Hi-C:                                       
-                                                                                                    
-                                                                                                    
- hicstuff pipeline --enzyme "DpnII,HinfI" --binning 1000 --threads 8 \                              
-     --genome ref.fa R1.fq.gz R2.fq.gz                                                              
-                                                                                                    
+
+ Usage: hicstuff pipeline [OPTIONS] INPUT1 [INPUT2]
+
+ Run the full Hi-C pipeline from FASTQ to contact matrix.
+ Example — generate a multi-resolution .mcool for Arima Hi-C:
+
+
+ hicstuff pipeline --enzyme "DpnII,HinfI" --binning 1000 --threads 8 \
+     --genome ref.fa R1.fq.gz R2.fq.gz
+
 ╭─ Arguments ──────────────────────────────────────────────────────────────────────────────────────╮
 │ *  INPUT1  TEXT  [required]                                                                      │
 │    INPUT2  TEXT                                                                                  │
@@ -198,18 +198,18 @@ The general steps of the pipeline are as follows:
 For more advanced usage, different scripts can be used independently on the command line to perform individual parts of the pipeline. This readme contains quick descriptions and example usages. To obtain detailed instructions on any subcommand, one can use `hicstuff <subcommand> --help`.
 
 #### Digestion of fastq reads
- 
+
 Generates new gzipped fastq files from original fastq. The function will cut the reads at their religation sites and creates new pairs of reads with the different fragments obtained after cutting at the digestion sites.
 
 ```
 hicstuff cutsite --help
-                                                                                                    
- Usage: hicstuff cutsite [OPTIONS]                                                                  
-                                                                                                    
- Preprocess FASTQ files by cutting reads at religation sites.                                       
- Generates gzipped FASTQ files with reads cut at ligation junctions, creating new fragment pairs    
- for mapping.                                                                                       
-                                                                                                    
+
+ Usage: hicstuff cutsite [OPTIONS]
+
+ Preprocess FASTQ files by cutting reads at religation sites.
+ Generates gzipped FASTQ files with reads cut at ligation junctions, creating new fragment pairs
+ for mapping.
+
 ╭─ Options ────────────────────────────────────────────────────────────────────────────────────────╮
 │ *  --forward    -F  FILE  Forward reads FASTQ file. [required]                                   │
 │ *  --reverse    -R  FILE  Reverse reads FASTQ file. [required]                                   │
@@ -228,13 +228,13 @@ Truncate reads from a fastq file to 20 basepairs and iteratively extend and re-a
 
 ```
 hicstuff iteralign --help
-                                                                                                    
- Usage: hicstuff iteralign [OPTIONS] READS_FQ                                                       
-                                                                                                    
- Iteratively align reads to a reference genome.                                                     
- Truncates reads to 20 bp then iteratively extends and re-aligns unmapped reads to maximise the     
- proportion of uniquely aligned reads in a 3C library.                                              
-                                                                                                    
+
+ Usage: hicstuff iteralign [OPTIONS] READS_FQ
+
+ Iteratively align reads to a reference genome.
+ Truncates reads to 20 bp then iteratively extends and re-aligns unmapped reads to maximise the
+ proportion of uniquely aligned reads in a 3C library.
+
 ╭─ Arguments ──────────────────────────────────────────────────────────────────────────────────────╮
 │ *  READS_FQ  TEXT  [required]                                                                    │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -258,12 +258,12 @@ named "info_contigs.txt" and "fragments_list.txt"
 
 ```
 hicstuff digest --help
-                                                                                                    
- Usage: hicstuff digest [OPTIONS] FASTA                                                             
-                                                                                                    
- Digest a genome FASTA into restriction fragments.                                                  
- Writes ``fragments_list.txt`` and ``info_contigs.txt`` to the output directory.                    
-                                                                                                    
+
+ Usage: hicstuff digest [OPTIONS] FASTA
+
+ Digest a genome FASTA into restriction fragments.
+ Writes ``fragments_list.txt`` and ``info_contigs.txt`` to the output directory.
+
 ╭─ Arguments ──────────────────────────────────────────────────────────────────────────────────────╮
 │ *  FASTA  TEXT  [required]                                                                       │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
@@ -279,7 +279,7 @@ hicstuff digest --help
 │    --help      -h                  Show this message and exit.                                   │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
- 
+
  For example, to digest the yeast genome with MaeII and HinfI and show histogram of fragment lengths:
 
 ```sh
@@ -288,15 +288,15 @@ hicstuff digest --plot --outdir output_dir --enzyme MaeII,HinfI Sc_ref.fa
 
 #### Filtering of 3C events
 
-Filters spurious 3C events such as loops and uncuts from the library based on a minimum distance threshold automatically estimated from the library by default. Can also plot 3C library statistics. This module takes a pairs file with 9 columns as input (readID, chr1, pos1, chr2, pos2, strand1, strand2, frag1, frag2) and filters it. 
+Filters spurious 3C events such as loops and uncuts from the library based on a minimum distance threshold automatically estimated from the library by default. Can also plot 3C library statistics. This module takes a pairs file with 9 columns as input (readID, chr1, pos1, chr2, pos2, strand1, strand2, frag1, frag2) and filters it.
 
 ```
 hicstuff filter --help
-                                                                                                    
- Usage: hicstuff filter [OPTIONS] INPUT_PAIRS OUTPUT_PAIRS                                          
-                                                                                                    
- Filter spurious Hi-C events (loops and uncuts) from a pairs file.                                  
-                                                                                                    
+
+ Usage: hicstuff filter [OPTIONS] INPUT_PAIRS OUTPUT_PAIRS
+
+ Filter spurious Hi-C events (loops and uncuts) from a pairs file.
+
 ╭─ Arguments ──────────────────────────────────────────────────────────────────────────────────────╮
 │ *  INPUT_PAIRS   TEXT  [required]                                                                │
 │ *  OUTPUT_PAIRS  TEXT  [required]                                                                │
@@ -319,11 +319,11 @@ output image to disk. If no output is specified, the output is displayed.
 
 ```
 hicstuff view --help
-                                                                                                    
- Usage: hicstuff view [OPTIONS] CONTACT_MAP [CONTACT_MAP2]                                          
-                                                                                                    
- Visualize a Hi-C matrix as a heatmap.                                                              
-                                                                                                    
+
+ Usage: hicstuff view [OPTIONS] CONTACT_MAP [CONTACT_MAP2]
+
+ Visualize a Hi-C matrix as a heatmap.
+
 ╭─ Arguments ──────────────────────────────────────────────────────────────────────────────────────╮
 │ *  CONTACT_MAP   TEXT  [required]                                                                │
 │    CONTACT_MAP2  TEXT                                                                            │
@@ -442,4 +442,3 @@ Bibtex entry:
   url          = {http://doi.org/10.5281/zenodo.4066363}
 }
 ```
-
