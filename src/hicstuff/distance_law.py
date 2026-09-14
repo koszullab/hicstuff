@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import csv as csv
-import io
+import itertools
 import os as os
 import sys
 
@@ -583,12 +583,10 @@ def get_distance_law(
             raw_line = reads.readline()
             while raw_line.startswith("#"):
                 raw_line = reads.readline()
-            # raw_line now holds the first data line; re-read via DictReader
-            first_data = raw_line
-            rest = reads.read()
-            data_stream = io.StringIO(first_data + rest)
+            # raw_line now holds the first data line; stream it together with the
+            # remaining lines so the file is never fully loaded into memory
             reader = csv.DictReader(
-                data_stream,
+                itertools.chain([raw_line], reads),
                 fieldnames=fieldnames,
                 delimiter="\t",
             )
@@ -629,13 +627,13 @@ def get_distance_law(
         raw_line = reads.readline()
         while raw_line.startswith("#"):
             raw_line = reads.readline()
-        # raw_line is the first data line; feed it together with the rest into DictReader
-        data_stream = io.StringIO(raw_line + reads.read())
+        # raw_line is the first data line; stream it together with the remaining
+        # lines so the file is never fully loaded into memory.
         # Reads all the others lines and put the values in a dictionnary with
         # the keys : 'readID', 'chr1', 'pos1', 'chr2', 'pos2', 'strand1',
         # 'strand2', 'frag1', 'frag2'
         reader = csv.DictReader(
-            data_stream,
+            itertools.chain([raw_line], reads),
             fieldnames=[
                 "readID",
                 "chr1",
