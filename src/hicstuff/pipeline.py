@@ -21,12 +21,10 @@ from shutil import which
 import cooler
 import matplotlib
 import numpy as np
-import pairtools
 import pandas as pd
 import pysam as ps
 from Bio import SeqIO
 from dateutil.relativedelta import relativedelta
-from packaging.version import Version
 
 import hicstuff.cutsite as hcc
 import hicstuff.digest as hcd
@@ -314,6 +312,43 @@ def filter_pcr_dup(pairs_idx_file, filtered_file):
             f"{100 * round(filter_count / reads_count, 3):.1f}% PCR duplicates have been filtered out ({filter_count}/{reads_count} pairs)"
         )
         logger.info(f"{reads_count - filter_count} pairs remaining after removing PCR duplicates")
+
+
+def sort_and_compress_pairs(pairs_file, out_file, tmp_dir=None, threads=1):
+    """
+    Sort a pairs file by chr1, chr2, pos1, pos2 (the standard order for
+    pairs files) and gzip-compress it. bgzip is used when available so the
+    output can be indexed with pairix, otherwise the file is compressed with
+    regular gzip.
+
+    Parameters
+    ----------
+    pairs_file : str
+        Path to the input, uncompressed pairs file.
+    out_file : str
+        Path to the output sorted and compressed pairs file.
+    tmp_dir : str
+        Directory where temporary files will be created.
+    threads : int
+        Number of threads used for sorting and bgzip compression.
+    """
+    sorted_tmp = out_file + ".tmp"
+    hio.sort_pairs(
+        pairs_file,
+        sorted_tmp,
+        keys=["chr1", "chr2", "pos1", "pos2"],
+        tmp_dir=tmp_dir,
+        threads=threads,
+    )
+    try:
+        if which("bgzip") is not None:
+            with open(out_file, "wb") as out:
+                sp.run(["bgzip", "-c", "-@", str(threads), sorted_tmp], stdout=out, check=True)
+        else:
+            with open(sorted_tmp, "rb") as src, gzip.open(out_file, "wb") as dst:
+                st.copyfileobj(src, dst)
+    finally:
+        os.remove(sorted_tmp)
 
 
 def _run_cooler_cload_pairs(bins, pairs_file, cool_file):
@@ -1197,12 +1232,7 @@ def full_pipeline(
         st.copy2(str(p), str(pairsf))
 
     # Sort and compress final pairs file
-    pairstools_cmd = "pairtools sort".split(" ")
-    sorted_pairsf = str(pairsf) + ".gz"
-    sort_args = f"--output {sorted_pairsf} --tmpdir {tmp_dir}"
-    if Version(pairtools.__version__) >= Version("1.1.0"):
-        sort_args = sort_args + " --c1 chr1 --c2 chr2 --p1 pos1 --p2 pos2 --pt frag1"
-    sp.call(pairstools_cmd + sort_args.split(" ") + [pairsf], shell=False)
+    sort_and_compress_pairs(str(pairsf), str(pairsf) + ".gz", tmp_dir=tmp_dir, threads=threads)
     os.remove(pairsf)
 
     # Clean temporary files

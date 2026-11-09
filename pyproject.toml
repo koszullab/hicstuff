@@ -46,7 +46,6 @@ dependencies = [
     "pysam",
     "pyfastx",
     "cooler",
-    "pairtools",
 ]
 
 [project.optional-dependencies]

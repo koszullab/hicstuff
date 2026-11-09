@@ -1,7 +1,9 @@
 # Test functions for the pipeline submodule
 
 import filecmp
+import gzip
 import os
+import random
 import shutil
 from tempfile import NamedTemporaryFile
 
@@ -10,6 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import hicstuff.io as hio
 import hicstuff.pipeline as hpi
 
 MAPPING_PARAMETERS = ("mapping", ["normal", "iterative"])
@@ -78,6 +81,84 @@ def test_pairs2cool(tmp_path):
     n_trans = (pairs.chrom1 != pairs.chrom2).sum()
     assert pixels.loc[pixels.chrom1 != pixels.chrom2, "count"].sum() == n_trans
     assert not os.path.exists(frags + ".cooler")
+
+
+def _data_lines(lines):
+    return [line for line in lines if not line.startswith("#")]
+
+
+def _check_sorted_pairs_gz(pairs_gz, expected_data_lines):
+    """Check a final pairs.gz: header, content and chr1-chr2-pos1-pos2 order."""
+    with gzip.open(pairs_gz, "rt") as f:
+        lines = f.read().splitlines()
+    assert "#sorted: chr1-chr2-pos1-pos2" in lines
+    assert any(line.startswith("#columns: readID chr1 pos1 chr2 pos2") for line in lines)
+    data = _data_lines(lines)
+    assert sorted(data) == sorted(expected_data_lines)
+    keys = [(f[1], f[3], int(f[2]), int(f[4])) for f in (line.split("\t") for line in data)]
+    assert keys == sorted(keys)
+
+
+@pytest.mark.parametrize("compressor", ["bgzip", "gzip"])
+def test_sort_and_compress_pairs(tmp_path, monkeypatch, compressor):
+    if compressor == "bgzip" and shutil.which("bgzip") is None:
+        pytest.skip("bgzip is not installed")
+    if compressor == "gzip":
+        # Pretend bgzip is not available to exercise the fallback
+        monkeypatch.setattr(hpi, "which", lambda name: None)
+
+    # Shuffle pairs so that the test actually exercises sorting
+    with open(PAIRS_FILE) as f:
+        lines = f.read().splitlines()
+    header, data = hio.get_pairs_header(PAIRS_FILE), _data_lines(lines)
+    random.Random(42).shuffle(data)
+    unsorted = tmp_path / "unsorted.pairs"
+    unsorted.write_text("\n".join(header + data) + "\n")
+    out_gz = str(tmp_path / "sorted.pairs.gz")
+
+    hpi.sort_and_compress_pairs(str(unsorted), out_gz, tmp_dir=str(tmp_path), threads=2)
+
+    _check_sorted_pairs_gz(out_gz, data)
+    assert not os.path.exists(out_gz + ".tmp")
+    if compressor == "bgzip":
+        # bgzip output starts with a gzip member carrying the BGZF "BC" extra field
+        with open(out_gz, "rb") as f:
+            assert f.read(16)[12:14] == b"BC"
+
+
+def test_sort_pairs_failure_raises(tmp_path):
+    """A failing UNIX sort must raise instead of leaving a truncated file."""
+    with pytest.raises(RuntimeError, match="Sorting pairs"):
+        hio.sort_pairs(
+            PAIRS_FILE,
+            str(tmp_path / "out.pairs"),
+            keys=["chr1", "pos1"],
+            buffer="not_a_size",
+        )
+
+
+def test_full_pipeline_writes_final_pairs(tmp_path):
+    """The pipeline must leave a sorted, compressed pairs file in out_dir."""
+    out_dir = tmp_path / "out"
+    hpi.full_pipeline(
+        input1="test_data/sample.reads_for.fastq.gz",
+        input2="test_data/sample.reads_rev.fastq.gz",
+        genome="test_data/genome/seq",
+        enzyme="DpnII",
+        out_dir=str(out_dir),
+        prefix="test",
+        pcr_duplicates=True,
+        no_cleanup=True,
+        force=True,
+    )
+    pairs_gz = out_dir / "test.valid_idx_pcrfree.pairs.gz"
+    assert pairs_gz.exists()
+    with gzip.open(pairs_gz, "rt") as f:
+        data = _data_lines(f.read().splitlines())
+    assert len(data) > 0
+    _check_sorted_pairs_gz(pairs_gz, data)
+    # The uncompressed copy is removed once compression succeeded
+    assert not (out_dir / "test.valid_idx_pcrfree.pairs").exists()
 
 
 def test_cooler_cload_columns_match_pairs_header(tmp_path, monkeypatch):
