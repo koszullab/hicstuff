@@ -13,7 +13,6 @@ import pandas as pd
 import pysam as ps
 import rich_click as click
 from Bio import SeqIO
-from matplotlib import cm
 from matplotlib import pyplot as plt
 
 import hicstuff.cutsite as hcc
@@ -717,8 +716,6 @@ def view(
             vmin_val = _set_v(vmin, dense_map)
         else:
             dense_map[dense_map == 0] = np.inf
-        current_cmap = cm.get_cmap().copy()
-        current_cmap.set_bad(color=current_cmap(0))
 
         hcv.plot_matrix(
             dense_map,
