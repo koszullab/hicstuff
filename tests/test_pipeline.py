@@ -5,12 +5,118 @@ import os
 import shutil
 from tempfile import NamedTemporaryFile
 
+import cooler
+import numpy as np
+import pandas as pd
 import pytest
 
 import hicstuff.pipeline as hpi
 
 MAPPING_PARAMETERS = ("mapping", ["normal", "iterative"])
 ALIGNER_PARAMETERS = ("aligner", ["bowtie2", "bwa", "minimap2"])
+PAIRS_FILE = "test_data/valid_idx_filtered.pairs"
+
+
+def _read_pairs_coords(pairs_file):
+    return pd.read_csv(
+        pairs_file,
+        sep="\t",
+        comment="#",
+        header=None,
+        usecols=[1, 2, 3, 4],
+        names=["chrom1", "pos1", "chrom2", "pos2"],
+    )
+
+
+@pytest.mark.parametrize("exclude", [None, "seq2"])
+def test_pairs2binnedcool(tmp_path, exclude):
+    """Binned cool pixels must match a direct count of the pairs file."""
+    info_contigs = str(tmp_path / "info_contigs.txt")
+    shutil.copy("test_data/info_contigs.txt", info_contigs)
+    cool_file = str(tmp_path / "binned.cool")
+    binning = 1000
+
+    hpi.pairs2binnedcool(PAIRS_FILE, cool_file, binning, info_contigs, exclude)
+
+    clr = cooler.Cooler(cool_file)
+    pairs = _read_pairs_coords(PAIRS_FILE)
+    if exclude is not None:
+        assert exclude not in clr.chromnames
+        pairs = pairs[(pairs.chrom1 != exclude) & (pairs.chrom2 != exclude)]
+    # The test data must contain inter-chromosomal contacts, so that the
+    # chrom2 / pos2 columns are actually exercised.
+    if exclude is None:
+        assert (pairs.chrom1 != pairs.chrom2).any()
+
+    bins = clr.bins()[:]
+    offsets = {chrom: bins.index[bins.chrom == chrom][0] for chrom in clr.chromnames}
+    bin1 = pairs.chrom1.map(offsets) + (pairs.pos1 - 1) // binning
+    bin2 = pairs.chrom2.map(offsets) + (pairs.pos2 - 1) // binning
+    expected = (
+        pd.DataFrame({"bin1_id": np.minimum(bin1, bin2), "bin2_id": np.maximum(bin1, bin2)})
+        .value_counts()
+        .sort_index()
+    )
+    observed = clr.pixels()[:].set_index(["bin1_id", "bin2_id"])["count"].sort_index()
+    np.testing.assert_array_equal(observed.index.to_numpy(), expected.index.to_numpy())
+    np.testing.assert_array_equal(observed.to_numpy(), expected.to_numpy())
+    # Temporary chroms file must be cleaned up
+    assert not os.path.exists(info_contigs + ".chroms")
+
+
+def test_pairs2cool(tmp_path):
+    """Fragment-level cool must contain every pair, cis and trans."""
+    frags = str(tmp_path / "fragments_list.txt")
+    shutil.copy("test_data/fragments_list.txt", frags)
+    cool_file = str(tmp_path / "frags.cool")
+
+    hpi.pairs2cool(PAIRS_FILE, cool_file, frags, None)
+
+    pixels = cooler.Cooler(cool_file).pixels(join=True)[:]
+    pairs = _read_pairs_coords(PAIRS_FILE)
+    assert pixels["count"].sum() == len(pairs)
+    n_trans = (pairs.chrom1 != pairs.chrom2).sum()
+    assert pixels.loc[pixels.chrom1 != pixels.chrom2, "count"].sum() == n_trans
+    assert not os.path.exists(frags + ".cooler")
+
+
+def test_cooler_cload_columns_match_pairs_header(tmp_path, monkeypatch):
+    """Column numbers given to cooler must match the pairs `#columns:` header.
+
+    Older cooler versions silently reordered swapped columns, so this check
+    does not depend on the installed cooler version.
+    """
+    calls = []
+    monkeypatch.setattr(hpi.sp, "run", lambda cmd, **kwargs: calls.append(cmd))
+    info_contigs = str(tmp_path / "info_contigs.txt")
+    shutil.copy("test_data/info_contigs.txt", info_contigs)
+    hpi.pairs2binnedcool(PAIRS_FILE, str(tmp_path / "x.cool"), 1000, info_contigs, None)
+    cmd = calls[0]
+
+    with open(PAIRS_FILE) as pairs:
+        header = next(line for line in pairs if line.startswith("#columns:"))
+    columns = header.split()[1:]
+    expected = {
+        "--chrom1": columns.index("chr1") + 1,
+        "--pos1": columns.index("pos1") + 1,
+        "--chrom2": columns.index("chr2") + 1,
+        "--pos2": columns.index("pos2") + 1,
+    }
+    observed = {opt: int(cmd[cmd.index(opt) + 1]) for opt in expected}
+    assert observed == expected
+
+
+def test_pairs2binnedcool_cooler_failure(tmp_path):
+    """A failing `cooler cload pairs` must raise instead of passing silently."""
+    info_contigs = str(tmp_path / "info_contigs.txt")
+    shutil.copy("test_data/info_contigs.txt", info_contigs)
+    bad_pairs = tmp_path / "bad.pairs"
+    bad_pairs.write_text("read1\tseq1\tnot_a_position\tseq1\t100\t+\t+\n")
+    cool_file = str(tmp_path / "bad.cool")
+
+    with pytest.raises(RuntimeError, match="cooler cload pairs"):
+        hpi.pairs2binnedcool(str(bad_pairs), cool_file, 1000, info_contigs, None)
+    assert not os.path.exists(info_contigs + ".chroms")
 
 
 def test_sam2pairs(): ...

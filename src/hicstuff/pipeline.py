@@ -316,6 +316,48 @@ def filter_pcr_dup(pairs_idx_file, filtered_file):
         logger.info(f"{reads_count - filter_count} pairs remaining after removing PCR duplicates")
 
 
+def _run_cooler_cload_pairs(bins, pairs_file, cool_file):
+    """
+    Run `cooler cload pairs` on a hicstuff pairs file and fail loudly if
+    cooler does not succeed.
+
+    Parameters
+    ----------
+    bins : str
+        Bins argument passed to cooler: either a BED-like bins file or a
+        ``chromsizes:binsize`` string.
+    pairs_file : str
+        Path to the pairs file containing input contact data.
+    cool_file : str
+        Path to the output cool file name to generate.
+    """
+    # Field numbers are one-based and follow the hicstuff pairs columns:
+    # readID chr1 pos1 chr2 pos2 strand1 strand2 [frag1 frag2]
+    cooler_cmd = [
+        "cooler",
+        "cload",
+        "pairs",
+        "--chrom1",
+        "2",
+        "--pos1",
+        "3",
+        "--chrom2",
+        "4",
+        "--pos2",
+        "5",
+        bins,
+        pairs_file,
+        cool_file,
+    ]
+    try:
+        sp.run(cooler_cmd, check=True)
+    except sp.CalledProcessError as err:
+        raise RuntimeError(
+            f"`cooler cload pairs` failed (exit code {err.returncode}) while "
+            f"generating {cool_file} from {pairs_file}. See cooler's error above."
+        ) from err
+
+
 def pairs2cool(pairs_file, cool_file, bins_file, exclude):
     """
     Make a cooler file from the pairs file. See: https://github.com/mirnylab/cooler/ for more informations.
@@ -339,10 +381,10 @@ def pairs2cool(pairs_file, cool_file, bins_file, exclude):
     bins.to_csv(bins_tmp, sep="\t", header=False, index=False)
 
     # Make cool
-    cooler_cmd = "cooler cload pairs -c1 2 -p1 3 -p2 4 -c2 5 {bins} {pairs} {cool}"
-    cool_args = {"bins": bins_tmp, "pairs": pairs_file, "cool": cool_file}
-    sp.call(cooler_cmd.format(**cool_args), shell=True)
-    os.remove(bins_tmp)
+    try:
+        _run_cooler_cload_pairs(bins_tmp, pairs_file, cool_file)
+    finally:
+        os.remove(bins_tmp)
 
 
 def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs, exclude):
@@ -371,12 +413,10 @@ def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs, exclude):
     chroms.to_csv(chroms_tmp, index=False, sep="\t", header=False)
 
     # Run `cooler cload pairs`
-    cooler_cmd = "cooler cload pairs -c1 2 -p1 3 -p2 4 -c2 5".split(" ")
-    sp.call(
-        cooler_cmd + [chroms_tmp + ":" + str(binning), pairs_file, cool_file],
-        shell=False,
-    )
-    os.remove(chroms_tmp)
+    try:
+        _run_cooler_cload_pairs(chroms_tmp + ":" + str(binning), pairs_file, cool_file)
+    finally:
+        os.remove(chroms_tmp)
 
 
 def cool2mcool(cool_file, output_file):
