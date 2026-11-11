@@ -30,7 +30,8 @@ The goal is to make generation and manipulation of Hi-C matrices as simple as po
       5. [Viewing the contact map](#viewing-the-contact-map)
    3. [File formats](#file-formats)
    4. [Contributing](#contributing)
-   5. [Citation](#citation)
+   5. [Releasing](#releasing)
+   6. [Citation](#citation)
 
 ## Installation
 
@@ -414,6 +415,20 @@ To lint and format:
 uv run ruff check src/
 uv run ruff format src/
 ```
+
+### Releasing
+
+Releases are cut with [bump-my-version](https://github.com/callowayproject/bump-my-version) (configured in `pyproject.toml`, needs Python >= 3.10). From a clean, up-to-date `master`:
+
+```bash
+uv sync --extra dev                  # once, to install bump-my-version
+uv run bump-my-version bump minor    # or patch / major
+git push --follow-tags
+```
+
+The bump updates the version in `pyproject.toml`, `uv.lock`, `doc/conf.py` and the `Dockerfile`, commits as `chore(release): vX.Y.Z` and creates the `vX.Y.Z` tag. Preview the changes first with `uv run bump-my-version bump patch --dry-run -vv`.
+
+Pushing the tag triggers the [publish workflow](.github/workflows/publish.yml): it checks that the tag matches the `pyproject.toml` version, publishes the package to PyPI and pushes the Docker image to GHCR (`ghcr.io/koszullab/hicstuff`).
 
 ### Citation
 
