@@ -51,7 +51,6 @@ jobs:
 
       - name: Run tests
         run: uv run pytest --cov=hicstuff --cov-report=term-missing --cov-report=xml -v
-        continue-on-error: ${{ matrix.python-version == '3.13' }}
 
       - name: Upload coverage report
         if: matrix.python-version == '3.12'
