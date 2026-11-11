@@ -1178,7 +1178,16 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
         if parallel_ok:
             sort_cmd.append(f"--parallel={threads}")
         sort_proc = sp.Popen(sort_cmd, stdin=grep_proc.stdout, stdout=output)
+        # Let grep receive SIGPIPE if sort exits early
+        grep_proc.stdout.close()
         sort_proc.communicate()
+        grep_proc.wait()
+    # grep exits with 1 when there are no pairs (only a header), which is fine
+    if grep_proc.returncode > 1 or sort_proc.returncode != 0:
+        raise RuntimeError(
+            f"Sorting pairs from {in_file} into {out_file} failed "
+            f"(grep exit code {grep_proc.returncode}, sort exit code {sort_proc.returncode})."
+        )
 
 
 def get_pairs_header(pairs):
