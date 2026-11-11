@@ -1,0 +1,37 @@
+name: Dependabot auto-merge
+
+# Enables GitHub auto-merge on the grouped uv minor/patch Dependabot PR.
+# This never merges directly: the PR is only merged by GitHub once every
+# required status check (branch protection / ruleset on master) has passed.
+# If auto-merge or branch protection is not configured, `gh pr merge --auto`
+# fails and this workflow goes red, so nothing is merged untested.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  enable-automerge:
+    name: Enable auto-merge
+    runs-on: ubuntu-latest
+    # Check the PR author rather than github.actor, so re-runs triggered by a
+    # human behave the same way.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge for uv minor/patch group
+        if: >-
+          steps.metadata.outputs.package-ecosystem == 'uv' &&
+          steps.metadata.outputs.dependency-group == 'uv-minor-and-patch' &&
+          steps.metadata.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

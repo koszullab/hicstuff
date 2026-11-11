@@ -1,0 +1,33 @@
+# Dependabot version updates.
+#
+# hicstuff only sets lower bounds on most runtime dependencies, so users
+# installing with pip/conda always get the newest upstream releases. Weekly
+# lock-file bumps make CI exercise those releases too: a failing Dependabot PR
+# means hicstuff is already broken for fresh installs.
+#
+# Minor/patch uv updates are grouped into a single PR that is auto-merged once
+# all required CI checks pass (see .github/workflows/dependabot-automerge.yml).
+# Major uv updates arrive as separate PRs, and GitHub Actions updates as one
+# grouped PR; both are left for manual review.
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      uv-minor-and-patch:
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 2
+    groups:
+      github-actions:
+        patterns:
+          - "*"
