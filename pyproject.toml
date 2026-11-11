@@ -57,6 +57,7 @@ dev = [
     "sphinx",
     "sphinx-rtd-theme",
     "ipython>=8.12.3",
+    "bump-my-version>=1.2; python_version >= '3.10'",
 ]
 
 [project.urls]
@@ -72,6 +73,36 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 hicstuff = ["*"]
+
+[tool.bumpversion]
+current_version = "3.2.5"
+commit = true
+tag = true
+tag_name = "v{new_version}"
+message = "chore(release): v{new_version}"
+allow_dirty = false
+
+# Each entry pins the hicstuff version only: the `name = "hicstuff"` anchor
+# keeps the search off `current_version` above and off other packages in uv.lock.
+[[tool.bumpversion.files]]
+filename = "pyproject.toml"
+search = "name = \"hicstuff\"\nversion = \"{current_version}\""
+replace = "name = \"hicstuff\"\nversion = \"{new_version}\""
+
+[[tool.bumpversion.files]]
+filename = "uv.lock"
+search = "name = \"hicstuff\"\nversion = \"{current_version}\""
+replace = "name = \"hicstuff\"\nversion = \"{new_version}\""
+
+[[tool.bumpversion.files]]
+filename = "doc/conf.py"
+search = 'release = "{current_version}"'
+replace = 'release = "{new_version}"'
+
+[[tool.bumpversion.files]]
+filename = "Dockerfile"
+search = "LABEL Name=hicstuff Version={current_version}"
+replace = "LABEL Name=hicstuff Version={new_version}"
 
 [tool.ruff]
 line-length = 100

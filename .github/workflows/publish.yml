@@ -6,8 +6,30 @@ on:
       - "v*"
 
 jobs:
+  check-version:
+    name: Check tag matches pyproject version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compare tag with [project] version
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          project_version="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          echo "Tag version:       ${tag_version}"
+          echo "pyproject version: ${project_version}"
+          if [ "${tag_version}" != "${project_version}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match pyproject.toml version ${project_version}"
+            exit 1
+          fi
+
   build-and-publish:
     name: Build and publish
+    needs: check-version
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -29,6 +51,7 @@ jobs:
 
   build-and-push-docker:
     name: Build and push Docker image to GHCR
+    needs: check-version
     runs-on: ubuntu-latest
     permissions:
       contents: read
