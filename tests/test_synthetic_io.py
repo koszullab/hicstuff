@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from Bio import SeqIO
+from scipy.sparse import coo_matrix
 
 import hicstuff.io as hio
 from tests import synthetic as syn
@@ -248,6 +249,21 @@ def test_cool_round_trip(matrices, tmp_path):
     full = (mat + mat.T).tocoo()
     hio.save_cool(str(tmp_path / "full.cool"), full, frags.drop(columns="id"))
     assert cooler.Cooler(str(tmp_path / "full.cool")).pixels()[:]["count"].sum() == full.sum()
+
+
+def test_cool_with_trailing_empty_bins(matrices, tmp_path):
+    """The matrix has one row per bin, even when the last bins are empty."""
+    mat, frags, _ = hio.load_cool(matrices["cool"]["mat"])
+    n = len(frags)
+    keep = (mat.row < n - 5) & (mat.col < n - 5)
+    trimmed = coo_matrix((mat.data[keep], (mat.row[keep], mat.col[keep])), shape=mat.shape)
+    out = tmp_path / "trimmed.cool"
+    hio.save_cool(str(out), trimmed, frags.copy())
+    again, frags2, _ = hio.load_cool(str(out))
+    assert again.shape == (n, n) == (len(frags2),) * 2
+    np.testing.assert_array_equal(again.toarray(), trimmed.toarray())
+    loaded, _, _ = hio.flexible_hic_loader(str(out))
+    assert loaded.shape == (n, n)
 
 
 def test_bedgraph2d_round_trip(graal, matrices, tmp_path):

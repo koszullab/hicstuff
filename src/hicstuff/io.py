@@ -313,9 +313,8 @@ def load_cool(cool):
     n_frags = c.bins()[:].groupby("chrom", sort=False).count().start
     chroms["n_frags"] = chroms.merge(n_frags, right_index=True, left_on="name", how="left").start
     chroms.rename(columns={"name": "contig"}, inplace=True)
-    n = int(max(np.amax(mat.bin1_id), np.amax(mat.bin2_id))) + 1
-    shape = (n, n)
-    mat = coo_matrix((mat["count"], (mat.bin1_id, mat.bin2_id)), shape=shape)
+    # One row per bin, including empty bins at the end of the genome
+    mat = coo_matrix((mat["count"], (mat.bin1_id, mat.bin2_id)), shape=c.shape)
 
     return mat, frags, chroms
 
