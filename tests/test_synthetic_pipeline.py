@@ -593,9 +593,12 @@ def test_pipeline_rejects_bad_inputs(synthetic_lib, indexed_genome, tmp_path, mo
         hpi.full_pipeline(**reads, **common)
 
 
-@pytest.mark.xfail(strict=True, reason="final pairs copy fails when the input is in out_dir")
-def test_pairs_input_inside_out_dir(final_pairs, synthetic_lib, tmp_path):
-    src = tmp_path / "input.pairs"
+@pytest.mark.parametrize("folder", [".", "tmp"])
+def test_pairs_input_inside_out_dir(final_pairs, synthetic_lib, tmp_path, folder):
+    """An input pairs file in out_dir, or in its tmp folder, is compressed into
+    out_dir and neither moved nor deleted."""
+    src = tmp_path / folder / "input.pairs"
+    src.parent.mkdir(exist_ok=True)
     src.write_text(final_pairs.read_text())
     hpi.full_pipeline(
         genome=str(synthetic_lib.genome),
@@ -605,7 +608,29 @@ def test_pairs_input_inside_out_dir(final_pairs, synthetic_lib, tmp_path):
         mat_fmt="graal",
         out_dir=str(tmp_path),
     )
-    assert (tmp_path / "input.pairs.gz").exists()
+    assert _sorted_lines(tmp_path / "input.pairs.gz") == _sorted_lines(final_pairs)
+    assert _sorted_lines(src) == _sorted_lines(final_pairs)
+
+
+def test_tmp_dir_is_out_dir(final_pairs, synthetic_lib, tmp_path):
+    """Temporary files may be written into out_dir itself."""
+    src = tmp_path / "in" / "input.pairs"
+    src.parent.mkdir()
+    src.write_text(final_pairs.read_text())
+    out = tmp_path / "out"
+    hpi.full_pipeline(
+        genome=str(synthetic_lib.genome),
+        input1=str(src),
+        start_stage="pairs_idx",
+        enzyme=syn.LIBRARY_ENZYME,
+        mat_fmt="graal",
+        pcr_duplicates=True,
+        out_dir=str(out),
+        tmp_dir=str(out),
+    )
+    assert _sorted_lines(out / "valid_idx_pcrfree.pairs.gz") == _sorted_lines(final_pairs)
+    assert not (out / "valid_idx_pcrfree.pairs").exists()
+    assert src.exists()
 
 
 def _bam_subset(src, dst, keep):
