@@ -119,7 +119,16 @@ def _parse_ucsc(ucsc_str: str, bins: pd.DataFrame) -> tuple:
     Returns
     -------
     tuple
-        ``(start_bin, end_bin)`` integer bin indices.
+        ``(start_bin, end_bin)`` integer bin indices, the end being
+        exclusive (as in a slice).
+
+    Examples
+    --------
+    >>> bins = pd.DataFrame({"chrom": ["a"] * 3 + ["b"] * 2, "start": [0, 10, 20, 0, 10]})
+    >>> _parse_ucsc("a", bins)
+    (0, 3)
+    >>> _parse_ucsc("b:5-15", bins)
+    (3, 5)
     """
     if ":" in ucsc_str:
         chrom, bp = ucsc_str.split(":")
@@ -143,7 +152,7 @@ def _parse_ucsc(ucsc_str: str, bins: pd.DataFrame) -> tuple:
         except ValueError:
             logger.error("Invalid chromosome: %s", chrom)
             raise
-    return (int(start), int(end))
+    return (int(start), int(end) + 1)
 
 
 def _check_output_path(path: str, force: bool = False) -> None:
