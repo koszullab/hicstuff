@@ -144,7 +144,7 @@ def test_unknown_enzyme(runner, synthetic_lib, final_pairs, tmp_path):
 
 @pytest.mark.parametrize("enzymes", ["HindIII", "DpnII,HindIII"])
 def test_digest(runner, synthetic_lib, tmp_path, enzymes):
-    out, figs = tmp_path / "out", tmp_path / "figs"
+    out, figs = tmp_path / "out", tmp_path / "figs" / "digest"
     invoke(runner, "digest", "-e", enzymes, "-o", out, synthetic_lib.genome)
     frags = pd.read_csv(out / "fragments_list.txt", sep="\t")
     expected = synthetic_lib.fragments(enzymes.split(","))
@@ -152,7 +152,7 @@ def test_digest(runner, synthetic_lib, tmp_path, enzymes):
     # The output directory exists: only overwritten with --force.
     result = invoke(runner, "digest", "-e", enzymes, "-o", out, synthetic_lib.genome, exit_code=1)
     assert "already exists" in str(result.exception)
-    figs.mkdir()
+    # The figure directory is created, as with filter -f
     invoke(runner, "digest", "-e", enzymes, "-o", out, "-F", "-p", "-f", figs, synthetic_lib.genome)
     assert (figs / "frags_hist.pdf").stat().st_size > 0
 
