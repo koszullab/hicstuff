@@ -404,6 +404,13 @@ def test_dade_to_graal(tmp_path):
     frags = pd.read_csv(outputs["frags"], sep="\t")
     assert list(frags.start_pos) == [0, 100, 0]
     assert list(frags["size"]) == [100, 150, 50]
+    # The matrix has a text header, then one line per nonzero entry
+    with open(outputs["mat"]) as handle:
+        lines = handle.read().splitlines()
+    assert lines[0] == "id_frag_a\tid_frag_b\tn_contact"
+    assert lines[1:] == ["0\t0\t5", "1\t0\t2", "1\t1\t4", "2\t1\t1", "2\t2\t3"]
+    mat = hio.load_sparse_matrix(outputs["mat"])
+    assert mat.toarray().tolist() == [[5, 0, 0], [2, 4, 0], [0, 1, 3]]
 
 
 @pytest.mark.skipif(importlib.util.find_spec("redis") is not None, reason="redis is installed")
