@@ -540,7 +540,7 @@ def pairs2matrix(pairs_file, mat_file, fragments_file, mat_fmt="graal", threads=
     def write_mat_entry(frag1, frag2, contacts):
         """Write a single sparse matrix entry in either graal or bg2 format"""
         if mat_fmt == "graal":
-            mat.write("\t".join(map(str, [frag1, frag2, n_occ])) + "\n")
+            mat.write("\t".join(map(str, [frag1, frag2, contacts])) + "\n")
         elif mat_fmt == "bg2":
             frag1, frag2 = int(frag1), int(frag2)
             mat.write(
@@ -574,7 +574,7 @@ def pairs2matrix(pairs_file, mat_file, fragments_file, mat_fmt="graal", threads=
         # Skip header lines
         for _ in range(header_size):
             next(pairs)
-        prev_pair = ["0", "0"]  # Pairs identified by [frag1, frag2]
+        prev_pair = None  # Pairs identified by [frag1, frag2]
         n_occ = 0  # Number of occurences of each frag combination
         n_nonzero = 0  # Total number of nonzero matrix entries
         n_pairs = 0  # Total number of pairs entered in the matrix
@@ -593,14 +593,15 @@ def pairs2matrix(pairs_file, mat_file, fragments_file, mat_fmt="graal", threads=
             else:
                 if n_occ > 0:
                     write_mat_entry(prev_pair[0], prev_pair[1], n_occ)
+                    n_nonzero += 1
+                    n_pairs += n_occ
                 prev_pair = curr_pair
-                n_pairs += n_occ
                 n_occ = 1
-                n_nonzero += 1
         # Write the last value
-        write_mat_entry(curr_pair[0], curr_pair[1], n_occ)
-        n_nonzero += 1
-        n_pairs += 1
+        if n_occ > 0:
+            write_mat_entry(prev_pair[0], prev_pair[1], n_occ)
+            n_nonzero += 1
+            n_pairs += n_occ
 
     # Edit header line to fill number of nonzero entries inplace in graal header
     if mat_fmt == "graal":

@@ -9,6 +9,7 @@ pipeline wrote with what was simulated.
 import gzip
 import os
 import re
+import shutil
 
 import cooler
 import numpy as np
@@ -430,11 +431,30 @@ def test_graal_bg2_and_cool_agree(matrices, final_pairs, synthetic_lib):
     assert header.split("\t")[:2] == [str(n), str(n)]
 
 
-@pytest.mark.xfail(strict=True, reason="pairs2matrix counts one nonzero entry too many")
-def test_graal_header_nnz(matrices):
-    with open(matrices["graal"]["mat"]) as handle:
+@pytest.mark.parametrize("fmt", ["graal", "bg2"])
+def test_text_matrix_counts(matrices, final_pairs, synthetic_lib, fmt):
+    """The graal header and the log give the number of entries and of pairs."""
+    with open(matrices[fmt]["mat"]) as handle:
         lines = handle.read().splitlines()
-    assert int(lines[0].split("\t")[2]) == len(lines) - 1
+    nnz = len(lines) - (fmt == "graal")
+    if fmt == "graal":
+        assert int(lines[0].split("\t")[2]) == nnz
+    n_pairs, n = len(load_pairs(final_pairs)), len(synthetic_lib.fragments())
+    message = f"{n_pairs} pairs used to build a contact map of {n} bins with {nnz} nonzero entries"
+    assert message in matrices[fmt]["run"].log_text
+
+
+@pytest.mark.parametrize("fmt", ["graal", "bg2"])
+def test_text_matrix_from_empty_pairs(tmp_path, fmt):
+    pairs = tmp_path / "empty.pairs"
+    pairs.write_text(
+        "## pairs format v1.0\n#columns: readID chr1 pos1 chr2 pos2 strand1 strand2 frag1 frag2\n"
+    )
+    shutil.copy("test_data/fragments_list.txt", tmp_path / "frags.txt")
+    mat = tmp_path / "mat.txt"
+    hpi.pairs2matrix(str(pairs), str(mat), str(tmp_path / "frags.txt"), mat_fmt=fmt)
+    n_frags = len(pd.read_csv(tmp_path / "frags.txt", sep="\t"))
+    assert mat.read_text() == (f"{n_frags}\t{n_frags}\t0\n" if fmt == "graal" else "")
 
 
 def test_binned_mcool(final_pairs, synthetic_lib, run_pipeline, tmp_path):
