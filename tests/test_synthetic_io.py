@@ -196,11 +196,16 @@ def test_sparse_matrix_round_trip(graal, tmp_path):
     assert binned.sum() == mat.sum()
 
 
-@pytest.mark.xfail(strict=True, reason="binning='auto' divides by zero below 10,000 bins")
-def test_sparse_matrix_auto_binning(matrices, synthetic_lib):
+def test_sparse_matrix_auto_binning(matrices, synthetic_lib, monkeypatch):
     mat = hio.load_sparse_matrix(matrices["graal"]["mat"], binning="auto")
     n = len(synthetic_lib.fragments())
     assert mat.shape == (n, n)
+    # The smallest binning that keeps the matrix within the maximum shape
+    for max_shape, factor in ((n, 1), (n - 1, 2), (40, 4)):
+        monkeypatch.setattr(hio, "DEFAULT_MAX_MATRIX_SHAPE", max_shape)
+        binned = hio.load_sparse_matrix(matrices["graal"]["mat"], binning="auto")
+        assert binned.shape == (-(-n // factor),) * 2
+        assert binned.sum() == mat.sum()
 
 
 @pytest.mark.xfail(strict=True, reason="a text header makes load_sparse_matrix drop a contact")
