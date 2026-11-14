@@ -622,17 +622,41 @@ def test_distancelaw_usage_errors(runner, fastq_run, options, message):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="missview runs the pipeline with out_dir == tmp_dir and reads a graal matrix "
-    "although the pipeline writes a cool file",
-)
-def test_missview(runner, synthetic_lib, tmp_path, require_tools):
+def test_missview(runner, synthetic_lib, tmp_path, require_tools, plotted):
     genome = tmp_path / "small.fa"
     genome.write_text(">chr3\n" + synthetic_lib.chroms["chr3"][:4000] + "\n")
     out = tmp_path / "missview.png"
     invoke(
-        runner, "missview", "-R", "60", "-a", "minimap2", "-b", "1000", "-T", tmp_path / "work",
+        runner, "missview", "-R", "100", "-a", "minimap2", "-b", "1000", "-T", tmp_path / "work",
         genome, out,
     )  # fmt: skip
     assert out.stat().st_size > 0
+    # A unique sequence has no missing bin, the shorter last one included.
+    array, kwargs = plotted[0]
+    np.testing.assert_array_equal(array, np.ones((4, 4)))
+    assert kwargs["title"].startswith("0.000% missing bins for small.fa with 100 bp reads")
+    # Temporary files are kept in the requested directory, and reused with --force.
+    assert (tmp_path / "work" / "abs_fragments_contacts_weighted.txt").exists()
+    invoke(
+        runner, "missview", "-R", "100", "-a", "minimap2", "-T", tmp_path / "work", genome, out,
+        exit_code=1,
+    )  # fmt: skip
+    invoke(
+        runner, "missview", "-R", "100", "-a", "minimap2", "-b", "2kb", "-F",
+        "-T", tmp_path / "work", genome, out,
+    )  # fmt: skip
+    assert plotted[1][0].shape == (2, 2)
+
+
+@pytest.mark.parametrize("aligner", ["bowtie2", "bwa"])
+def test_missview_finds_repeats(runner, synthetic_lib, tmp_path, require_tools, plotted, aligner):
+    """Bins of a sequence present twice in the genome cannot be mapped."""
+    seq = synthetic_lib.chroms["chr3"]
+    genome = tmp_path / "repeats.fa"
+    genome.write_text(f">chr3\n{seq[:4000]}\n>copy\n{seq[1000:2000]}{seq[6000:8000]}\n")
+    invoke(runner, "missview", "-R", "60", "-a", aligner, "-b", "1000", genome, tmp_path / "m.png")
+    array, kwargs = plotted[0]
+    missing = np.flatnonzero(array.sum(axis=0) == 0)
+    # chr3:1000-2000 and copy:0-1000
+    assert list(missing) == [1, 4]
+    assert kwargs["title"].startswith("28.571% missing bins")
