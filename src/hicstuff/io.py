@@ -647,7 +647,7 @@ def dade_to_graal(
     """
 
     with open(output_matrix, "w") as sparse_file:
-        sparse_file.write("id_frag_a\tid_frag_b\tn_contact")
+        sparse_file.write("id_frag_a\tid_frag_b\tn_contact\n")
         with open(filename) as file_handle:
             first_line = file_handle.readline()
             for row_index, line in enumerate(file_handle):
