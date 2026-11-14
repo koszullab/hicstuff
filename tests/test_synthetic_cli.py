@@ -367,12 +367,7 @@ def test_view_rejects_unknown_transform(runner, matrices, tmp_path):
         ),
         ["-b", "2kb", "-l"],
         ["-b", "2kb", "-r", "chr2:1000-9000"],
-        pytest.param(
-            ["-r", "chr1"],
-            marks=pytest.mark.xfail(
-                strict=True, reason="_parse_ucsc returns an inclusive end, sliced as exclusive"
-            ),
-        ),
+        ["-r", "chr1"],
         ["-r", "chr1:1000-8000;chr3:2000-6000", "-c", "Blues"],
     ],
     ids=[
@@ -409,6 +404,25 @@ def test_view_options(runner, matrices, plotted, synthetic_lib, tmp_path, fmt, o
         assert array.shape[0] == array.shape[1] <= n
     if "-l" in options:
         assert len(kwargs["chrom_starts"]) == 2
+
+
+def test_view_region_bounds(runner, matrices, plotted, synthetic_lib, tmp_path):
+    """A region (1-based, inclusive) holds every bin it overlaps, the last one included."""
+    files = matrices["cool"]
+    invoke(runner, "view", "-r", "chr2:1000-9000", "-f", files["frags"], "-o", tmp_path / "x.png",
+           files["mat"])  # fmt: skip
+    frags = synthetic_lib.fragments()
+    chr2 = frags[frags.chrom == "chr2"]
+    overlap = ((chr2.end_pos >= 1000) & (chr2.start_pos < 9000)).sum()
+    assert plotted[0][0].shape == (overlap, overlap)
+
+
+def test_cli_doctests():
+    import doctest
+
+    import hicstuff.cli
+
+    assert doctest.testmod(hicstuff.cli).failed == 0
 
 
 def test_view_ratio(runner, matrices, plotted, tmp_path, caplog):
