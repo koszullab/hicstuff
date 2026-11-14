@@ -694,3 +694,35 @@ def test_bam2pairs_with_truncated_bam(fastq_run, tmp_path, caplog, truncated):
     )
     assert "10 reads were only present in one BAM file" in caplog.text
     _check_read_counts(caplog.text, bams["for"], bams["rev"])
+
+
+def test_log_file_handler_leaves_other_handlers(tmp_path):
+    """set_file_handler replaces the handler it set before, and only that one."""
+    import logging
+
+    import hicstuff.log as hcl
+
+    before = list(hcl.logger.handlers)
+    other = logging.FileHandler(tmp_path / "other.log")
+    hcl.logger.addHandler(other)
+    try:
+        hcl.set_file_handler(str(tmp_path / "first.log"))
+        hcl.logger.info("message one")
+        hcl.set_file_handler(str(tmp_path / "second.log"))
+        hcl.logger.info("message two")
+        assert other in hcl.logger.handlers
+        # So do pytest's own handlers, a FileHandler among them
+        assert all(handler in hcl.logger.handlers for handler in before)
+        files = [h.baseFilename for h in hcl.logger.handlers if isinstance(h, logging.FileHandler)]
+        assert sorted(os.path.basename(f) for f in files if str(tmp_path) in f) == [
+            "other.log",
+            "second.log",
+        ]
+    finally:
+        hcl.logger.removeHandler(other)
+        other.close()
+    assert "message one" in (tmp_path / "first.log").read_text()
+    assert "message two" not in (tmp_path / "first.log").read_text()
+    assert "message two" in (tmp_path / "second.log").read_text()
+    assert "message one" in (tmp_path / "other.log").read_text()
+    assert "message two" in (tmp_path / "other.log").read_text()
