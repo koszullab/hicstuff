@@ -49,8 +49,13 @@ def invoke(runner, *args, exit_code=0):
 
 
 def text(result):
-    """CLI output without rich-click's box drawing and line wrapping."""
-    return " ".join(re.sub(r"[\u2500-\u257f]", " ", result.output).split())
+    """CLI output without rich-click's styling, box drawing and line wrapping.
+
+    rich-click forces a terminal, hence ANSI styling, when GITHUB_ACTIONS or
+    FORCE_COLOR is set, so the escape codes are stripped as well.
+    """
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    return " ".join(re.sub(r"[\u2500-\u257f]", " ", plain).split())
 
 
 def _pixels(path, frags=None):
