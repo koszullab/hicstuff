@@ -512,19 +512,33 @@ def from_dade_matrix(filename, header=False):
         return matrix
 
 
-def to_dade_matrix(M, annotations="", filename=None):
+def to_dade_matrix(M, annotations=None, filename=None):
     """Returns a Dade matrix from input numpy matrix. Any annotations are added
     as header. If filename is provided and valid, said matrix is also saved
     as text.
+
+    Parameters
+    ----------
+    M : numpy.ndarray
+        The square matrix to convert.
+    annotations : array_like of numbers, optional
+        Labels of the header row and column, one more than the number of rows
+        (the first one goes in the corner). The header is left at 0 if omitted.
+    filename : str, optional
+        Where to save the matrix, as integers.
+
+    Returns
+    -------
+    numpy.ndarray :
+        The matrix with its header row and column.
     """
 
     n, m = M.shape
     A = np.zeros((n + 1, m + 1))
     A[1:, 1:] = M
-    if not annotations:
-        annotations = np.array(["" for _ in n], dtype=str)
-    A[0, :] = annotations
-    A[:, 0] = annotations.T
+    if annotations is not None and len(annotations) > 0:
+        A[0, :] = annotations
+        A[:, 0] = annotations
     if filename:
         try:
             np.savetxt(filename, A, fmt="%i")

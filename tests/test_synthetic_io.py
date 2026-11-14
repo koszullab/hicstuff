@@ -346,12 +346,20 @@ def test_get_hic_format(matrices, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="to_dade_matrix tests the truth value of an array")
-def test_to_dade_matrix(tmp_path):
+def test_to_dade_matrix(tmp_path, caplog):
     M = np.array([[5, 8, 3], [8, 3, 5], [3, 5, 5]])
     annotations = np.array([0, 10, 20, 30])
     A = hio.to_dade_matrix(M, annotations=annotations, filename=str(tmp_path / "m.dade"))
     np.testing.assert_array_equal(A[1:, 1:], M)
+    np.testing.assert_array_equal(A[0, :], annotations)
+    np.testing.assert_array_equal(A[:, 0], annotations)
+    np.testing.assert_array_equal(np.loadtxt(tmp_path / "m.dade"), A)
+    assert "saved input matrix in dade format" in caplog.text
+    # Without annotations, nor a file to write
+    for default in ({}, {"annotations": ""}, {"annotations": []}):
+        A = hio.to_dade_matrix(M, **default)
+        np.testing.assert_array_equal(A[1:, 1:], M)
+        assert not A[0, :].any() and not A[:, 0].any()
 
 
 def test_dade_to_graal(tmp_path):
