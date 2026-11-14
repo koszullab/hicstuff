@@ -289,7 +289,7 @@ def test_fixed_bins_bedgraph2d(final_pairs, synthetic_lib, tmp_path):
     width = 1_000
     pairs = syn.read_pairs(final_pairs)
     sizes = synthetic_lib.chrom_sizes
-    # Drop the last, shorter bin of each chromosome (see the xfail below)
+    # Drop the last, shorter bin of each chromosome (see the test below)
     full = {c: size // width * width for c, size in sizes.items()}
     pairs = pairs[(pairs.pos1 <= pairs.chr1.map(full)) & (pairs.pos2 <= pairs.chr2.map(full))]
     path = tmp_path / "fixed.bg2"
@@ -300,15 +300,20 @@ def test_fixed_bins_bedgraph2d(final_pairs, synthetic_lib, tmp_path):
     assert list(chroms.contig) == ["chr1", "chr2", "chr3"]
 
 
-@pytest.mark.xfail(
-    strict=True, reason="fixed-bin bg2 fails to load unless chromosome sizes are bin multiples"
-)
 def test_fixed_bins_bedgraph2d_with_partial_last_bin(final_pairs, synthetic_lib, tmp_path):
     path = tmp_path / "fixed.bg2"
     pairs = syn.read_pairs(final_pairs)
-    _fixed_bins_bg2(pairs, synthetic_lib.chrom_sizes, 1_000, path)
-    mat, _, _ = hio.flexible_hic_loader(str(path))
+    sizes = synthetic_lib.chrom_sizes
+    _fixed_bins_bg2(pairs, sizes, 1_000, path)
+    mat, frags, chroms = hio.flexible_hic_loader(str(path))
     assert mat.sum() == len(pairs)
+    # Every chromosome ends with a shorter bin
+    assert list(chroms.length) == list(sizes.values())
+    assert list(chroms.n_frags) == [-(-size // 1_000) for size in sizes.values()]
+    last = frags.groupby("chrom", sort=False).tail(1)
+    assert list(last.end_pos) == list(sizes.values())
+    assert list(last.end_pos - last.start_pos) == [size % 1_000 for size in sizes.values()]
+    assert len(frags) == mat.shape[0]
 
 
 def test_flexible_hic_saver(graal, tmp_path, caplog):
