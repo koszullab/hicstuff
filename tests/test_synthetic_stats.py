@@ -1,6 +1,7 @@
 """hicstuff.stats on the logs of pipeline runs on the synthetic library."""
 
 import json
+import re
 
 import pytest
 
@@ -53,10 +54,42 @@ def test_stats_without_filtering(fastq_run, run_pipeline, synthetic_lib, indexed
     assert stats["Final contacts"] == stats["Recovered contacts"]
 
 
-@pytest.mark.xfail(strict=True, reason="read counts are only logged by iterative alignment")
-def test_stats_of_normal_mapping(fastq_run):
-    stats = hcs.get_pipeline_stats(fastq_run("bowtie2", "normal").log)
-    assert stats["Total read pairs"] > 0
+@pytest.mark.parametrize(
+    "mapping, extra",
+    [
+        ("normal", {}),
+        ("iterative", {}),
+        ("cutsite", {}),
+        ("normal", {"skip_count": True}),
+        ("cutsite", {"skip_count": True}),
+    ],
+    ids=["normal", "iterative", "cutsite", "normal-skip-count", "cutsite-skip-count"],
+)
+def test_stats_of_every_mapping_mode(fastq_run, synthetic_lib, tmp_path, mapping, extra):
+    run = fastq_run("bowtie2", mapping, **extra)
+    stats = hcs.get_pipeline_stats(run.log)
+    n = synthetic_lib.params.n_pairs
+    assert stats["Total read pairs"] == n
+    # cutsite aligns the pieces of reads cut at ligation sites
+    pieces = re.search(r"Number of pairs after digestion: (\d+)", run.log_text)
+    n_aligned = 2 * (int(pieces[1]) if mapping == "cutsite" else n)
+    assert stats["Mapped reads"] + stats["Unmapped reads"] == n_aligned
+    assert stats["Unmapped reads"] >= (synthetic_lib.truth.kind == "unmapped").sum()
+    assert stats["Recovered contacts"] == _n_pairs(run.tmp("valid_idx.pairs"))
+    assert stats["Final contacts"] == _n_pairs(run.path("valid_idx_pcrfree.pairs.gz"))
+    # The pipeline logs the stats it compiled
+    assert "Stats not compiled" not in run.log_text
+    # Mapped reads are a share of the reads aligned
+    out = tmp_path / "stats.txt"
+    hcs.write_pipeline_stats(stats, str(out))
+    pct = float(re.search(r"Mapped reads: .*\(([\d.]+)%", out.read_text())[1])
+    assert pct == round(100 * stats["Mapped reads"] / n_aligned, 2)
+
+
+def test_stats_need_read_mapping(matrices):
+    """A run started from pairs has no mapping statistics."""
+    with pytest.raises(IndexError, match="No read mapping statistics"):
+        hcs.get_pipeline_stats(matrices["graal"]["run"].log)
 
 
 def _stats(**values):

@@ -5,7 +5,6 @@ cmdoret, 20190322
 
 import csv
 import gzip
-import itertools
 import logging
 import os
 import pathlib
@@ -163,57 +162,33 @@ def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30):
         n_reads = {"total": 0, "mapped": 0}
         # Remember if some read IDs were missing from either file
         unmatched_reads = 0
-        # Remember if all reads in one bam file have been read
-        exhausted = [False, False]
-        # Iterate on both BAM simultaneously
         end_regex = re.compile(r"/[12]$")
-        for end1, end2 in itertools.zip_longest(forward, reverse):
-            # Remove end-specific suffix if any
-            end1.query_name = re.sub(end_regex, "", end1.query_name)
-            end2.query_name = re.sub(end_regex, "", end2.query_name)
-            # Both file still have reads
-            # Check if reads pass filter
-            try:
-                end1_passed = end1.mapping_quality >= min_qual
-            # Happens if end1 bam file has been exhausted
-            except AttributeError:
-                exhausted[0] = True
-                end1_passed = False
-            try:
-                end2_passed = end2.mapping_quality >= min_qual
-            # Happens if end2 bam file has been exhausted
-            except AttributeError:
-                exhausted[1] = True
-                end2_passed = False
-            # Skip read if mate is not present until they match or reads
-            # have been exhausted
-            while sum(exhausted) == 0 and end1.query_name != end2.query_name:
-                # Get next read and check filters again
-                # Count single-read iteration
-                unmatched_reads += 1
-                n_reads["total"] += 1
-                if end1.query_name < end2.query_name:
-                    try:
-                        end1 = next(forward)
-                        end1_passed = end1.mapping_quality >= min_qual
-                    # If EOF is reached in BAM 1
-                    except (StopIteration, AttributeError):
-                        exhausted[0] = True
-                        end1_passed = False
-                    n_reads["mapped"] += end1_passed
-                elif end1.query_name > end2.query_name:
-                    try:
-                        end2 = next(reverse)
-                        end2_passed = end2.mapping_quality >= min_qual
-                    # If EOF is reached in BAM 2
-                    except (StopIteration, AttributeError):
-                        exhausted[1] = True
-                        end2_passed = False
-                    n_reads["mapped"] += end2_passed
 
-            # 2 reads processed per iteration, unless one file is exhausted
-            n_reads["total"] += 2 - sum(exhausted)
-            n_reads["mapped"] += sum([end1_passed, end2_passed])
+        def next_read(bam):
+            """Next read of a BAM file, without end-specific suffix, and
+            whether it passes the quality filter. None at the end of the file."""
+            read = next(bam, None)
+            if read is None:
+                return None, False
+            read.query_name = re.sub(end_regex, "", read.query_name)
+            n_reads["total"] += 1
+            passed = read.mapping_quality >= min_qual
+            n_reads["mapped"] += passed
+            return read, passed
+
+        # Iterate on both BAM simultaneously, skipping reads whose mate is
+        # missing from the other file, until both files are exhausted.
+        end1, end1_passed = next_read(forward)
+        end2, end2_passed = next_read(reverse)
+        while end1 is not None or end2 is not None:
+            if end2 is None or (end1 is not None and end1.query_name < end2.query_name):
+                unmatched_reads += 1
+                end1, end1_passed = next_read(forward)
+                continue
+            if end1 is None or end1.query_name > end2.query_name:
+                unmatched_reads += 1
+                end2, end2_passed = next_read(reverse)
+                continue
             # Keep only pairs where both reads have good quality
             if end1_passed and end2_passed:
                 # Flipping to get upper triangle
@@ -233,6 +208,8 @@ def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30):
                         "-" if end2.is_reverse else "+",
                     ]
                 )
+            end1, end1_passed = next_read(forward)
+            end2, end2_passed = next_read(reverse)
     pairs.close()
     if unmatched_reads > 0:
         logger.warning(
@@ -540,7 +517,7 @@ def pairs2matrix(pairs_file, mat_file, fragments_file, mat_fmt="graal", threads=
     def write_mat_entry(frag1, frag2, contacts):
         """Write a single sparse matrix entry in either graal or bg2 format"""
         if mat_fmt == "graal":
-            mat.write("\t".join(map(str, [frag1, frag2, n_occ])) + "\n")
+            mat.write("\t".join(map(str, [frag1, frag2, contacts])) + "\n")
         elif mat_fmt == "bg2":
             frag1, frag2 = int(frag1), int(frag2)
             mat.write(
@@ -574,7 +551,7 @@ def pairs2matrix(pairs_file, mat_file, fragments_file, mat_fmt="graal", threads=
         # Skip header lines
         for _ in range(header_size):
             next(pairs)
-        prev_pair = ["0", "0"]  # Pairs identified by [frag1, frag2]
+        prev_pair = None  # Pairs identified by [frag1, frag2]
         n_occ = 0  # Number of occurences of each frag combination
         n_nonzero = 0  # Total number of nonzero matrix entries
         n_pairs = 0  # Total number of pairs entered in the matrix
@@ -593,14 +570,15 @@ def pairs2matrix(pairs_file, mat_file, fragments_file, mat_fmt="graal", threads=
             else:
                 if n_occ > 0:
                     write_mat_entry(prev_pair[0], prev_pair[1], n_occ)
+                    n_nonzero += 1
+                    n_pairs += n_occ
                 prev_pair = curr_pair
-                n_pairs += n_occ
                 n_occ = 1
-                n_nonzero += 1
         # Write the last value
-        write_mat_entry(curr_pair[0], curr_pair[1], n_occ)
-        n_nonzero += 1
-        n_pairs += 1
+        if n_occ > 0:
+            write_mat_entry(prev_pair[0], prev_pair[1], n_occ)
+            n_nonzero += 1
+            n_pairs += n_occ
 
     # Edit header line to fill number of nonzero entries inplace in graal header
     if mat_fmt == "graal":
@@ -1224,16 +1202,24 @@ def full_pipeline(
     p = pathlib.Path(use_pairs).absolute()
     out_dir_abs = pathlib.Path(out_dir).absolute()
     pairsf = out_dir_abs / p.name
-    # Only rename (move) if the file is in the tmp dir; otherwise copy
-    # to avoid destroying input files given directly by the user.
-    if p.parent == out_dir_abs / "tmp":
-        p.rename(pairsf)
-    else:
-        st.copy2(str(p), str(pairsf))
+    # The final pairs are the input file itself when starting from indexed
+    # pairs without filtering: it must be neither moved nor deleted.
+    is_input = p == pathlib.Path(input1).absolute()
+    # The file may already be in out_dir, even when named through another
+    # path (tmp_dir == out_dir, a symbolic link to out_dir).
+    in_out_dir = pairsf.exists() and os.path.samefile(p, pairsf)
+    # Only rename (move) a temporary file; otherwise copy, unless the file
+    # is already in out_dir.
+    if not in_out_dir:
+        if p.parent == out_dir_abs / "tmp" and not is_input:
+            p.rename(pairsf)
+        else:
+            st.copy2(str(p), str(pairsf))
 
     # Sort and compress final pairs file
     sort_and_compress_pairs(str(pairsf), str(pairsf) + ".gz", tmp_dir=tmp_dir, threads=threads)
-    os.remove(pairsf)
+    if not (is_input and in_out_dir):
+        os.remove(pairsf)
 
     # Clean temporary files
     if not no_cleanup:

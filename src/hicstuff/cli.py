@@ -5,6 +5,7 @@ import glob
 import os
 import re
 import shutil
+import subprocess as sp
 import tempfile
 from os.path import dirname, join
 
@@ -118,7 +119,16 @@ def _parse_ucsc(ucsc_str: str, bins: pd.DataFrame) -> tuple:
     Returns
     -------
     tuple
-        ``(start_bin, end_bin)`` integer bin indices.
+        ``(start_bin, end_bin)`` integer bin indices, the end being
+        exclusive (as in a slice).
+
+    Examples
+    --------
+    >>> bins = pd.DataFrame({"chrom": ["a"] * 3 + ["b"] * 2, "start": [0, 10, 20, 0, 10]})
+    >>> _parse_ucsc("a", bins)
+    (0, 3)
+    >>> _parse_ucsc("b:5-15", bins)
+    (3, 5)
     """
     if ":" in ucsc_str:
         chrom, bp = ucsc_str.split(":")
@@ -142,7 +152,7 @@ def _parse_ucsc(ucsc_str: str, bins: pd.DataFrame) -> tuple:
         except ValueError:
             logger.error("Invalid chromosome: %s", chrom)
             raise
-    return (int(start), int(end))
+    return (int(start), int(end) + 1)
 
 
 def _check_output_path(path: str, force: bool = False) -> None:
@@ -310,7 +320,10 @@ def digest(fasta, enzyme, outdir, size, circular, plot, figdir, force):
             raise OSError("Output directory already exists. Use --force to overwrite.")
     else:
         os.makedirs(outdir, exist_ok=True)
-    figpath = join(figdir, "frags_hist.pdf") if figdir else None
+    figpath = None
+    if figdir:
+        os.makedirs(figdir, exist_ok=True)
+        figpath = join(figdir, "frags_hist.pdf")
     enzyme_parsed = enzyme.split(",") if "," in enzyme else enzyme
     hcd.write_frag_info(fasta, enzyme_parsed, size, output_dir=outdir, circular=circular)
     hcd.frag_len(output_dir=outdir, plot=plot, fig_path=figpath)
@@ -620,17 +633,12 @@ def view(
                 binned_map = hcs.bin_sparse(M=sparse_map_in, subsampling_factor=binning_val)
                 if frags_df is not None:
                     binned_frags = frags_df.iloc[::binning_val, :].reset_index(drop=True)
-
-                    def _shift_min(x):
-                        try:
-                            x[x == min(x)] = 0
-                        except ValueError:
-                            pass
-                        return x
-
-                    binned_frags.start_pos = binned_frags.groupby(
-                        "chrom", sort=False
-                    ).start_pos.apply(_shift_min)
+                    # The first bin of each chromosome starts at 0, so that
+                    # chromosome starts show as a drop in start positions.
+                    first = binned_frags.groupby("chrom", sort=False).start_pos.transform("min")
+                    binned_frags["start_pos"] = binned_frags.start_pos.where(
+                        binned_frags.start_pos != first, 0
+                    )
                 else:
                     binned_frags = frags_df
         else:
@@ -1290,8 +1298,8 @@ def convert(contact_map, prefix, frags, chroms, force, genome, out_fmt):
     if "size" not in frags_df.columns:
         frags_df = frags_df.join(pd.DataFrame({"size": size}))
     if genome:
-        gc = hio.gc_bins(genome, frags_df)
-        frags_df = frags_df.join(pd.DataFrame({"gc_content": gc}))
+        # Replaces the gc_content column of hicstuff's fragments_list.txt
+        frags_df = frags_df.assign(gc_content=hio.gc_bins(genome, frags_df))
     hio.flexible_hic_saver(
         mat=mat.astype(int),
         out_prefix=prefix,
@@ -1465,7 +1473,7 @@ def distancelaw(
     default="bowtie2",
     show_default=True,
     metavar="STR",
-    help="Aligner: bowtie2, minimap2 or bwa.",
+    help="Aligner: bowtie2, minimap2 or bwa. Use minimap2 only for reads of 100 bp or more.",
 )
 @click.option(
     "-b",
@@ -1494,24 +1502,45 @@ def missview(genome, output, read_len, aligner, binning, force, threads, tmpdir)
     """
     resolution = _parse_bin_str(str(binning))
     if tmpdir is None:
-        tmpdir = tempfile.TemporaryDirectory().name
+        with tempfile.TemporaryDirectory() as tmp:
+            _missview(genome, output, read_len, aligner, resolution, force, threads, tmp)
+    else:
+        os.makedirs(tmpdir, exist_ok=True)
+        _missview(genome, output, read_len, aligner, resolution, force, threads, tmpdir)
+
+
+def _missview(genome, output, read_len, aligner, resolution, force, threads, tmpdir):
     phred = "F" * read_len
     tmp_fq = join(tmpdir, "simulated_reads.fq")
     tmp_bam = join(tmpdir, "simulated_reads.bam")
     _check_output_path(tmp_fq, force=force)
 
     logger.info("Simulating reads by splitting the genome into %i bp chunks", read_len)
-    with open(tmp_fq, "w") as fq_handle:
-        for rec in SeqIO.parse(genome, "fasta"):
+    with open(tmp_fq, "w") as fq_handle, hio.read_compressed(genome) as fasta:
+        for rec in SeqIO.parse(fasta, "fasta"):
             for i in range(len(rec.seq) - read_len):
                 fq_handle.write(
                     f"@NS_SIM_{rec.id}_{i}\n{str(rec.seq[i : i + read_len])}\n+\n{phred}\n"
                 )
 
-    hpi.align_reads(tmp_fq, genome, tmp_bam, tmp_dir=tmpdir, threads=threads, aligner=aligner)
+    # bowtie2 and bwa need an index: use the genome's own or build one.
+    index = genome
+    if aligner in ("bowtie2", "bwa"):
+        index = hio.check_fasta_index(genome, mode=aligner)
+        if index is None:
+            index = join(tmpdir, "genome")
+            logger.info("%s index not found, building one in %s.", aligner, tmpdir)
+            if aligner == "bowtie2":
+                build = ["bowtie2-build", "-q", genome, index]
+            else:
+                build = ["bwa", "index", "-p", index, genome]
+            sp.run(build, check=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+    hpi.align_reads(tmp_fq, index, tmp_bam, tmp_dir=tmpdir, threads=threads, aligner=aligner)
     ps.sort("-@", str(threads), "-n", "-O", "BAM", "-o", tmp_bam + ".sorted", tmp_bam)
     shutil.move(tmp_bam + ".sorted", tmp_bam)
 
+    # Pair every read with itself: each mapped read adds a contact on the
+    # diagonal of the bin where it starts.
     hpi.full_pipeline(
         genome,
         tmp_bam,
@@ -1520,21 +1549,30 @@ def missview(genome, output, read_len, aligner, binning, force, threads, tmpdir)
         aligner=aligner,
         enzyme=resolution,
         force=force,
+        mat_fmt="graal",
         threads=threads,
         out_dir=tmpdir,
         tmp_dir=tmpdir,
     )
 
-    mat_path = join(tmpdir, "abs_fragments_contacts_weighted.txt")
-    mat = hio.load_sparse_matrix(mat_path)
-    log_files = glob.glob(join(tmpdir, "*.log"))
-    log_content = open(log_files[0]).read()
-    prop_mapped = int(re.search(r".*INFO :: ([0-9]*)% reads.*", log_content)[1]) / 100
+    mat = hio.load_sparse_matrix(join(tmpdir, "abs_fragments_contacts_weighted.txt"))
+    # Log file names hold their start time: the last one, and its last
+    # mapping line, are this run's.
+    log_file = sorted(glob.glob(join(tmpdir, "hicstuff_*.log")))[-1]
+    with open(log_file) as handle:
+        mapped = re.findall(r"mapped with Q >= \d+ \((\d+)/(\d+)\)", handle.read())[-1]
+    prop_mapped = int(mapped[0]) / int(mapped[1])
     logger.info(
-        "Bins with less than %s%% mapped reads will be considered undetectable.",
+        "Bins with less than %.2f%% mapped reads will be considered undetectable.",
         100 * prop_mapped,
     )
-    unmappable = mat.diagonal(0) < prop_mapped * resolution
+    # Reads were simulated at every position but the last read_len of each
+    # sequence: bins at the end of a sequence hold fewer of them.
+    frags = pd.read_csv(join(tmpdir, "fragments_list.txt"), sep="\t")
+    chroms = pd.read_csv(join(tmpdir, "info_contigs.txt"), sep="\t")
+    last_start = frags.chrom.map(dict(zip(chroms.contig, chroms.length))) - read_len
+    n_reads = (np.minimum(frags.end_pos, last_start) - frags.start_pos).clip(lower=0)
+    unmappable = mat.diagonal(0) < prop_mapped * n_reads.to_numpy()
     mappable_mat = np.ones(mat.shape)
     mappable_mat[unmappable, :] = 0
     mappable_mat[:, unmappable] = 0
@@ -1562,5 +1600,8 @@ def missview(genome, output, read_len, aligner, binning, force, threads, tmpdir)
 @click.argument("log_file")
 def stats(log_file):
     """Extract mapping statistics from a hicstuff pipeline log file."""
-    pipeline_stats = hcstats.get_pipeline_stats(log_file)
+    try:
+        pipeline_stats = hcstats.get_pipeline_stats(log_file)
+    except IndexError as err:
+        raise click.ClickException(str(err)) from err
     hcstats.print_pipeline_stats(pipeline_stats)

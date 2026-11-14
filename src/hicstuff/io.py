@@ -114,18 +114,21 @@ def load_sparse_matrix(mat_path, binning=1, dtype=np.float64):
     (16, 16)
     """
     try:
-        cols_arr = np.loadtxt(mat_path, delimiter="\t", dtype=dtype)
+        # Numeric header: the number of rows, columns and nonzero entries
+        cols_arr = np.loadtxt(mat_path, delimiter="\t", dtype=dtype, ndmin=2)
         shape = (int(cols_arr[0, 0]), int(cols_arr[0, 1]))
+        cols_arr = cols_arr[1:, :]
     except ValueError:
-        cols_arr = np.loadtxt(mat_path, delimiter="\t", dtype=dtype, skiprows=1)
+        # Text header (column names): infer the shape from the entries
+        cols_arr = np.loadtxt(mat_path, delimiter="\t", dtype=dtype, skiprows=1, ndmin=2)
         shape = None
 
-    # Get values into an array without the header. Use the header to give size.
-    sparse_mat = _cols_to_sparse(cols_arr[1:, :], shape=shape, dtype=dtype)
+    sparse_mat = _cols_to_sparse(cols_arr, shape=shape, dtype=dtype)
 
     if binning == "auto":
-        num_bins = max(sparse_mat.shape) + 1
-        subsampling_factor = num_bins // DEFAULT_MAX_MATRIX_SHAPE
+        # Smallest factor that keeps the matrix within the maximum shape
+        num_bins = max(sparse_mat.shape)
+        subsampling_factor = max(1, -(-num_bins // DEFAULT_MAX_MATRIX_SHAPE))
     else:
         subsampling_factor = binning
     sparse_mat = hcs.bin_sparse(sparse_mat, subsampling_factor=subsampling_factor)
@@ -310,9 +313,8 @@ def load_cool(cool):
     n_frags = c.bins()[:].groupby("chrom", sort=False).count().start
     chroms["n_frags"] = chroms.merge(n_frags, right_index=True, left_on="name", how="left").start
     chroms.rename(columns={"name": "contig"}, inplace=True)
-    n = int(max(np.amax(mat.bin1_id), np.amax(mat.bin2_id))) + 1
-    shape = (n, n)
-    mat = coo_matrix((mat["count"], (mat.bin1_id, mat.bin2_id)), shape=shape)
+    # One row per bin, including empty bins at the end of the genome
+    mat = coo_matrix((mat["count"], (mat.bin1_id, mat.bin2_id)), shape=c.shape)
 
     return mat, frags, chroms
 
@@ -509,19 +511,33 @@ def from_dade_matrix(filename, header=False):
         return matrix
 
 
-def to_dade_matrix(M, annotations="", filename=None):
+def to_dade_matrix(M, annotations=None, filename=None):
     """Returns a Dade matrix from input numpy matrix. Any annotations are added
     as header. If filename is provided and valid, said matrix is also saved
     as text.
+
+    Parameters
+    ----------
+    M : numpy.ndarray
+        The square matrix to convert.
+    annotations : array_like of numbers, optional
+        Labels of the header row and column, one more than the number of rows
+        (the first one goes in the corner). The header is left at 0 if omitted.
+    filename : str, optional
+        Where to save the matrix, as integers.
+
+    Returns
+    -------
+    numpy.ndarray :
+        The matrix with its header row and column.
     """
 
     n, m = M.shape
     A = np.zeros((n + 1, m + 1))
     A[1:, 1:] = M
-    if not annotations:
-        annotations = np.array(["" for _ in n], dtype=str)
-    A[0, :] = annotations
-    A[:, 0] = annotations.T
+    if annotations is not None and len(annotations) > 0:
+        A[0, :] = annotations
+        A[:, 0] = annotations
     if filename:
         try:
             np.savetxt(filename, A, fmt="%i")
@@ -622,7 +638,7 @@ def dade_to_graal(
     filename,
     output_matrix=DEFAULT_SPARSE_MATRIX_FILE_NAME,
     output_contigs=DEFAULT_INFO_CONTIGS_FILE_NAME,
-    output_frags=DEFAULT_SPARSE_MATRIX_FILE_NAME,
+    output_frags=DEFAULT_FRAGMENTS_LIST_FILE_NAME,
     output_dir=None,
 ):
     """Convert a matrix from DADE format (https://github.com/scovit/dade)
@@ -631,7 +647,7 @@ def dade_to_graal(
     """
 
     with open(output_matrix, "w") as sparse_file:
-        sparse_file.write("id_frag_a\tid_frag_b\tn_contact")
+        sparse_file.write("id_frag_a\tid_frag_b\tn_contact\n")
         with open(filename) as file_handle:
             first_line = file_handle.readline()
             for row_index, line in enumerate(file_handle):
@@ -753,14 +769,15 @@ def load_bedgraph2d(filename, bin_size=None, fragments_file=None):
             prev_frags = len(frag_map)
             for bin_id, bin_pos in enumerate(range(0, size, bin_size)):
                 frag_map[(chrom, bin_pos)] = bin_id + prev_frags
-            n_bins = size // bin_size
+            # The last bin is shorter unless size is a multiple of bin_size
+            starts = np.arange(0, size, bin_size)
             chrom_frags.append(
                 pd.DataFrame(
                     {
-                        "id": range(1, n_bins + 1),
-                        "chrom": np.repeat(chrom, n_bins),
-                        "start_pos": range(0, size, bin_size),
-                        "end_pos": range(bin_size, size + bin_size, bin_size),
+                        "id": range(1, len(starts) + 1),
+                        "chrom": np.repeat(chrom, len(starts)),
+                        "start_pos": starts,
+                        "end_pos": np.minimum(starts + bin_size, size),
                     }
                 )
             )
@@ -1249,7 +1266,7 @@ def reorder_fasta(genome, output=None, threshold=100000):
         output = "{}_renamed.fa".format(genome.split(".")[0])
 
     handle = SeqIO.parse(genome, "fasta")
-    handle_to_write = sorted((len(u) for u in handle if len(u) > threshold), reverse=True)
+    handle_to_write = sorted((u for u in handle if len(u) > threshold), key=len, reverse=True)
     SeqIO.write(handle_to_write, output, "fasta")
 
 

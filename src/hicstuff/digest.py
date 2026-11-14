@@ -103,7 +103,9 @@ def write_frag_info(
                     frag_length = len(frag)
                     if frag_length > 0:
                         end_pos = start_pos + frag_length
-                        gc_content = SeqUtils.gc_fraction(frag) / 100.0
+                        # Fraction (0-1) of G and C over the whole fragment,
+                        # ambiguous bases included, as in io.gc_bins.
+                        gc_content = SeqUtils.gc_fraction(frag, "ignore")
 
                         current_fragment_line = f"{current_id}\t{contig_name}\t{start_pos}\t{end_pos}\t{frag_length}\t{gc_content}\n"
 
