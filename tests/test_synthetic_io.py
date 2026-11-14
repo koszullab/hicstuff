@@ -11,6 +11,7 @@ import cooler
 import numpy as np
 import pandas as pd
 import pytest
+from Bio import SeqIO
 
 import hicstuff.io as hio
 from tests import synthetic as syn
@@ -147,11 +148,14 @@ def test_rename_genome(tmp_path, monkeypatch):
     assert (tmp_path / "in_renamed.fa").read_text() == out.read_text()
 
 
-@pytest.mark.xfail(strict=True, reason="io.reorder_fasta writes sequence lengths, not records")
 def test_io_reorder_fasta(synthetic_lib, tmp_path):
     out = tmp_path / "sorted.fa"
     hio.reorder_fasta(str(synthetic_lib.genome), str(out), threshold=15_000)
-    assert out.read_text().count(">") == 2
+    records = list(SeqIO.parse(str(out), "fasta"))
+    sizes = sorted(synthetic_lib.chrom_sizes.items(), key=lambda item: -item[1])
+    expected = [name for name, size in sizes if size > 15_000]
+    assert [rec.id for rec in records] == expected
+    assert all(str(rec.seq) == synthetic_lib.chroms[rec.id] for rec in records)
 
 
 def test_gc_bins(synthetic_lib):
