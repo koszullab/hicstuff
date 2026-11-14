@@ -186,14 +186,15 @@ def test_sparse_matrix_round_trip(graal, tmp_path):
     with pytest.raises(ValueError, match="coo"):
         hio.save_sparse_matrix(mat.tocsr(), str(path))
     binned = hio.load_sparse_matrix(str(path), binning=2)
-    assert binned.shape == (73, 73)
+    assert binned.shape == (-(-mat.shape[0] // 2),) * 2
     assert binned.sum() == mat.sum()
 
 
 @pytest.mark.xfail(strict=True, reason="binning='auto' divides by zero below 10,000 bins")
-def test_sparse_matrix_auto_binning(matrices):
+def test_sparse_matrix_auto_binning(matrices, synthetic_lib):
     mat = hio.load_sparse_matrix(matrices["graal"]["mat"], binning="auto")
-    assert mat.shape == (146, 146)
+    n = len(synthetic_lib.fragments())
+    assert mat.shape == (n, n)
 
 
 @pytest.mark.xfail(strict=True, reason="a text header makes load_sparse_matrix drop a contact")

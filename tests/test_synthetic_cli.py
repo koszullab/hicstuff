@@ -270,10 +270,10 @@ def test_filter_command(runner, fastq_run, tmp_path):
     assert "Thresholds must be two integers" in text(result)
 
 
-def test_stats_command(runner, fastq_run, tmp_path, monkeypatch):
+def test_stats_command(runner, fastq_run, synthetic_lib, tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     result = invoke(runner, "stats", fastq_run("bowtie2", "iterative").log)
-    assert "Total read pairs:   6,000" in result.output
+    assert f"Total read pairs:   {synthetic_lib.params.n_pairs:,}" in result.output
     assert "PCR duplicates:" in result.output
 
 
@@ -418,9 +418,10 @@ def test_view_ratio(runner, matrices, plotted, tmp_path, caplog):
     assert "Non-divergent colormap" in caplog.text
 
 
-def test_view_binned_graal_without_fragments(runner, matrices, plotted, tmp_path):
+def test_view_binned_graal_without_fragments(runner, matrices, plotted, synthetic_lib, tmp_path):
     invoke(runner, "view", "-b", "4", "-o", tmp_path / "x.png", matrices["graal"]["mat"])
-    assert plotted[0][0].shape == (37, 37)  # ceil(146 / 4)
+    n = len(synthetic_lib.fragments())
+    assert plotted[0][0].shape == (-(-n // 4),) * 2
 
 
 @pytest.mark.parametrize(
