@@ -208,13 +208,26 @@ def test_sparse_matrix_auto_binning(matrices, synthetic_lib, monkeypatch):
         assert binned.sum() == mat.sum()
 
 
-@pytest.mark.xfail(strict=True, reason="a text header makes load_sparse_matrix drop a contact")
 def test_sparse_matrix_with_text_header(graal, tmp_path):
     mat = graal[0]
     path = tmp_path / "mat.tsv"
     entries = "".join(f"{r}\t{c}\t{v}\n" for r, c, v in zip(mat.row, mat.col, mat.data.astype(int)))
     path.write_text("id_frag_a\tid_frag_b\tn_contact\n" + entries)
-    assert hio.load_sparse_matrix(str(path)).sum() == mat.sum()
+    loaded = hio.load_sparse_matrix(str(path))
+    assert loaded.sum() == mat.sum()
+    # Without a numeric header, the shape is that of the last nonzero entry
+    n = max(mat.row.max(), mat.col.max()) + 1
+    np.testing.assert_array_equal(loaded.toarray(), mat.toarray()[:n, :n])
+
+
+def test_sparse_matrix_with_one_or_no_entry(tmp_path):
+    path = tmp_path / "one.tsv"
+    expected = [[0, 0, 0], [0, 0, 5], [0, 0, 0]]
+    for header in ("3\t3\t1", "id_frag_a\tid_frag_b\tn_contact"):
+        path.write_text(f"{header}\n1\t2\t5\n")
+        assert hio.load_sparse_matrix(str(path)).toarray().tolist() == expected
+    path.write_text("3\t3\t0\n")
+    assert hio.load_sparse_matrix(str(path)).toarray().tolist() == [[0] * 3] * 3
 
 
 def test_cool_round_trip(matrices, tmp_path):
