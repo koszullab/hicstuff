@@ -27,16 +27,27 @@ jobs:
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    # Experimental entries may fail without failing the workflow
+    continue-on-error: ${{ matrix.experimental == true }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        include:
+          # Next Python release, allowed to fail. h5py has no cp315 wheel yet,
+          # so it is built from source against the system HDF5.
+          - python-version: "3.15"
+            experimental: true
+            extra-apt-packages: libhdf5-dev pkg-config
 
     steps:
       - uses: actions/checkout@v4
 
       - name: Install system dependencies
-        run: sudo apt-get update && sudo apt-get install -y bowtie2 bwa minimap2 samtools
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install -y bowtie2 bwa minimap2 samtools
+          ${{ matrix.extra-apt-packages }}
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
