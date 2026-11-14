@@ -320,7 +320,10 @@ def digest(fasta, enzyme, outdir, size, circular, plot, figdir, force):
             raise OSError("Output directory already exists. Use --force to overwrite.")
     else:
         os.makedirs(outdir, exist_ok=True)
-    figpath = join(figdir, "frags_hist.pdf") if figdir else None
+    figpath = None
+    if figdir:
+        os.makedirs(figdir, exist_ok=True)
+        figpath = join(figdir, "frags_hist.pdf")
     enzyme_parsed = enzyme.split(",") if "," in enzyme else enzyme
     hcd.write_frag_info(fasta, enzyme_parsed, size, output_dir=outdir, circular=circular)
     hcd.frag_len(output_dir=outdir, plot=plot, fig_path=figpath)
