@@ -11,6 +11,8 @@ import cooler
 import numpy as np
 import pandas as pd
 import pytest
+from Bio import SeqIO
+from scipy.sparse import coo_matrix
 
 import hicstuff.io as hio
 from tests import synthetic as syn
@@ -147,11 +149,14 @@ def test_rename_genome(tmp_path, monkeypatch):
     assert (tmp_path / "in_renamed.fa").read_text() == out.read_text()
 
 
-@pytest.mark.xfail(strict=True, reason="io.reorder_fasta writes sequence lengths, not records")
 def test_io_reorder_fasta(synthetic_lib, tmp_path):
     out = tmp_path / "sorted.fa"
     hio.reorder_fasta(str(synthetic_lib.genome), str(out), threshold=15_000)
-    assert out.read_text().count(">") == 2
+    records = list(SeqIO.parse(str(out), "fasta"))
+    sizes = sorted(synthetic_lib.chrom_sizes.items(), key=lambda item: -item[1])
+    expected = [name for name, size in sizes if size > 15_000]
+    assert [rec.id for rec in records] == expected
+    assert all(str(rec.seq) == synthetic_lib.chroms[rec.id] for rec in records)
 
 
 def test_gc_bins(synthetic_lib):
@@ -192,20 +197,38 @@ def test_sparse_matrix_round_trip(graal, tmp_path):
     assert binned.sum() == mat.sum()
 
 
-@pytest.mark.xfail(strict=True, reason="binning='auto' divides by zero below 10,000 bins")
-def test_sparse_matrix_auto_binning(matrices, synthetic_lib):
+def test_sparse_matrix_auto_binning(matrices, synthetic_lib, monkeypatch):
     mat = hio.load_sparse_matrix(matrices["graal"]["mat"], binning="auto")
     n = len(synthetic_lib.fragments())
     assert mat.shape == (n, n)
+    # The smallest binning that keeps the matrix within the maximum shape
+    for max_shape, factor in ((n, 1), (n - 1, 2), (40, 4)):
+        monkeypatch.setattr(hio, "DEFAULT_MAX_MATRIX_SHAPE", max_shape)
+        binned = hio.load_sparse_matrix(matrices["graal"]["mat"], binning="auto")
+        assert binned.shape == (-(-n // factor),) * 2
+        assert binned.sum() == mat.sum()
 
 
-@pytest.mark.xfail(strict=True, reason="a text header makes load_sparse_matrix drop a contact")
 def test_sparse_matrix_with_text_header(graal, tmp_path):
     mat = graal[0]
     path = tmp_path / "mat.tsv"
     entries = "".join(f"{r}\t{c}\t{v}\n" for r, c, v in zip(mat.row, mat.col, mat.data.astype(int)))
     path.write_text("id_frag_a\tid_frag_b\tn_contact\n" + entries)
-    assert hio.load_sparse_matrix(str(path)).sum() == mat.sum()
+    loaded = hio.load_sparse_matrix(str(path))
+    assert loaded.sum() == mat.sum()
+    # Without a numeric header, the shape is that of the last nonzero entry
+    n = max(mat.row.max(), mat.col.max()) + 1
+    np.testing.assert_array_equal(loaded.toarray(), mat.toarray()[:n, :n])
+
+
+def test_sparse_matrix_with_one_or_no_entry(tmp_path):
+    path = tmp_path / "one.tsv"
+    expected = [[0, 0, 0], [0, 0, 5], [0, 0, 0]]
+    for header in ("3\t3\t1", "id_frag_a\tid_frag_b\tn_contact"):
+        path.write_text(f"{header}\n1\t2\t5\n")
+        assert hio.load_sparse_matrix(str(path)).toarray().tolist() == expected
+    path.write_text("3\t3\t0\n")
+    assert hio.load_sparse_matrix(str(path)).toarray().tolist() == [[0] * 3] * 3
 
 
 def test_cool_round_trip(matrices, tmp_path):
@@ -226,6 +249,21 @@ def test_cool_round_trip(matrices, tmp_path):
     full = (mat + mat.T).tocoo()
     hio.save_cool(str(tmp_path / "full.cool"), full, frags.drop(columns="id"))
     assert cooler.Cooler(str(tmp_path / "full.cool")).pixels()[:]["count"].sum() == full.sum()
+
+
+def test_cool_with_trailing_empty_bins(matrices, tmp_path):
+    """The matrix has one row per bin, even when the last bins are empty."""
+    mat, frags, _ = hio.load_cool(matrices["cool"]["mat"])
+    n = len(frags)
+    keep = (mat.row < n - 5) & (mat.col < n - 5)
+    trimmed = coo_matrix((mat.data[keep], (mat.row[keep], mat.col[keep])), shape=mat.shape)
+    out = tmp_path / "trimmed.cool"
+    hio.save_cool(str(out), trimmed, frags.copy())
+    again, frags2, _ = hio.load_cool(str(out))
+    assert again.shape == (n, n) == (len(frags2),) * 2
+    np.testing.assert_array_equal(again.toarray(), trimmed.toarray())
+    loaded, _, _ = hio.flexible_hic_loader(str(out))
+    assert loaded.shape == (n, n)
 
 
 def test_bedgraph2d_round_trip(graal, matrices, tmp_path):
@@ -267,7 +305,7 @@ def test_fixed_bins_bedgraph2d(final_pairs, synthetic_lib, tmp_path):
     width = 1_000
     pairs = syn.read_pairs(final_pairs)
     sizes = synthetic_lib.chrom_sizes
-    # Drop the last, shorter bin of each chromosome (see the xfail below)
+    # Drop the last, shorter bin of each chromosome (see the test below)
     full = {c: size // width * width for c, size in sizes.items()}
     pairs = pairs[(pairs.pos1 <= pairs.chr1.map(full)) & (pairs.pos2 <= pairs.chr2.map(full))]
     path = tmp_path / "fixed.bg2"
@@ -278,15 +316,20 @@ def test_fixed_bins_bedgraph2d(final_pairs, synthetic_lib, tmp_path):
     assert list(chroms.contig) == ["chr1", "chr2", "chr3"]
 
 
-@pytest.mark.xfail(
-    strict=True, reason="fixed-bin bg2 fails to load unless chromosome sizes are bin multiples"
-)
 def test_fixed_bins_bedgraph2d_with_partial_last_bin(final_pairs, synthetic_lib, tmp_path):
     path = tmp_path / "fixed.bg2"
     pairs = syn.read_pairs(final_pairs)
-    _fixed_bins_bg2(pairs, synthetic_lib.chrom_sizes, 1_000, path)
-    mat, _, _ = hio.flexible_hic_loader(str(path))
+    sizes = synthetic_lib.chrom_sizes
+    _fixed_bins_bg2(pairs, sizes, 1_000, path)
+    mat, frags, chroms = hio.flexible_hic_loader(str(path))
     assert mat.sum() == len(pairs)
+    # Every chromosome ends with a shorter bin
+    assert list(chroms.length) == list(sizes.values())
+    assert list(chroms.n_frags) == [-(-size // 1_000) for size in sizes.values()]
+    last = frags.groupby("chrom", sort=False).tail(1)
+    assert list(last.end_pos) == list(sizes.values())
+    assert list(last.end_pos - last.start_pos) == [size % 1_000 for size in sizes.values()]
+    assert len(frags) == mat.shape[0]
 
 
 def test_flexible_hic_saver(graal, tmp_path, caplog):
@@ -319,15 +362,23 @@ def test_get_hic_format(matrices, tmp_path):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="to_dade_matrix tests the truth value of an array")
-def test_to_dade_matrix(tmp_path):
+def test_to_dade_matrix(tmp_path, caplog):
     M = np.array([[5, 8, 3], [8, 3, 5], [3, 5, 5]])
     annotations = np.array([0, 10, 20, 30])
     A = hio.to_dade_matrix(M, annotations=annotations, filename=str(tmp_path / "m.dade"))
     np.testing.assert_array_equal(A[1:, 1:], M)
+    np.testing.assert_array_equal(A[0, :], annotations)
+    np.testing.assert_array_equal(A[:, 0], annotations)
+    np.testing.assert_array_equal(np.loadtxt(tmp_path / "m.dade"), A)
+    assert "saved input matrix in dade format" in caplog.text
+    # Without annotations, nor a file to write
+    for default in ({}, {"annotations": ""}, {"annotations": []}):
+        A = hio.to_dade_matrix(M, **default)
+        np.testing.assert_array_equal(A[1:, 1:], M)
+        assert not A[0, :].any() and not A[:, 0].any()
 
 
-def test_dade_to_graal(tmp_path):
+def test_dade_to_graal(tmp_path, monkeypatch):
     header = ['"RST"', "0~chr1~0~1~101", "1~chr1~1~101~251", "2~chr2~0~1~51"]
     rows = [
         ["0~chr1~0~1~101", "5"],
@@ -353,6 +404,22 @@ def test_dade_to_graal(tmp_path):
     frags = pd.read_csv(outputs["frags"], sep="\t")
     assert list(frags.start_pos) == [0, 100, 0]
     assert list(frags["size"]) == [100, 150, 50]
+    # The matrix has a text header, then one line per nonzero entry
+    with open(outputs["mat"]) as handle:
+        lines = handle.read().splitlines()
+    assert lines[0] == "id_frag_a\tid_frag_b\tn_contact"
+    assert lines[1:] == ["0\t0\t5", "1\t0\t2", "1\t1\t4", "2\t1\t1", "2\t2\t3"]
+    mat = hio.load_sparse_matrix(outputs["mat"])
+    assert mat.toarray().tolist() == [[5, 0, 0], [2, 4, 0], [0, 1, 3]]
+    # Default output names are graal's, one per file
+    monkeypatch.chdir(tmp_path)
+    hio.dade_to_graal(str(dade))
+    for name, output in [
+        ("abs_fragments_contacts_weighted.txt", "mat"),
+        ("info_contigs.txt", "contigs"),
+        ("fragments_list.txt", "frags"),
+    ]:
+        assert (tmp_path / name).read_text() == open(outputs[output]).read()
 
 
 @pytest.mark.skipif(importlib.util.find_spec("redis") is not None, reason="redis is installed")

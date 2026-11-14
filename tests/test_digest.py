@@ -48,3 +48,18 @@ def test_attribute_fragments():
     hcd.attribute_fragments("test_data/valid.pairs", idx_pairs.name, restriction_table)
 
     assert filecmp.cmp("test_data/valid_idx.pairs", idx_pairs.name)
+
+
+def test_frag_gc_content_matches_gc_bins(tmp_path):
+    """fragments_list.txt holds GC as a 0-1 fraction of the whole fragment,
+    ambiguous bases included, as io.gc_bins (used by convert -g) does."""
+    import numpy as np
+
+    from hicstuff import io as hio
+
+    genome = tmp_path / "genome.fa"
+    genome.write_text(">seq1\nGGAATAGATCAAATGATCCACAGATCNNNNGGCC\n")
+    hcd.write_frag_info(str(genome), "DpnII", output_dir=str(tmp_path))
+    frags = pd.read_csv(tmp_path / "fragments_list.txt", sep="\t")
+    np.testing.assert_allclose(frags.gc_content, [2 / 6, 2 / 8, 4 / 8, 6 / 12])
+    np.testing.assert_allclose(frags.gc_content, hio.gc_bins(str(genome), frags))

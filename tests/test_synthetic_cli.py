@@ -18,8 +18,6 @@ from hicstuff import __version__
 from hicstuff.cli import cli
 from tests import synthetic as syn
 
-PANDAS_3 = int(pd.__version__.split(".")[0]) >= 3
-
 COMMANDS = [
     "convert",
     "cutsite",
@@ -146,7 +144,7 @@ def test_unknown_enzyme(runner, synthetic_lib, final_pairs, tmp_path):
 
 @pytest.mark.parametrize("enzymes", ["HindIII", "DpnII,HindIII"])
 def test_digest(runner, synthetic_lib, tmp_path, enzymes):
-    out, figs = tmp_path / "out", tmp_path / "figs"
+    out, figs = tmp_path / "out", tmp_path / "figs" / "digest"
     invoke(runner, "digest", "-e", enzymes, "-o", out, synthetic_lib.genome)
     frags = pd.read_csv(out / "fragments_list.txt", sep="\t")
     expected = synthetic_lib.fragments(enzymes.split(","))
@@ -154,7 +152,7 @@ def test_digest(runner, synthetic_lib, tmp_path, enzymes):
     # The output directory exists: only overwritten with --force.
     result = invoke(runner, "digest", "-e", enzymes, "-o", out, synthetic_lib.genome, exit_code=1)
     assert "already exists" in str(result.exception)
-    figs.mkdir()
+    # The figure directory is created, as with filter -f
     invoke(runner, "digest", "-e", enzymes, "-o", out, "-F", "-p", "-f", figs, synthetic_lib.genome)
     assert (figs / "frags_hist.pdf").stat().st_size > 0
 
@@ -280,6 +278,13 @@ def test_stats_command(runner, fastq_run, synthetic_lib, tmp_path, monkeypatch):
     result = invoke(runner, "stats", fastq_run("bowtie2", "iterative").log)
     assert f"Total read pairs:   {synthetic_lib.params.n_pairs:,}" in result.output
     assert "PCR duplicates:" in result.output
+    result = invoke(runner, "stats", fastq_run("bowtie2", "normal").log)
+    assert f"Total read pairs:   {synthetic_lib.params.n_pairs:,}" in result.output
+
+
+def test_stats_command_without_mapping(runner, matrices):
+    result = invoke(runner, "stats", matrices["graal"]["run"].log, exit_code=1)
+    assert "No read mapping statistics found" in text(result)
 
 
 # ---------------------------------------------------------------------------
@@ -356,23 +361,10 @@ def test_view_rejects_unknown_transform(runner, matrices, tmp_path):
         ["-n", "-N", "2"],
         ["-t", "3", "-d"],
         ["-b", "3"],
-        pytest.param(
-            ["-b", "3", "-l"],
-            marks=pytest.mark.xfail(
-                PANDAS_3,
-                strict=True,
-                reason="with pandas copy-on-write, view's in-place shift of bin starts is lost "
-                "and the groupby().apply() result is assigned by index: starts become NaN",
-            ),
-        ),
+        ["-b", "3", "-l"],
         ["-b", "2kb", "-l"],
         ["-b", "2kb", "-r", "chr2:1000-9000"],
-        pytest.param(
-            ["-r", "chr1"],
-            marks=pytest.mark.xfail(
-                strict=True, reason="_parse_ucsc returns an inclusive end, sliced as exclusive"
-            ),
-        ),
+        ["-r", "chr1"],
         ["-r", "chr1:1000-8000;chr3:2000-6000", "-c", "Blues"],
     ],
     ids=[
@@ -409,6 +401,30 @@ def test_view_options(runner, matrices, plotted, synthetic_lib, tmp_path, fmt, o
         assert array.shape[0] == array.shape[1] <= n
     if "-l" in options:
         assert len(kwargs["chrom_starts"]) == 2
+    if key == "-b 3" and "-l" in options:
+        # Each bin is named after its first fragment
+        chroms = frags.chrom[::3].to_numpy()
+        expected = np.flatnonzero(chroms[1:] != chroms[:-1]) + 1
+        np.testing.assert_array_equal(kwargs["chrom_starts"], expected)
+
+
+def test_view_region_bounds(runner, matrices, plotted, synthetic_lib, tmp_path):
+    """A region (1-based, inclusive) holds every bin it overlaps, the last one included."""
+    files = matrices["cool"]
+    invoke(runner, "view", "-r", "chr2:1000-9000", "-f", files["frags"], "-o", tmp_path / "x.png",
+           files["mat"])  # fmt: skip
+    frags = synthetic_lib.fragments()
+    chr2 = frags[frags.chrom == "chr2"]
+    overlap = ((chr2.end_pos >= 1000) & (chr2.start_pos < 9000)).sum()
+    assert plotted[0][0].shape == (overlap, overlap)
+
+
+def test_cli_doctests():
+    import doctest
+
+    import hicstuff.cli
+
+    assert doctest.testmod(hicstuff.cli).failed == 0
 
 
 def test_view_ratio(runner, matrices, plotted, tmp_path, caplog):
@@ -561,13 +577,18 @@ def test_convert(runner, matrices, synthetic_lib, tmp_path):
     )
 
 
-@pytest.mark.xfail(strict=True, reason="convert -g fails when fragments already have gc_content")
 def test_convert_gc_with_hicstuff_fragments(runner, matrices, synthetic_lib, tmp_path):
+    """-g recomputes the gc_content column of hicstuff's fragments_list.txt."""
     files = matrices["graal"]
+    frags = pd.read_csv(files["frags"], sep="\t")
+    altered = tmp_path / "frags.tsv"
+    frags.assign(gc_content=-1.0).to_csv(altered, sep="\t", index=False)
     invoke(
-        runner, "convert", "-T", "cool", "-g", synthetic_lib.genome, "-f", files["frags"],
+        runner, "convert", "-T", "cool", "-g", synthetic_lib.genome, "-f", altered,
         "-c", files["chroms"], files["mat"], tmp_path / "out",
     )  # fmt: skip
+    bins = cooler.Cooler(str(tmp_path / "out.cool")).bins()[:]
+    np.testing.assert_allclose(bins.gc_content, frags.gc_content)
 
 
 # ---------------------------------------------------------------------------
@@ -622,17 +643,41 @@ def test_distancelaw_usage_errors(runner, fastq_run, options, message):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="missview runs the pipeline with out_dir == tmp_dir and reads a graal matrix "
-    "although the pipeline writes a cool file",
-)
-def test_missview(runner, synthetic_lib, tmp_path, require_tools):
+def test_missview(runner, synthetic_lib, tmp_path, require_tools, plotted):
     genome = tmp_path / "small.fa"
     genome.write_text(">chr3\n" + synthetic_lib.chroms["chr3"][:4000] + "\n")
     out = tmp_path / "missview.png"
     invoke(
-        runner, "missview", "-R", "60", "-a", "minimap2", "-b", "1000", "-T", tmp_path / "work",
+        runner, "missview", "-R", "100", "-a", "minimap2", "-b", "1000", "-T", tmp_path / "work",
         genome, out,
     )  # fmt: skip
     assert out.stat().st_size > 0
+    # A unique sequence has no missing bin, the shorter last one included.
+    array, kwargs = plotted[0]
+    np.testing.assert_array_equal(array, np.ones((4, 4)))
+    assert kwargs["title"].startswith("0.000% missing bins for small.fa with 100 bp reads")
+    # Temporary files are kept in the requested directory, and reused with --force.
+    assert (tmp_path / "work" / "abs_fragments_contacts_weighted.txt").exists()
+    invoke(
+        runner, "missview", "-R", "100", "-a", "minimap2", "-T", tmp_path / "work", genome, out,
+        exit_code=1,
+    )  # fmt: skip
+    invoke(
+        runner, "missview", "-R", "100", "-a", "minimap2", "-b", "2kb", "-F",
+        "-T", tmp_path / "work", genome, out,
+    )  # fmt: skip
+    assert plotted[1][0].shape == (2, 2)
+
+
+@pytest.mark.parametrize("aligner", ["bowtie2", "bwa"])
+def test_missview_finds_repeats(runner, synthetic_lib, tmp_path, require_tools, plotted, aligner):
+    """Bins of a sequence present twice in the genome cannot be mapped."""
+    seq = synthetic_lib.chroms["chr3"]
+    genome = tmp_path / "repeats.fa"
+    genome.write_text(f">chr3\n{seq[:4000]}\n>copy\n{seq[1000:2000]}{seq[6000:8000]}\n")
+    invoke(runner, "missview", "-R", "60", "-a", aligner, "-b", "1000", genome, tmp_path / "m.png")
+    array, kwargs = plotted[0]
+    missing = np.flatnonzero(array.sum(axis=0) == 0)
+    # chr3:1000-2000 and copy:0-1000
+    assert list(missing) == [1, 4]
+    assert kwargs["title"].startswith("28.571% missing bins")

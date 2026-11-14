@@ -9,6 +9,7 @@ pipeline wrote with what was simulated.
 import gzip
 import os
 import re
+import shutil
 
 import cooler
 import numpy as np
@@ -332,7 +333,6 @@ def test_digestion_matches_truth(fastq_run, synthetic_lib):
     assert list(chroms.cumul_length) == [0] + list(np.cumsum(n_frags)[:-1])
 
 
-@pytest.mark.xfail(strict=True, reason="digest divides gc_fraction() (already 0-1) by 100")
 def test_fragment_gc_content(fastq_run, synthetic_lib):
     frags = pd.read_csv(fastq_run().path("fragments_list.txt"), sep="\t")
     seqs = synthetic_lib.chroms
@@ -431,11 +431,30 @@ def test_graal_bg2_and_cool_agree(matrices, final_pairs, synthetic_lib):
     assert header.split("\t")[:2] == [str(n), str(n)]
 
 
-@pytest.mark.xfail(strict=True, reason="pairs2matrix counts one nonzero entry too many")
-def test_graal_header_nnz(matrices):
-    with open(matrices["graal"]["mat"]) as handle:
+@pytest.mark.parametrize("fmt", ["graal", "bg2"])
+def test_text_matrix_counts(matrices, final_pairs, synthetic_lib, fmt):
+    """The graal header and the log give the number of entries and of pairs."""
+    with open(matrices[fmt]["mat"]) as handle:
         lines = handle.read().splitlines()
-    assert int(lines[0].split("\t")[2]) == len(lines) - 1
+    nnz = len(lines) - (fmt == "graal")
+    if fmt == "graal":
+        assert int(lines[0].split("\t")[2]) == nnz
+    n_pairs, n = len(load_pairs(final_pairs)), len(synthetic_lib.fragments())
+    message = f"{n_pairs} pairs used to build a contact map of {n} bins with {nnz} nonzero entries"
+    assert message in matrices[fmt]["run"].log_text
+
+
+@pytest.mark.parametrize("fmt", ["graal", "bg2"])
+def test_text_matrix_from_empty_pairs(tmp_path, fmt):
+    pairs = tmp_path / "empty.pairs"
+    pairs.write_text(
+        "## pairs format v1.0\n#columns: readID chr1 pos1 chr2 pos2 strand1 strand2 frag1 frag2\n"
+    )
+    shutil.copy("test_data/fragments_list.txt", tmp_path / "frags.txt")
+    mat = tmp_path / "mat.txt"
+    hpi.pairs2matrix(str(pairs), str(mat), str(tmp_path / "frags.txt"), mat_fmt=fmt)
+    n_frags = len(pd.read_csv(tmp_path / "frags.txt", sep="\t"))
+    assert mat.read_text() == (f"{n_frags}\t{n_frags}\t0\n" if fmt == "graal" else "")
 
 
 def test_binned_mcool(final_pairs, synthetic_lib, run_pipeline, tmp_path):
@@ -574,9 +593,12 @@ def test_pipeline_rejects_bad_inputs(synthetic_lib, indexed_genome, tmp_path, mo
         hpi.full_pipeline(**reads, **common)
 
 
-@pytest.mark.xfail(strict=True, reason="final pairs copy fails when the input is in out_dir")
-def test_pairs_input_inside_out_dir(final_pairs, synthetic_lib, tmp_path):
-    src = tmp_path / "input.pairs"
+@pytest.mark.parametrize("folder", [".", "tmp"])
+def test_pairs_input_inside_out_dir(final_pairs, synthetic_lib, tmp_path, folder):
+    """An input pairs file in out_dir, or in its tmp folder, is compressed into
+    out_dir and neither moved nor deleted."""
+    src = tmp_path / folder / "input.pairs"
+    src.parent.mkdir(exist_ok=True)
     src.write_text(final_pairs.read_text())
     hpi.full_pipeline(
         genome=str(synthetic_lib.genome),
@@ -586,7 +608,59 @@ def test_pairs_input_inside_out_dir(final_pairs, synthetic_lib, tmp_path):
         mat_fmt="graal",
         out_dir=str(tmp_path),
     )
-    assert (tmp_path / "input.pairs.gz").exists()
+    assert _sorted_lines(tmp_path / "input.pairs.gz") == _sorted_lines(final_pairs)
+    assert _sorted_lines(src) == _sorted_lines(final_pairs)
+
+
+def test_tmp_dir_is_out_dir(final_pairs, synthetic_lib, tmp_path):
+    """Temporary files may be written into out_dir itself."""
+    src = tmp_path / "in" / "input.pairs"
+    src.parent.mkdir()
+    src.write_text(final_pairs.read_text())
+    out = tmp_path / "out"
+    hpi.full_pipeline(
+        genome=str(synthetic_lib.genome),
+        input1=str(src),
+        start_stage="pairs_idx",
+        enzyme=syn.LIBRARY_ENZYME,
+        mat_fmt="graal",
+        pcr_duplicates=True,
+        out_dir=str(out),
+        tmp_dir=str(out),
+    )
+    assert _sorted_lines(out / "valid_idx_pcrfree.pairs.gz") == _sorted_lines(final_pairs)
+    assert not (out / "valid_idx_pcrfree.pairs").exists()
+    assert src.exists()
+
+
+@pytest.mark.parametrize("linked", ["out_dir", "tmp_dir"])
+def test_final_pairs_reached_through_a_link(final_pairs, synthetic_lib, tmp_path, linked):
+    """out_dir, or a tmp_dir equal to it, may be named through a symbolic link:
+    a final pairs file already in out_dir is still recognised as such."""
+    real, link = tmp_path / "real", tmp_path / "link"
+    real.mkdir()
+    link.symlink_to(real, target_is_directory=True)
+    if linked == "out_dir":
+        # The input pairs are in out_dir, which is named through the link
+        src, final = real / "input.pairs", "input.pairs"
+        dirs = dict(out_dir=str(link))
+    else:
+        # The final pairs are a temporary file in out_dir, as tmp_dir
+        src, final = tmp_path / "input.pairs", "valid_idx_pcrfree.pairs"
+        dirs = dict(out_dir=str(real), tmp_dir=str(link))
+    src.write_text(final_pairs.read_text())
+    hpi.full_pipeline(
+        genome=str(synthetic_lib.genome),
+        input1=str(src),
+        start_stage="pairs_idx",
+        enzyme=syn.LIBRARY_ENZYME,
+        mat_fmt="graal",
+        pcr_duplicates=linked == "tmp_dir",
+        **dirs,
+    )
+    assert _sorted_lines(real / f"{final}.gz") == _sorted_lines(final_pairs)
+    assert _sorted_lines(src) == _sorted_lines(final_pairs)
+    assert (real / final).exists() == (linked == "out_dir")
 
 
 def _bam_subset(src, dst, keep):
@@ -596,6 +670,19 @@ def _bam_subset(src, dst, keep):
         for i, read in enumerate(bam):
             if keep(i):
                 out.write(read)
+
+
+def _check_read_counts(log, *bams, min_qual=30):
+    """bam2pairs logs every read once, with the number passing min_qual."""
+    import pysam
+
+    mapped = total = 0
+    for path in bams:
+        with pysam.AlignmentFile(path, "rb") as bam:
+            for read in bam:
+                total += 1
+                mapped += read.mapping_quality >= min_qual
+    assert f"mapped with Q >= {min_qual} ({mapped}/{total})" in log
 
 
 def test_bam2pairs_skips_reads_missing_from_one_file(fastq_run, tmp_path, caplog):
@@ -616,13 +703,56 @@ def test_bam2pairs_skips_reads_missing_from_one_file(fastq_run, tmp_path, caplog
         ref[~ref.readID.isin(dropped)].reset_index(drop=True),
     )
     assert f"{len(dropped)} reads were only present in one BAM file" in caplog.text
+    _check_read_counts(caplog.text, str(run.tmp("for.bam")), rev)
 
 
-@pytest.mark.xfail(strict=True, reason="bam2pairs crashes when one BAM ends before the other")
-def test_bam2pairs_with_truncated_bam(fastq_run, tmp_path):
+@pytest.mark.parametrize("truncated", ["for", "rev"])
+def test_bam2pairs_with_truncated_bam(fastq_run, tmp_path, caplog, truncated):
+    """Reads after the end of the shorter BAM have no mate and are skipped."""
     run = fastq_run()
-    rev = str(tmp_path / "rev.bam")
-    _bam_subset(str(run.tmp("rev.bam")), rev, lambda i: i < 5_990)
+    bams = {end: str(run.tmp(f"{end}.bam")) for end in ("for", "rev")}
+    n_reads = hio.check_bam_entries(bams[truncated])
+    bams[truncated] = str(tmp_path / "truncated.bam")
+    _bam_subset(str(run.tmp(f"{truncated}.bam")), bams[truncated], lambda i: i < n_reads - 10)
     out = tmp_path / "out.pairs"
-    hpi.bam2pairs(str(run.tmp("for.bam")), rev, str(out), str(run.path("info_contigs.txt")))
-    assert len(syn.read_pairs(out)) > 0
+    hpi.bam2pairs(bams["for"], bams["rev"], str(out), str(run.path("info_contigs.txt")))
+    ref = syn.read_pairs(run.tmp("valid.pairs"))
+    dropped = {f"sim{i:06d}" for i in range(n_reads - 10, n_reads)}
+    pd.testing.assert_frame_equal(
+        syn.read_pairs(out).reset_index(drop=True),
+        ref[~ref.readID.isin(dropped)].reset_index(drop=True),
+    )
+    assert "10 reads were only present in one BAM file" in caplog.text
+    _check_read_counts(caplog.text, bams["for"], bams["rev"])
+
+
+def test_log_file_handler_leaves_other_handlers(tmp_path):
+    """set_file_handler replaces the handler it set before, and only that one."""
+    import logging
+
+    import hicstuff.log as hcl
+
+    before = list(hcl.logger.handlers)
+    other = logging.FileHandler(tmp_path / "other.log")
+    hcl.logger.addHandler(other)
+    try:
+        hcl.set_file_handler(str(tmp_path / "first.log"))
+        hcl.logger.info("message one")
+        hcl.set_file_handler(str(tmp_path / "second.log"))
+        hcl.logger.info("message two")
+        assert other in hcl.logger.handlers
+        # So do pytest's own handlers, a FileHandler among them
+        assert all(handler in hcl.logger.handlers for handler in before)
+        files = [h.baseFilename for h in hcl.logger.handlers if isinstance(h, logging.FileHandler)]
+        assert sorted(os.path.basename(f) for f in files if str(tmp_path) in f) == [
+            "other.log",
+            "second.log",
+        ]
+    finally:
+        hcl.logger.removeHandler(other)
+        other.close()
+    assert "message one" in (tmp_path / "first.log").read_text()
+    assert "message two" not in (tmp_path / "first.log").read_text()
+    assert "message two" in (tmp_path / "second.log").read_text()
+    assert "message one" in (tmp_path / "other.log").read_text()
+    assert "message two" in (tmp_path / "other.log").read_text()
