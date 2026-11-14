@@ -6,6 +6,15 @@ import re
 from os.path import basename, splitext
 
 
+def _search(pattern, lines):
+    """First match of a regular expression in a list of lines, or None."""
+    for line in lines:
+        match = re.search(pattern, line)
+        if match is not None:
+            return match
+    return None
+
+
 def get_pipeline_stats(log_file):
     """Get stats after pipeline execution.
 
@@ -36,18 +45,28 @@ def get_pipeline_stats(log_file):
     with open(log_file) as file:
         log_lines = [line.rstrip() for line in file]
 
-    # 1. Number of sequenced pairs from fastqs
-    fastq_pairs = [s for s in log_lines if re.search("reads to parse", s)][0]
-    fastq_pairs = re.sub(".*INFO :: ", "", fastq_pairs)
-    fastq_pairs = re.sub(" reads to parse.*", "", fastq_pairs)
-    fastq_pairs = int(float(fastq_pairs))
+    # 1. Number (% of total) of (un)mapped reads, as aligned (after digestion
+    # at ligation sites in cutsite mode)
+    mapping = _search(r"mapped with Q >= \d+ \((\d+)/(\d+)\)", log_lines)
+    if mapping is None:
+        raise IndexError(f"No read mapping statistics found in {log_file}.")
+    tot_mapped, tot_reads = int(mapping[1]), int(mapping[2])
+    tot_unmapped = tot_reads - tot_mapped
 
-    # 2. Number (% of total) of (un)mapped reads
-    tot_mapped = [s for s in log_lines if re.search("mapped with Q ", s)][0]
-    tot_mapped = re.sub(r".*Q >= \d+ \(", "", tot_mapped)
-    tot_mapped = re.sub("/.*", "", tot_mapped)
-    tot_mapped = int(float(tot_mapped))
-    tot_unmapped = fastq_pairs * 2 - tot_mapped
+    # 2. Number of sequenced pairs, logged when counting the input reads,
+    # before digesting them at ligation sites (cutsite mode) or by iterative
+    # alignment. Without any of them (--skip-count), half the aligned reads.
+    for pattern in (
+        r"(\d+) reads found in each (?:fastq|bam) file",
+        r"Number of pairs before digestion: (\d+)",
+        r"(\d+) reads to parse",
+    ):
+        count = _search(pattern, log_lines)
+        if count is not None:
+            fastq_pairs = int(count[1])
+            break
+    else:
+        fastq_pairs = tot_reads // 2
 
     # 3. Number (% of total) of pairs
     tot_pairs = [s for s in log_lines if re.search("pairs successfully mapped", s)][0]
@@ -123,8 +142,10 @@ def write_pipeline_stats(stats, out_file):
     abnormal_pairs = stats["Weirds"]
     pcr_pairs = stats["PCR duplicates"]
     pct_pairs = round(tot_pairs / fastq_pairs * 100, 2) if fastq_pairs > 0 else 0.0
-    pct_mapped = round(tot_mapped / (fastq_pairs * 2) * 100, 2) if fastq_pairs > 0 else 0.0
-    pct_unmapped = round(tot_unmapped / (fastq_pairs * 2) * 100, 2) if fastq_pairs > 0 else 0.0
+    # Reads as aligned: more than twice the read pairs in cutsite mode
+    tot_reads = tot_mapped + tot_unmapped
+    pct_mapped = round(tot_mapped / tot_reads * 100, 2) if tot_reads > 0 else 0.0
+    pct_unmapped = round(tot_unmapped / tot_reads * 100, 2) if tot_reads > 0 else 0.0
     pct_filtered = round(filtered_pairs / tot_pairs * 100, 2) if tot_pairs > 0 else 0.0
     pct_loops_pairs = round(loops_pairs / tot_pairs * 100, 2) if tot_pairs > 0 else 0.0
     pct_uncuts_pairs = round(uncuts_pairs / tot_pairs * 100, 2) if tot_pairs > 0 else 0.0

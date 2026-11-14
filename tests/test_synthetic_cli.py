@@ -278,6 +278,13 @@ def test_stats_command(runner, fastq_run, synthetic_lib, tmp_path, monkeypatch):
     result = invoke(runner, "stats", fastq_run("bowtie2", "iterative").log)
     assert f"Total read pairs:   {synthetic_lib.params.n_pairs:,}" in result.output
     assert "PCR duplicates:" in result.output
+    result = invoke(runner, "stats", fastq_run("bowtie2", "normal").log)
+    assert f"Total read pairs:   {synthetic_lib.params.n_pairs:,}" in result.output
+
+
+def test_stats_command_without_mapping(runner, matrices):
+    result = invoke(runner, "stats", matrices["graal"]["run"].log, exit_code=1)
+    assert "No read mapping statistics found" in text(result)
 
 
 # ---------------------------------------------------------------------------

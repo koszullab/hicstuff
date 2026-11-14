@@ -1597,5 +1597,8 @@ def _missview(genome, output, read_len, aligner, resolution, force, threads, tmp
 @click.argument("log_file")
 def stats(log_file):
     """Extract mapping statistics from a hicstuff pipeline log file."""
-    pipeline_stats = hcstats.get_pipeline_stats(log_file)
+    try:
+        pipeline_stats = hcstats.get_pipeline_stats(log_file)
+    except IndexError as err:
+        raise click.ClickException(str(err)) from err
     hcstats.print_pipeline_stats(pipeline_stats)
