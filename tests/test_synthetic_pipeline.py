@@ -211,36 +211,52 @@ def test_filter_events_match_truth(run, synthetic_lib):
     pairs = load_pairs(run.tmp("valid_idx.pairs"))
     main = pairs[pairs["sub"] == "00"]
     extra = pairs[pairs["sub"] != "00"]
-    expected = [truth_class(row, thr_uncut, thr_loop) for row in truth.loc[main.base].itertuples()]
-    expected += [
-        classify(*row[1:], thr_uncut, thr_loop)
-        for row in extra[
-            ["chr1", "frag1", "strand1", "pos1", "chr2", "frag2", "strand2", "pos2"]
-        ].itertuples()
-    ]
-    expected = pd.Series(expected).value_counts()
+    # Event type of every pair, predicted from the truth (from the observed
+    # mates for the extra pairs of cut chimeric reads), keyed by read ID.
+    cols = ["chr1", "frag1", "strand1", "pos1", "chr2", "frag2", "strand2", "pos2"]
+    expected = pd.concat(
+        [
+            pd.Series(
+                [
+                    truth_class(row, thr_uncut, thr_loop)
+                    for row in truth.loc[main.base].itertuples()
+                ],
+                index=main.readID.values,
+                dtype=object,
+            ),
+            pd.Series(
+                [classify(*row[1:], thr_uncut, thr_loop) for row in extra[cols].itertuples()],
+                index=extra.readID.values,
+                dtype=object,
+            ),
+        ]
+    )
+    counts = expected.value_counts()
     discarded, loops, uncuts, weirds = log_value(
         run, r"(\d+) pairs discarded: Loops: (\d+), Uncuts: (\d+), Weirds: (\d+)"
     )
-    assert loops == expected.get("loop", 0)
-    assert uncuts == expected.get("uncut", 0)
-    assert weirds == expected.get("weird", 0) == 0
+    assert loops == counts.get("loop", 0)
+    assert uncuts == counts.get("uncut", 0)
+    assert weirds == counts.get("weird", 0) == 0
     assert discarded == loops + uncuts + weirds
 
-    # Every injected loop and uncut that aligned was filtered out, and they
-    # make up most of the discarded events.
+    # The discarded pairs are exactly the predicted ones, not just as many.
     kept = load_pairs(run.tmp("valid_idx_filtered.pairs"))
     assert len(kept) == len(pairs) - discarded
-    kinds = truth.loc[main.base, "kind"]
-    for kind, count in (("loop", loops), ("uncut", uncuts)):
-        injected = set(kinds.index[kinds == kind])
-        assert len(injected) > 0
-        assert injected.isdisjoint(kept.base)
-        assert len(injected) <= count
-    rate = len(set(kinds.index[kinds == "loop"])) / len(main)
-    assert rate == pytest.approx(synthetic_lib.params.loop_rate, rel=0.25)
-    rate = len(set(kinds.index[kinds == "uncut"])) / len(main)
-    assert rate == pytest.approx(synthetic_lib.params.uncut_rate, rel=0.25)
+    removed = set(pairs.readID) - set(kept.readID)
+    assert removed == set(expected.index[expected.isin(["loop", "uncut", "weird"])])
+
+    # Each count is the injected events of that kind, all of them discarded,
+    # plus the genuine contacts (or cutsite pieces) within the threshold,
+    # which hicstuff cannot tell apart from them.
+    kinds = pd.Series(truth.loc[main.base, "kind"].values, index=main.readID.values)
+    params = synthetic_lib.params
+    for kind, rate in (("loop", params.loop_rate), ("uncut", params.uncut_rate)):
+        injected = kinds.index[kinds == kind]
+        assert (expected.loc[injected] == kind).all()
+        assert set(injected) <= removed
+        # The injected events align at their simulated rate.
+        assert len(injected) / len(main) == pytest.approx(rate, rel=0.25)
 
 
 def test_pcr_duplicates_removed(run, synthetic_lib):
