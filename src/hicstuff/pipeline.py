@@ -1205,9 +1205,12 @@ def full_pipeline(
     # The final pairs are the input file itself when starting from indexed
     # pairs without filtering: it must be neither moved nor deleted.
     is_input = p == pathlib.Path(input1).absolute()
+    # The file may already be in out_dir, even when named through another
+    # path (tmp_dir == out_dir, a symbolic link to out_dir).
+    in_out_dir = pairsf.exists() and os.path.samefile(p, pairsf)
     # Only rename (move) a temporary file; otherwise copy, unless the file
     # is already in out_dir.
-    if p != pairsf:
+    if not in_out_dir:
         if p.parent == out_dir_abs / "tmp" and not is_input:
             p.rename(pairsf)
         else:
@@ -1215,7 +1218,7 @@ def full_pipeline(
 
     # Sort and compress final pairs file
     sort_and_compress_pairs(str(pairsf), str(pairsf) + ".gz", tmp_dir=tmp_dir, threads=threads)
-    if not (is_input and p == pairsf):
+    if not (is_input and in_out_dir):
         os.remove(pairsf)
 
     # Clean temporary files

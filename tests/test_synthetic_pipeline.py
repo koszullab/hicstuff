@@ -633,6 +633,36 @@ def test_tmp_dir_is_out_dir(final_pairs, synthetic_lib, tmp_path):
     assert src.exists()
 
 
+@pytest.mark.parametrize("linked", ["out_dir", "tmp_dir"])
+def test_final_pairs_reached_through_a_link(final_pairs, synthetic_lib, tmp_path, linked):
+    """out_dir, or a tmp_dir equal to it, may be named through a symbolic link:
+    a final pairs file already in out_dir is still recognised as such."""
+    real, link = tmp_path / "real", tmp_path / "link"
+    real.mkdir()
+    link.symlink_to(real, target_is_directory=True)
+    if linked == "out_dir":
+        # The input pairs are in out_dir, which is named through the link
+        src, final = real / "input.pairs", "input.pairs"
+        dirs = dict(out_dir=str(link))
+    else:
+        # The final pairs are a temporary file in out_dir, as tmp_dir
+        src, final = tmp_path / "input.pairs", "valid_idx_pcrfree.pairs"
+        dirs = dict(out_dir=str(real), tmp_dir=str(link))
+    src.write_text(final_pairs.read_text())
+    hpi.full_pipeline(
+        genome=str(synthetic_lib.genome),
+        input1=str(src),
+        start_stage="pairs_idx",
+        enzyme=syn.LIBRARY_ENZYME,
+        mat_fmt="graal",
+        pcr_duplicates=linked == "tmp_dir",
+        **dirs,
+    )
+    assert _sorted_lines(real / f"{final}.gz") == _sorted_lines(final_pairs)
+    assert _sorted_lines(src) == _sorted_lines(final_pairs)
+    assert (real / final).exists() == (linked == "out_dir")
+
+
 def _bam_subset(src, dst, keep):
     import pysam
 
