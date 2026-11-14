@@ -570,13 +570,18 @@ def test_convert(runner, matrices, synthetic_lib, tmp_path):
     )
 
 
-@pytest.mark.xfail(strict=True, reason="convert -g fails when fragments already have gc_content")
 def test_convert_gc_with_hicstuff_fragments(runner, matrices, synthetic_lib, tmp_path):
+    """-g recomputes the gc_content column of hicstuff's fragments_list.txt."""
     files = matrices["graal"]
+    frags = pd.read_csv(files["frags"], sep="\t")
+    altered = tmp_path / "frags.tsv"
+    frags.assign(gc_content=-1.0).to_csv(altered, sep="\t", index=False)
     invoke(
-        runner, "convert", "-T", "cool", "-g", synthetic_lib.genome, "-f", files["frags"],
+        runner, "convert", "-T", "cool", "-g", synthetic_lib.genome, "-f", altered,
         "-c", files["chroms"], files["mat"], tmp_path / "out",
     )  # fmt: skip
+    bins = cooler.Cooler(str(tmp_path / "out.cool")).bins()[:]
+    np.testing.assert_allclose(bins.gc_content, frags.gc_content)
 
 
 # ---------------------------------------------------------------------------
