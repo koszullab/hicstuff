@@ -756,14 +756,15 @@ def load_bedgraph2d(filename, bin_size=None, fragments_file=None):
             prev_frags = len(frag_map)
             for bin_id, bin_pos in enumerate(range(0, size, bin_size)):
                 frag_map[(chrom, bin_pos)] = bin_id + prev_frags
-            n_bins = size // bin_size
+            # The last bin is shorter unless size is a multiple of bin_size
+            starts = np.arange(0, size, bin_size)
             chrom_frags.append(
                 pd.DataFrame(
                     {
-                        "id": range(1, n_bins + 1),
-                        "chrom": np.repeat(chrom, n_bins),
-                        "start_pos": range(0, size, bin_size),
-                        "end_pos": range(bin_size, size + bin_size, bin_size),
+                        "id": range(1, len(starts) + 1),
+                        "chrom": np.repeat(chrom, len(starts)),
+                        "start_pos": starts,
+                        "end_pos": np.minimum(starts + bin_size, size),
                     }
                 )
             )
