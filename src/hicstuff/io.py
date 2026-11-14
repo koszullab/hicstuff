@@ -1249,7 +1249,7 @@ def reorder_fasta(genome, output=None, threshold=100000):
         output = "{}_renamed.fa".format(genome.split(".")[0])
 
     handle = SeqIO.parse(genome, "fasta")
-    handle_to_write = sorted((len(u) for u in handle if len(u) > threshold), reverse=True)
+    handle_to_write = sorted((u for u in handle if len(u) > threshold), key=len, reverse=True)
     SeqIO.write(handle_to_write, output, "fasta")
 
 
