@@ -439,9 +439,12 @@ def test_binned_mcool(final_pairs, synthetic_lib, run_pipeline, tmp_path):
     assert not run.path("abs_fragments_contacts_weighted.cool").exists()
     resolutions = sorted(int(p.split("/")[-1]) for p in cooler.fileops.list_coolers(mcool))
     assert resolutions == [1000, 2000, 5000, 10000, 20000, 50000, 100000]
+    sizes = synthetic_lib.chrom_sizes
     for res in resolutions:
         clr = cooler.Cooler(f"{mcool}::/resolutions/{res}")
-        assert clr.binsize == res
+        bins = clr.bins()[:]
+        assert (bins.start % res == 0).all()
+        assert len(bins) == sum(-(-size // res) for size in sizes.values())
         assert clr.pixels()[:]["count"].sum() == len(pairs)
 
     # Base resolution: pixels are the pairs binned at 1 kb, and balanced.

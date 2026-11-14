@@ -18,6 +18,8 @@ from hicstuff import __version__
 from hicstuff.cli import cli
 from tests import synthetic as syn
 
+PANDAS_3 = int(pd.__version__.split(".")[0]) >= 3
+
 COMMANDS = [
     "convert",
     "cutsite",
@@ -352,8 +354,10 @@ def test_view_rejects_unknown_transform(runner, matrices, tmp_path):
         pytest.param(
             ["-b", "3", "-l"],
             marks=pytest.mark.xfail(
+                PANDAS_3,
                 strict=True,
-                reason="bin starts become NaN: groupby().apply() result is assigned by index",
+                reason="with pandas copy-on-write, view's in-place shift of bin starts is lost "
+                "and the groupby().apply() result is assigned by index: starts become NaN",
             ),
         ),
         ["-b", "2kb", "-l"],
