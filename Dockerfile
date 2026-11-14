@@ -6,7 +6,7 @@ COPY --chown=$MAMBA_USER:$MAMBA_USER . ./
 
 ## Install system / compiled tools (not available via pip)
 RUN micromamba install -y -n base -c conda-forge -c bioconda \
-    "python<3.14" \
+    "python=3.13" \
     bowtie2 bwa minimap2 samtools htslib && \
     micromamba clean --all --yes
 
