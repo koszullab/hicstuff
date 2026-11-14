@@ -43,10 +43,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # tabix provides bgzip, used to compress the final pairs file
       - name: Install system dependencies
         run: >-
           sudo apt-get update &&
-          sudo apt-get install -y bowtie2 bwa minimap2 samtools
+          sudo apt-get install -y bowtie2 bwa minimap2 samtools tabix
           ${{ matrix.extra-apt-packages }}
 
       - name: Install uv
