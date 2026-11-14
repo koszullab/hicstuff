@@ -18,8 +18,6 @@ from hicstuff import __version__
 from hicstuff.cli import cli
 from tests import synthetic as syn
 
-PANDAS_3 = int(pd.__version__.split(".")[0]) >= 3
-
 COMMANDS = [
     "convert",
     "cutsite",
@@ -356,15 +354,7 @@ def test_view_rejects_unknown_transform(runner, matrices, tmp_path):
         ["-n", "-N", "2"],
         ["-t", "3", "-d"],
         ["-b", "3"],
-        pytest.param(
-            ["-b", "3", "-l"],
-            marks=pytest.mark.xfail(
-                PANDAS_3,
-                strict=True,
-                reason="with pandas copy-on-write, view's in-place shift of bin starts is lost "
-                "and the groupby().apply() result is assigned by index: starts become NaN",
-            ),
-        ),
+        ["-b", "3", "-l"],
         ["-b", "2kb", "-l"],
         ["-b", "2kb", "-r", "chr2:1000-9000"],
         ["-r", "chr1"],
@@ -404,6 +394,11 @@ def test_view_options(runner, matrices, plotted, synthetic_lib, tmp_path, fmt, o
         assert array.shape[0] == array.shape[1] <= n
     if "-l" in options:
         assert len(kwargs["chrom_starts"]) == 2
+    if key == "-b 3" and "-l" in options:
+        # Each bin is named after its first fragment
+        chroms = frags.chrom[::3].to_numpy()
+        expected = np.flatnonzero(chroms[1:] != chroms[:-1]) + 1
+        np.testing.assert_array_equal(kwargs["chrom_starts"], expected)
 
 
 def test_view_region_bounds(runner, matrices, plotted, synthetic_lib, tmp_path):

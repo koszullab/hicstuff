@@ -630,17 +630,12 @@ def view(
                 binned_map = hcs.bin_sparse(M=sparse_map_in, subsampling_factor=binning_val)
                 if frags_df is not None:
                     binned_frags = frags_df.iloc[::binning_val, :].reset_index(drop=True)
-
-                    def _shift_min(x):
-                        try:
-                            x[x == min(x)] = 0
-                        except ValueError:
-                            pass
-                        return x
-
-                    binned_frags.start_pos = binned_frags.groupby(
-                        "chrom", sort=False
-                    ).start_pos.apply(_shift_min)
+                    # The first bin of each chromosome starts at 0, so that
+                    # chromosome starts show as a drop in start positions.
+                    first = binned_frags.groupby("chrom", sort=False).start_pos.transform("min")
+                    binned_frags["start_pos"] = binned_frags.start_pos.where(
+                        binned_frags.start_pos != first, 0
+                    )
                 else:
                     binned_frags = frags_df
         else:
