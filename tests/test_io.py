@@ -4,7 +4,10 @@ import bz2
 import filecmp
 import gzip
 import os
+import random
 import re
+import shutil
+import subprocess
 import zipfile
 from pathlib import Path
 from tempfile import NamedTemporaryFile
@@ -20,6 +23,8 @@ import hicstuff.io as hio
 GENOME = "test_data/genome/seq.fa"
 MAT_GRAAL = hio.load_sparse_matrix("test_data/abs_fragments_contacts_weighted.txt")
 FRAGS_GRAAL = pd.read_csv("test_data/fragments_list.txt", delimiter="\t")
+PAIRS_FILE = "test_data/valid_idx_filtered.pairs"
+PAIRS_SORT_KEYS = ["chr1", "chr2", "pos1", "pos2"]
 
 
 def test_compress():
@@ -61,6 +66,117 @@ def test_compress():
         assert hio.is_compressed(fh.name) == exp_compress[fh.name]
         # Clean files
         os.unlink(fh.name)
+
+
+@pytest.mark.parametrize("compression", ["none", "gzip", "bz2", "zip"])
+def test_read_compressed_binary(tmp_path, compression):
+    """read_compressed must return the decompressed bytes in "rb" mode."""
+    plain = tmp_path / "content.txt"
+    plain.write_bytes(b"xyz\n")
+    path = plain if compression == "none" else _compress(plain, compression)
+    with hio.read_compressed(str(path), "rb") as f:
+        assert f.read() == b"xyz\n"
+
+
+def _compress(plain, compression):
+    """Compress a file with gzip, bgzip, bz2 or zip and return the new path."""
+    if compression in ("gzip", "bgzip"):
+        out = plain.with_name(plain.name + ".gz")
+        if compression == "bgzip":
+            with open(out, "wb") as f:
+                subprocess.run(["bgzip", "-c", str(plain)], stdout=f, check=True)
+        else:
+            with gzip.open(out, "wb") as f:
+                f.write(plain.read_bytes())
+    elif compression == "bz2":
+        out = plain.with_name(plain.name + ".bz2")
+        with bz2.open(out, "wb") as f:
+            f.write(plain.read_bytes())
+    else:
+        out = plain.with_name(plain.name + ".zip")
+        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
+            z.write(plain, arcname=plain.name)
+    return out
+
+
+def _write_shuffled_pairs(path, n_copies=1):
+    """Write the test pairs, data lines shuffled, and return (header, data)."""
+    with open(PAIRS_FILE) as f:
+        lines = f.read().splitlines()
+    header = [line for line in lines if line.startswith("#")]
+    data = [line for line in lines if not line.startswith("#")] * n_copies
+    random.Random(42).shuffle(data)
+    path.write_text("\n".join(header + data) + "\n")
+    return header, data
+
+
+@pytest.mark.parametrize("compression", ["gzip", "bgzip", "bz2", "zip"])
+def test_sort_compressed_pairs(tmp_path, compression):
+    """Sorting compressed pairs must give the same output as plain pairs."""
+    if compression == "bgzip" and shutil.which("bgzip") is None:
+        pytest.skip("bgzip is not installed")
+    plain = tmp_path / "unsorted.pairs"
+    header, data = _write_shuffled_pairs(plain)
+    compressed = _compress(plain, compression)
+    assert hio.is_compressed(str(compressed))
+    assert hio.get_pairs_header(str(compressed)) == header
+
+    sorted_plain = tmp_path / "sorted_plain.pairs"
+    sorted_comp = tmp_path / "sorted_compressed.pairs"
+    hio.sort_pairs(str(plain), str(sorted_plain), keys=PAIRS_SORT_KEYS)
+    hio.sort_pairs(str(compressed), str(sorted_comp), keys=PAIRS_SORT_KEYS)
+
+    # The output is plain text, identical to the one from the plain input
+    assert sorted_comp.read_bytes() == sorted_plain.read_bytes()
+    lines = sorted_comp.read_text().splitlines()
+    # The header is kept, with the new sort order
+    assert "#sorted: readID" in header
+    expected_header = [
+        "#sorted: chr1-chr2-pos1-pos2" if line.startswith("#sorted") else line for line in header
+    ]
+    assert lines[: len(header)] == expected_header
+    sorted_data = lines[len(header) :]
+    assert sorted(sorted_data) == sorted(data)
+    keys = [(f[1], f[3], int(f[2]), int(f[4])) for f in (line.split("\t") for line in sorted_data)]
+    assert keys == sorted(keys)
+
+
+def test_sort_compressed_pairs_header_only(tmp_path):
+    """A compressed pairs file without any pair gives a header-only output."""
+    plain = tmp_path / "empty.pairs"
+    plain.write_text("## pairs format v1.0\n#sorted: readID\n#columns: readID chr1 pos1\n")
+    out = tmp_path / "sorted.pairs"
+    hio.sort_pairs(str(_compress(plain, "gzip")), str(out), keys=["chr1", "pos1"])
+    assert (
+        out.read_text() == "## pairs format v1.0\n#sorted: chr1-pos1\n#columns: readID chr1 pos1\n"
+    )
+
+
+def test_sort_compressed_pairs_failure_raises(tmp_path):
+    """A failing UNIX sort must raise, also when it stops reading early."""
+    plain = tmp_path / "unsorted.pairs"
+    # Larger than the pipe buffers, so that sort exits while pairs are still sent
+    _write_shuffled_pairs(plain, n_copies=100)
+    assert plain.stat().st_size > 2 * 1024 * 1024
+    with pytest.raises(RuntimeError, match="Sorting pairs"):
+        hio.sort_pairs(
+            str(_compress(plain, "gzip")),
+            str(tmp_path / "out.pairs"),
+            keys=PAIRS_SORT_KEYS,
+            buffer="not_a_size",
+        )
+
+
+def test_sort_truncated_pairs_raises(tmp_path):
+    """A truncated compressed file must raise instead of being sorted partially."""
+    plain = tmp_path / "unsorted.pairs"
+    _write_shuffled_pairs(plain, n_copies=100)
+    compressed = _compress(plain, "gzip")
+    truncated = tmp_path / "truncated.pairs.gz"
+    raw = compressed.read_bytes()
+    truncated.write_bytes(raw[: len(raw) // 2])
+    with pytest.raises(EOFError):
+        hio.sort_pairs(str(truncated), str(tmp_path / "out.pairs"), keys=PAIRS_SORT_KEYS)
 
 
 def test_save_bedgraph2d():
