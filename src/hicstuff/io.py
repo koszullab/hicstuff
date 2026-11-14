@@ -1363,7 +1363,9 @@ def check_is_fasta(in_file):
     try:
         with read_compressed(in_file) as handle:
             fasta = any(SeqIO.parse(handle, "fasta"))
-    except FileNotFoundError:
+    # Biopython >= 1.85 raises ValueError on text that is not FASTA instead of
+    # yielding no record (UnicodeDecodeError, for binary input, is a ValueError)
+    except (FileNotFoundError, ValueError):
         fasta = False
 
     return fasta

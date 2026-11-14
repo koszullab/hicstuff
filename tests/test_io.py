@@ -240,6 +240,21 @@ def test_check_fasta_index():
         os.unlink(f.name + f".{i}.bt2")
 
 
+def test_check_is_fasta(tmp_path):
+    """FASTA input, plain or compressed, is recognised; anything else is not."""
+    assert hio.check_is_fasta(GENOME)
+    fasta_gz = tmp_path / "seq.fa.gz"
+    with open(GENOME, "rb") as src, gzip.open(fasta_gz, "wb") as dst:
+        shutil.copyfileobj(src, dst)
+    assert hio.check_is_fasta(str(fasta_gz))
+    # A text file that is not FASTA, a binary file, and a bowtie2 index prefix
+    assert not hio.check_is_fasta(PAIRS_FILE)
+    binary = tmp_path / "index.1.bt2"
+    binary.write_bytes(bytes(range(256)) * 4)
+    assert not hio.check_is_fasta(str(binary))
+    assert not hio.check_is_fasta(str(tmp_path / "index"))
+
+
 def test_gc_bins():
     """Test function to compute GC content per bin in genome"""
     bins = FRAGS_GRAAL
