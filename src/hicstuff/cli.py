@@ -1295,8 +1295,8 @@ def convert(contact_map, prefix, frags, chroms, force, genome, out_fmt):
     if "size" not in frags_df.columns:
         frags_df = frags_df.join(pd.DataFrame({"size": size}))
     if genome:
-        gc = hio.gc_bins(genome, frags_df)
-        frags_df = frags_df.join(pd.DataFrame({"gc_content": gc}))
+        # Replaces the gc_content column of hicstuff's fragments_list.txt
+        frags_df = frags_df.assign(gc_content=hio.gc_bins(genome, frags_df))
     hio.flexible_hic_saver(
         mat=mat.astype(int),
         out_prefix=prefix,
