@@ -124,8 +124,9 @@ def load_sparse_matrix(mat_path, binning=1, dtype=np.float64):
     sparse_mat = _cols_to_sparse(cols_arr[1:, :], shape=shape, dtype=dtype)
 
     if binning == "auto":
-        num_bins = max(sparse_mat.shape) + 1
-        subsampling_factor = num_bins // DEFAULT_MAX_MATRIX_SHAPE
+        # Smallest factor that keeps the matrix within the maximum shape
+        num_bins = max(sparse_mat.shape)
+        subsampling_factor = max(1, -(-num_bins // DEFAULT_MAX_MATRIX_SHAPE))
     else:
         subsampling_factor = binning
     sparse_mat = hcs.bin_sparse(sparse_mat, subsampling_factor=subsampling_factor)
