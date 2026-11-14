@@ -57,7 +57,9 @@ def test_sort_pairs(fastq_run, tmp_path, keys):
 
 
 def test_sort_pairs_rejects_unknown_column(fastq_run, tmp_path):
-    with pytest.raises(KeyError):
+    # KeyError from the key lookup, or ValueError once the keys are validated up
+    # front (koszullab/hicstuff#101)
+    with pytest.raises((KeyError, ValueError)):
         hio.sort_pairs(
             str(fastq_run().tmp("valid_idx.pairs")), str(tmp_path / "x.pairs"), keys=["mapq"]
         )
