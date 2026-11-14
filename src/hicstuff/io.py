@@ -371,6 +371,8 @@ def read_compressed(filename, mode="r"):
     ----------
     filename : str
         The path to the input file
+    mode : str
+        "r" to read text, "rb" to read bytes.
 
     Returns
     -------
@@ -408,12 +410,14 @@ def read_compressed(filename, mode="r"):
     elif comp == "bz2":
         return bz2.open(filename, mode_map[mode])
     elif comp == "zip":
-        zip_arch = zipfile.ZipFile(filename, mode)
+        zip_arch = zipfile.ZipFile(filename, "r")
         if len(zip_arch.namelist()) > 1:
             raise OSError("Only a single fastq file must be in the zip archive.")
         else:
+            zip_content = zip_arch.open(zip_arch.namelist()[0], "r")
+            if mode == "rb":
+                return zip_content
             # ZipFile opens as bytes by default, using io to read as text
-            zip_content = zip_arch.open(zip_arch.namelist()[0], mode)
             return io.TextIOWrapper(zip_content, encoding="utf-8")
     else:
         return open(filename, mode)
@@ -1105,13 +1109,14 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
     Parameters
     ----------
     in_file : str
-        Path to the unsorted input file
+        Path to the unsorted input file. It can be compressed (gzip, bgzip,
+        bzip2 or zip).
     out_file : str
-        Path to the sorted output file.
+        Path to the sorted output file. It is not compressed.
     keys : list of str
         list of columns to use as sort keys. Each column can be one of readID,
-        chr1, pos1, chr2, pos2, frag1, frag2. Key priorities are according to
-        the order in the list.
+        chr1, pos1, chr2, pos2, strand1, strand2, frag1, frag2. Key priorities
+        are according to the order in the list.
     tmp_dir : str
         Path to the directory where temporary files will be created. Defaults
         to current directory.
@@ -1119,6 +1124,13 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
         Number of parallel sorting threads.
     buffer : str
         Buffer size used for sorting. Consists of a number and a unit.
+
+    Raises
+    ------
+    ValueError
+        If a key is not one of the columns above. Nothing is written then.
+    RuntimeError
+        If sort fails.
     """
     # TODO: Write a pure python implementation to drop GNU coreutils depencency,
     # could be inspired from: https://stackoverflow.com/q/14465154/8440675
@@ -1154,12 +1166,14 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
         "frag2": "-k9,9n",
     }
 
-    # transform column names to corresponding sort keys
-    try:
-        sort_keys = map(lambda k: key_map[k], keys)
-    except KeyError:
-        print("Unkown column name.")
-        raise
+    # Transform column names to the corresponding sort keys, before anything
+    # is written
+    unknown = [k for k in keys if k not in key_map]
+    if unknown:
+        raise ValueError(
+            f"Unknown sort key(s) {', '.join(unknown)}: choose among {', '.join(key_map)}."
+        )
+    sort_keys = [key_map[k] for k in keys]
     # Rewrite header with new sorting order
     header = get_pairs_header(in_file)
     with open(out_file, "w") as output:
@@ -1169,24 +1183,34 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
             else:
                 output.write(line + "\n")
 
-    # Sort pairs and append to file.
-    with open(out_file, "a") as output:
-        grep_proc = sp.Popen(["grep", "-v", "^#", in_file], stdout=sp.PIPE)
-        sort_cmd = ["sort", f"-S {buffer}"] + list(sort_keys)
-        if tmp_dir is not None:
-            sort_cmd.append(f"--temporary-directory={tmp_dir}")
-        if parallel_ok:
-            sort_cmd.append(f"--parallel={threads}")
-        sort_proc = sp.Popen(sort_cmd, stdin=grep_proc.stdout, stdout=output)
-        # Let grep receive SIGPIPE if sort exits early
-        grep_proc.stdout.close()
-        sort_proc.communicate()
-        grep_proc.wait()
-    # grep exits with 1 when there are no pairs (only a header), which is fine
-    if grep_proc.returncode > 1 or sort_proc.returncode != 0:
+    # Sort pairs and append to file. The pairs are streamed to sort from
+    # Python, through a decompressing reader if the input is compressed.
+    sort_cmd = ["sort", f"-S {buffer}"] + sort_keys
+    if tmp_dir is not None:
+        sort_cmd.append(f"--temporary-directory={tmp_dir}")
+    if parallel_ok:
+        sort_cmd.append(f"--parallel={threads}")
+    with read_compressed(in_file, "rb") as pairs, open(out_file, "ab") as output:
+        sort_proc = sp.Popen(sort_cmd, stdin=sp.PIPE, stdout=output, bufsize=1 << 20)
+        try:
+            # Skip the header, and any other comment line
+            sort_proc.stdin.writelines(line for line in pairs if not line.startswith(b"#"))
+        except BrokenPipeError:
+            pass  # sort exited early: its exit code is checked below
+        except BaseException:
+            # The input could not be read: do not let sort finish on partial input
+            sort_proc.kill()
+            raise
+        finally:
+            try:
+                sort_proc.stdin.close()
+            except BrokenPipeError:
+                pass
+            sort_proc.wait()
+    if sort_proc.returncode != 0:
         raise RuntimeError(
             f"Sorting pairs from {in_file} into {out_file} failed "
-            f"(grep exit code {grep_proc.returncode}, sort exit code {sort_proc.returncode})."
+            f"(sort exit code {sort_proc.returncode})."
         )
 
 
@@ -1195,8 +1219,9 @@ def get_pairs_header(pairs):
 
     Parameters
     ----------
-    pairs : str or file object
-        Path to the pairs file.
+    pairs : str
+        Path to the pairs file. It can be compressed (gzip, bgzip, bzip2 or
+        zip).
 
     Returns
     -------
@@ -1217,8 +1242,7 @@ def get_pairs_header(pairs):
         ['#sorted: chr1-chr2']
         >>> os.unlink(p.name)
     """
-    # Open file if needed
-    with open(pairs) as pairs:
+    with read_compressed(pairs) as pairs:
         # Store header lines into a list
         header = []
         line = pairs.readline()
@@ -1348,7 +1372,9 @@ def check_is_fasta(in_file):
     try:
         with read_compressed(in_file) as handle:
             fasta = any(SeqIO.parse(handle, "fasta"))
-    except FileNotFoundError:
+    # Biopython >= 1.85 raises ValueError on text that is not FASTA instead of
+    # yielding no record (UnicodeDecodeError, for binary input, is a ValueError)
+    except (FileNotFoundError, ValueError):
         fasta = False
 
     return fasta
