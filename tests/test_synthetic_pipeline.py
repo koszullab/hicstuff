@@ -332,7 +332,6 @@ def test_digestion_matches_truth(fastq_run, synthetic_lib):
     assert list(chroms.cumul_length) == [0] + list(np.cumsum(n_frags)[:-1])
 
 
-@pytest.mark.xfail(strict=True, reason="digest divides gc_fraction() (already 0-1) by 100")
 def test_fragment_gc_content(fastq_run, synthetic_lib):
     frags = pd.read_csv(fastq_run().path("fragments_list.txt"), sep="\t")
     seqs = synthetic_lib.chroms
