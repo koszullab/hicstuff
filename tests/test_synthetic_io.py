@@ -378,7 +378,7 @@ def test_to_dade_matrix(tmp_path, caplog):
         assert not A[0, :].any() and not A[:, 0].any()
 
 
-def test_dade_to_graal(tmp_path):
+def test_dade_to_graal(tmp_path, monkeypatch):
     header = ['"RST"', "0~chr1~0~1~101", "1~chr1~1~101~251", "2~chr2~0~1~51"]
     rows = [
         ["0~chr1~0~1~101", "5"],
@@ -411,6 +411,15 @@ def test_dade_to_graal(tmp_path):
     assert lines[1:] == ["0\t0\t5", "1\t0\t2", "1\t1\t4", "2\t1\t1", "2\t2\t3"]
     mat = hio.load_sparse_matrix(outputs["mat"])
     assert mat.toarray().tolist() == [[5, 0, 0], [2, 4, 0], [0, 1, 3]]
+    # Default output names are graal's, one per file
+    monkeypatch.chdir(tmp_path)
+    hio.dade_to_graal(str(dade))
+    for name, output in [
+        ("abs_fragments_contacts_weighted.txt", "mat"),
+        ("info_contigs.txt", "contigs"),
+        ("fragments_list.txt", "frags"),
+    ]:
+        assert (tmp_path / name).read_text() == open(outputs[output]).read()
 
 
 @pytest.mark.skipif(importlib.util.find_spec("redis") is not None, reason="redis is installed")
