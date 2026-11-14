@@ -40,16 +40,32 @@ stream_handler.setLevel(logging.DEBUG)
 stream_handler.setFormatter(stdout_formatter)
 logger.addHandler(stream_handler)
 
+# The log file handler set by set_file_handler, if any
+_file_handler = None
+
+
+def remove_file_handler():
+    """Detach and close the log file handler set by set_file_handler, if
+    any. Other handlers of the logger are left alone."""
+    global _file_handler
+    if _file_handler is not None:
+        logger.removeHandler(_file_handler)
+        _file_handler.close()
+        _file_handler = None
+
 
 def set_file_handler(log_path, formatter=logfile_formatter):
-    """Change the file handler for custom log file location"""
+    """Change the file handler for custom log file location
 
+    The handler set by a previous call is replaced. File handlers attached
+    to the logger by other code (an application, pytest) are left alone.
+    """
+    global _file_handler
     filehandler = logging.FileHandler(log_path, "a")
     filehandler.setLevel(logging.INFO)
     filehandler.setFormatter(formatter)
-    for hdlr in logger.handlers[:]:  # remove the existing file handlers
-        if isinstance(hdlr, logging.FileHandler):
-            logger.removeHandler(hdlr)
+    remove_file_handler()
+    _file_handler = filehandler
     logger.addHandler(filehandler)  # set the new handler
 
 
