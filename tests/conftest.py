@@ -10,7 +10,6 @@ import os
 os.environ.setdefault("MPLBACKEND", "Agg")
 
 import glob  # noqa: E402
-import logging  # noqa: E402
 import shutil  # noqa: E402
 import subprocess as sp  # noqa: E402
 
@@ -21,6 +20,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import pytest  # noqa: E402
 
+import hicstuff.log as hcl  # noqa: E402
 import hicstuff.pipeline as hpi  # noqa: E402
 from tests import synthetic as syn  # noqa: E402
 
@@ -29,26 +29,12 @@ MAPPINGS = ("normal", "iterative", "cutsite")
 EXTERNAL_TOOLS = ("bowtie2", "bowtie2-build", "bwa", "minimap2", "samtools")
 
 
-def detach_file_handlers():
-    """Remove the log file handlers the pipeline attaches to the root logger,
-    so that a run does not keep writing into the log of a previous one.
-
-    hicstuff attaches plain ``logging.FileHandler`` objects. Subclasses, such
-    as the handler of pytest's ``--log-file``, are left alone: closing it
-    would silently drop the log of every later test.
-    """
-    root = logging.getLogger()
-    for handler in root.handlers[:]:
-        if type(handler) is logging.FileHandler:
-            root.removeHandler(handler)
-            handler.close()
-
-
 @pytest.fixture(autouse=True)
 def _close_figures_and_logs():
     yield
     plt.close("all")
-    detach_file_handlers()
+    # The log file of a pipeline run must not catch the logs of later tests
+    hcl.remove_file_handler()
 
 
 @pytest.fixture(scope="session")
@@ -112,7 +98,7 @@ def run_pipeline(tmp_path_factory, require_tools):
             try:
                 hpi.full_pipeline(**kwargs)
             finally:
-                detach_file_handlers()
+                hcl.remove_file_handler()
             cache[name] = PipelineRun(out_dir, kwargs)
         return cache[name]
 
