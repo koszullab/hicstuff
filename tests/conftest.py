@@ -31,10 +31,15 @@ EXTERNAL_TOOLS = ("bowtie2", "bowtie2-build", "bwa", "minimap2", "samtools")
 
 def detach_file_handlers():
     """Remove the log file handlers the pipeline attaches to the root logger,
-    so that a run does not keep writing into the log of a previous one."""
+    so that a run does not keep writing into the log of a previous one.
+
+    hicstuff attaches plain ``logging.FileHandler`` objects. Subclasses, such
+    as the handler of pytest's ``--log-file``, are left alone: closing it
+    would silently drop the log of every later test.
+    """
     root = logging.getLogger()
     for handler in root.handlers[:]:
-        if isinstance(handler, logging.FileHandler):
+        if type(handler) is logging.FileHandler:
             root.removeHandler(handler)
             handler.close()
 
