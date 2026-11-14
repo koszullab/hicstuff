@@ -150,3 +150,35 @@ def final_pairs(fastq_run, tmp_path_factory):
     with gzip.open(run.path("valid_idx_pcrfree.pairs.gz"), "rt") as src:
         dest.write_text(src.read())
     return dest
+
+
+@pytest.fixture(scope="session")
+def matrices(final_pairs, synthetic_lib, run_pipeline, tmp_path_factory):
+    """The final pairs of the default run turned into graal, bg2 and
+    fragment-level cool matrices, keyed by format; each value is a dict with
+    the paths of the matrix, fragments_list.txt and info_contigs.txt."""
+    out = {}
+    names = {
+        "graal": "abs_fragments_contacts_weighted.txt",
+        "bg2": "abs_fragments_contacts_weighted.bg2",
+        "cool": "abs_fragments_contacts_weighted.cool",
+    }
+    for fmt, name in names.items():
+        # The pairs_idx stage sorts its input in place: give each run a copy.
+        src = tmp_path_factory.mktemp(f"in_{fmt}") / "input.pairs"
+        src.write_text(final_pairs.read_text())
+        run = run_pipeline(
+            f"pairs_idx_{fmt}",
+            genome=str(synthetic_lib.genome),
+            input1=str(src),
+            start_stage="pairs_idx",
+            enzyme=syn.LIBRARY_ENZYME,
+            mat_fmt=fmt,
+        )
+        out[fmt] = {
+            "run": run,
+            "mat": str(run.path(name)),
+            "frags": str(run.path("fragments_list.txt")),
+            "chroms": str(run.path("info_contigs.txt")),
+        }
+    return out

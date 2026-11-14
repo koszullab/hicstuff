@@ -390,25 +390,6 @@ def test_start_stages_reproduce_fastq_run(stage, fastq_run, indexed_genome, run_
     assert not run.tmp("valid_idx.pairs").exists()
 
 
-@pytest.fixture(scope="module")
-def matrices(final_pairs, synthetic_lib, run_pipeline, tmp_path_factory):
-    """The same pairs turned into graal, bg2 and (fragment-level) cool."""
-    out = {}
-    for fmt in ("graal", "bg2", "cool"):
-        # The pairs_idx stage sorts its input in place: give each run a copy.
-        src = tmp_path_factory.mktemp(f"in_{fmt}") / "input.pairs"
-        src.write_text(final_pairs.read_text())
-        out[fmt] = run_pipeline(
-            f"pairs_idx_{fmt}",
-            genome=str(synthetic_lib.genome),
-            input1=str(src),
-            start_stage="pairs_idx",
-            enzyme=syn.LIBRARY_ENZYME,
-            mat_fmt=fmt,
-        )
-    return out
-
-
 def test_graal_bg2_and_cool_agree(matrices, final_pairs, synthetic_lib):
     pairs = load_pairs(final_pairs)
     n = len(synthetic_lib.fragments())
@@ -418,33 +399,26 @@ def test_graal_bg2_and_cool_agree(matrices, final_pairs, synthetic_lib):
         (np.minimum(pairs.frag1, pairs.frag2), np.maximum(pairs.frag1, pairs.frag2)),
         1,
     )
-    frags_file = str(matrices["graal"].path("fragments_list.txt"))
-    graal = hio.load_sparse_matrix(
-        str(matrices["graal"].path("abs_fragments_contacts_weighted.txt"))
-    )
+    graal = hio.load_sparse_matrix(matrices["graal"]["mat"])
     bg2, bg2_frags, _ = hio.load_bedgraph2d(
-        str(matrices["bg2"].path("abs_fragments_contacts_weighted.bg2")),
-        fragments_file=frags_file,
+        matrices["bg2"]["mat"], fragments_file=matrices["graal"]["frags"]
     )
-    cool, cool_frags, _ = hio.load_cool(
-        str(matrices["cool"].path("abs_fragments_contacts_weighted.cool"))
-    )
+    cool, cool_frags, _ = hio.load_cool(matrices["cool"]["mat"])
     for mat in (graal, bg2, cool):
         assert mat.shape == (n, n)
         np.testing.assert_array_equal(mat.toarray(), expected)
     np.testing.assert_array_equal(bg2_frags.start_pos, cool_frags.start_pos)
 
     # graal header: rows, columns, nonzero entries
-    header = (
-        matrices["graal"].path("abs_fragments_contacts_weighted.txt").read_text().split("\n")[0]
-    )
+    with open(matrices["graal"]["mat"]) as handle:
+        header = handle.readline().rstrip("\n")
     assert header.split("\t")[:2] == [str(n), str(n)]
 
 
 @pytest.mark.xfail(strict=True, reason="pairs2matrix counts one nonzero entry too many")
 def test_graal_header_nnz(matrices):
-    path = matrices["graal"].path("abs_fragments_contacts_weighted.txt")
-    lines = path.read_text().splitlines()
+    with open(matrices["graal"]["mat"]) as handle:
+        lines = handle.read().splitlines()
     assert int(lines[0].split("\t")[2]) == len(lines) - 1
 
 
@@ -594,3 +568,42 @@ def test_pairs_input_inside_out_dir(final_pairs, synthetic_lib, tmp_path):
         out_dir=str(tmp_path),
     )
     assert (tmp_path / "input.pairs.gz").exists()
+
+
+def _bam_subset(src, dst, keep):
+    import pysam
+
+    with pysam.AlignmentFile(src, "rb") as bam, pysam.AlignmentFile(dst, "wb", template=bam) as out:
+        for i, read in enumerate(bam):
+            if keep(i):
+                out.write(read)
+
+
+def test_bam2pairs_skips_reads_missing_from_one_file(fastq_run, tmp_path, caplog):
+    """Mates are matched by name: reads absent from one BAM are skipped."""
+    run = fastq_run()
+    rev = str(tmp_path / "rev.bam")
+    _bam_subset(str(run.tmp("rev.bam")), rev, lambda i: i % 10 != 3)
+    out = tmp_path / "out.pairs"
+    hpi.bam2pairs(str(run.tmp("for.bam")), rev, str(out), str(run.path("info_contigs.txt")))
+    ref = syn.read_pairs(run.tmp("valid.pairs"))
+    # Reads are sorted by name and named after their rank.
+    n_reads = hio.check_bam_entries(str(run.tmp("rev.bam")))
+    dropped = {f"sim{i:06d}" for i in range(3, n_reads, 10)}
+    pairs = syn.read_pairs(out)
+    assert set(pairs.readID) == set(ref.readID) - dropped
+    pd.testing.assert_frame_equal(
+        pairs.reset_index(drop=True),
+        ref[~ref.readID.isin(dropped)].reset_index(drop=True),
+    )
+    assert f"{len(dropped)} reads were only present in one BAM file" in caplog.text
+
+
+@pytest.mark.xfail(strict=True, reason="bam2pairs crashes when one BAM ends before the other")
+def test_bam2pairs_with_truncated_bam(fastq_run, tmp_path):
+    run = fastq_run()
+    rev = str(tmp_path / "rev.bam")
+    _bam_subset(str(run.tmp("rev.bam")), rev, lambda i: i < 5_990)
+    out = tmp_path / "out.pairs"
+    hpi.bam2pairs(str(run.tmp("for.bam")), rev, str(out), str(run.path("info_contigs.txt")))
+    assert len(syn.read_pairs(out)) > 0
