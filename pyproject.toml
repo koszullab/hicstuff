@@ -41,8 +41,6 @@ dependencies = [
     "matplotlib>=3.4.0",
     "rich-click>=1.7",
     "biopython",
-    "requests",
-    "scikit-learn",
     "pysam",
     "pyfastx",
     "cooler",
