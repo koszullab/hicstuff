@@ -642,6 +642,19 @@ def _bam_subset(src, dst, keep):
                 out.write(read)
 
 
+def _check_read_counts(log, *bams, min_qual=30):
+    """bam2pairs logs every read once, with the number passing min_qual."""
+    import pysam
+
+    mapped = total = 0
+    for path in bams:
+        with pysam.AlignmentFile(path, "rb") as bam:
+            for read in bam:
+                total += 1
+                mapped += read.mapping_quality >= min_qual
+    assert f"mapped with Q >= {min_qual} ({mapped}/{total})" in log
+
+
 def test_bam2pairs_skips_reads_missing_from_one_file(fastq_run, tmp_path, caplog):
     """Mates are matched by name: reads absent from one BAM are skipped."""
     run = fastq_run()
@@ -660,13 +673,24 @@ def test_bam2pairs_skips_reads_missing_from_one_file(fastq_run, tmp_path, caplog
         ref[~ref.readID.isin(dropped)].reset_index(drop=True),
     )
     assert f"{len(dropped)} reads were only present in one BAM file" in caplog.text
+    _check_read_counts(caplog.text, str(run.tmp("for.bam")), rev)
 
 
-@pytest.mark.xfail(strict=True, reason="bam2pairs crashes when one BAM ends before the other")
-def test_bam2pairs_with_truncated_bam(fastq_run, tmp_path):
+@pytest.mark.parametrize("truncated", ["for", "rev"])
+def test_bam2pairs_with_truncated_bam(fastq_run, tmp_path, caplog, truncated):
+    """Reads after the end of the shorter BAM have no mate and are skipped."""
     run = fastq_run()
-    rev = str(tmp_path / "rev.bam")
-    _bam_subset(str(run.tmp("rev.bam")), rev, lambda i: i < 5_990)
+    bams = {end: str(run.tmp(f"{end}.bam")) for end in ("for", "rev")}
+    n_reads = hio.check_bam_entries(bams[truncated])
+    bams[truncated] = str(tmp_path / "truncated.bam")
+    _bam_subset(str(run.tmp(f"{truncated}.bam")), bams[truncated], lambda i: i < n_reads - 10)
     out = tmp_path / "out.pairs"
-    hpi.bam2pairs(str(run.tmp("for.bam")), rev, str(out), str(run.path("info_contigs.txt")))
-    assert len(syn.read_pairs(out)) > 0
+    hpi.bam2pairs(bams["for"], bams["rev"], str(out), str(run.path("info_contigs.txt")))
+    ref = syn.read_pairs(run.tmp("valid.pairs"))
+    dropped = {f"sim{i:06d}" for i in range(n_reads - 10, n_reads)}
+    pd.testing.assert_frame_equal(
+        syn.read_pairs(out).reset_index(drop=True),
+        ref[~ref.readID.isin(dropped)].reset_index(drop=True),
+    )
+    assert "10 reads were only present in one BAM file" in caplog.text
+    _check_read_counts(caplog.text, bams["for"], bams["rev"])
