@@ -114,14 +114,16 @@ def load_sparse_matrix(mat_path, binning=1, dtype=np.float64):
     (16, 16)
     """
     try:
-        cols_arr = np.loadtxt(mat_path, delimiter="\t", dtype=dtype)
+        # Numeric header: the number of rows, columns and nonzero entries
+        cols_arr = np.loadtxt(mat_path, delimiter="\t", dtype=dtype, ndmin=2)
         shape = (int(cols_arr[0, 0]), int(cols_arr[0, 1]))
+        cols_arr = cols_arr[1:, :]
     except ValueError:
-        cols_arr = np.loadtxt(mat_path, delimiter="\t", dtype=dtype, skiprows=1)
+        # Text header (column names): infer the shape from the entries
+        cols_arr = np.loadtxt(mat_path, delimiter="\t", dtype=dtype, skiprows=1, ndmin=2)
         shape = None
 
-    # Get values into an array without the header. Use the header to give size.
-    sparse_mat = _cols_to_sparse(cols_arr[1:, :], shape=shape, dtype=dtype)
+    sparse_mat = _cols_to_sparse(cols_arr, shape=shape, dtype=dtype)
 
     if binning == "auto":
         # Smallest factor that keeps the matrix within the maximum shape
