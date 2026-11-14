@@ -141,6 +141,14 @@ def test_sort_compressed_pairs(tmp_path, compression):
     assert keys == sorted(keys)
 
 
+def test_sort_pairs_unknown_key(tmp_path):
+    """An unknown sort key is refused before the output is created."""
+    out = tmp_path / "sorted.pairs"
+    with pytest.raises(ValueError, match="chrom1"):
+        hio.sort_pairs(PAIRS_FILE, str(out), keys=["chrom1", "pos1"])
+    assert not out.exists()
+
+
 def test_sort_compressed_pairs_header_only(tmp_path):
     """A compressed pairs file without any pair gives a header-only output."""
     plain = tmp_path / "empty.pairs"

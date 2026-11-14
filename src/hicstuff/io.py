@@ -1115,8 +1115,8 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
         Path to the sorted output file. It is not compressed.
     keys : list of str
         list of columns to use as sort keys. Each column can be one of readID,
-        chr1, pos1, chr2, pos2, frag1, frag2. Key priorities are according to
-        the order in the list.
+        chr1, pos1, chr2, pos2, strand1, strand2, frag1, frag2. Key priorities
+        are according to the order in the list.
     tmp_dir : str
         Path to the directory where temporary files will be created. Defaults
         to current directory.
@@ -1124,6 +1124,13 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
         Number of parallel sorting threads.
     buffer : str
         Buffer size used for sorting. Consists of a number and a unit.
+
+    Raises
+    ------
+    ValueError
+        If a key is not one of the columns above. Nothing is written then.
+    RuntimeError
+        If sort fails.
     """
     # TODO: Write a pure python implementation to drop GNU coreutils depencency,
     # could be inspired from: https://stackoverflow.com/q/14465154/8440675
@@ -1159,12 +1166,14 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
         "frag2": "-k9,9n",
     }
 
-    # transform column names to corresponding sort keys
-    try:
-        sort_keys = map(lambda k: key_map[k], keys)
-    except KeyError:
-        print("Unkown column name.")
-        raise
+    # Transform column names to the corresponding sort keys, before anything
+    # is written
+    unknown = [k for k in keys if k not in key_map]
+    if unknown:
+        raise ValueError(
+            f"Unknown sort key(s) {', '.join(unknown)}: choose among {', '.join(key_map)}."
+        )
+    sort_keys = [key_map[k] for k in keys]
     # Rewrite header with new sorting order
     header = get_pairs_header(in_file)
     with open(out_file, "w") as output:
@@ -1176,7 +1185,7 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
 
     # Sort pairs and append to file. The pairs are streamed to sort from
     # Python, through a decompressing reader if the input is compressed.
-    sort_cmd = ["sort", f"-S {buffer}"] + list(sort_keys)
+    sort_cmd = ["sort", f"-S {buffer}"] + sort_keys
     if tmp_dir is not None:
         sort_cmd.append(f"--temporary-directory={tmp_dir}")
     if parallel_ok:
