@@ -638,7 +638,7 @@ def dade_to_graal(
     filename,
     output_matrix=DEFAULT_SPARSE_MATRIX_FILE_NAME,
     output_contigs=DEFAULT_INFO_CONTIGS_FILE_NAME,
-    output_frags=DEFAULT_SPARSE_MATRIX_FILE_NAME,
+    output_frags=DEFAULT_FRAGMENTS_LIST_FILE_NAME,
     output_dir=None,
 ):
     """Convert a matrix from DADE format (https://github.com/scovit/dade)
