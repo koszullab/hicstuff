@@ -1133,10 +1133,14 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
     keys : list of str
         list of columns to use as sort keys. Each column can be one of readID,
         chr1, pos1, chr2, pos2, strand1, strand2, frag1, frag2. Key priorities
-        are according to the order in the list.
+        are according to the order in the list. Chromosomes sort in version
+        order (chr2 before chr10), positions and fragments numerically, read
+        names and strands in dictionary order. Text values that these orders
+        find equal but that differ (contig_01 and contig_1) are ordered byte
+        by byte, so that each value forms one block.
     tmp_dir : str
         Path to the directory where temporary files will be created. Defaults
-        to current directory.
+        to sort's own: $TMPDIR, else /tmp (/var/tmp for BSD sort).
     threads : int
         Number of parallel sorting threads.
     buffer : str
@@ -1171,16 +1175,22 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
         logger.warning("Using BSD sort instead of GNU sort, sorting on a single thread.")
         parallel_ok = False
 
+    # Each text column is followed by a plain comparison of the same column,
+    # which only decides between values the first one finds equal. Without
+    # it, such values interleave instead of forming one block each: sort -V
+    # (coreutils >= 9.1) ties contig_01 with contig_1, and -d ties r.1 with r1
+    # and + with - (it ignores punctuation). sort runs in the C locale, which
+    # makes that comparison byte by byte: equal only for identical values.
     key_map = {
-        "readID": "-k1,1d",
-        "chr1": "-k2,2V",
-        "pos1": "-k3,3n",
-        "chr2": "-k4,4V",
-        "pos2": "-k5,5n",
-        "strand1": "-k6,6d",
-        "strand2": "-k7,7d",
-        "frag1": "-k8,8n",
-        "frag2": "-k9,9n",
+        "readID": ["-k1,1d", "-k1,1"],
+        "chr1": ["-k2,2V", "-k2,2"],
+        "pos1": ["-k3,3n"],
+        "chr2": ["-k4,4V", "-k4,4"],
+        "pos2": ["-k5,5n"],
+        "strand1": ["-k6,6d", "-k6,6"],
+        "strand2": ["-k7,7d", "-k7,7"],
+        "frag1": ["-k8,8n"],
+        "frag2": ["-k9,9n"],
     }
 
     # Transform column names to the corresponding sort keys, before anything
@@ -1190,7 +1200,7 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
         raise ValueError(
             f"Unknown sort key(s) {', '.join(unknown)}: choose among {', '.join(key_map)}."
         )
-    sort_keys = [key_map[k] for k in keys]
+    sort_keys = [opt for k in keys for opt in key_map[k]]
     # Rewrite header with new sorting order
     header = get_pairs_header(in_file)
     with open(out_file, "w") as output:
@@ -1208,7 +1218,13 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
     if parallel_ok:
         sort_cmd.append(f"--parallel={threads}")
     with read_compressed(in_file, "rb") as pairs, open(out_file, "ab") as output:
-        sort_proc = sp.Popen(sort_cmd, stdin=sp.PIPE, stdout=output, bufsize=1 << 20)
+        sort_proc = sp.Popen(
+            sort_cmd,
+            stdin=sp.PIPE,
+            stdout=output,
+            bufsize=1 << 20,
+            env={**os.environ, "LC_ALL": "C"},
+        )
         try:
             # Skip the header, and any other comment line
             sort_proc.stdin.writelines(line for line in pairs if not line.startswith(b"#"))

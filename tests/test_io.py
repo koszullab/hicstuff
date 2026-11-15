@@ -141,6 +141,112 @@ def test_sort_compressed_pairs(tmp_path, compression):
     assert keys == sorted(keys)
 
 
+def _sort_pairs_lines(tmp_path, lines, keys):
+    """Sort shuffled pairs lines with sort_pairs and return the sorted rows."""
+    lines = list(lines)
+    random.Random(0).shuffle(lines)
+    unsorted, out = tmp_path / "unsorted.pairs", tmp_path / "sorted.pairs"
+    header = "## pairs format v1.0\n#columns: readID chr1 pos1 chr2 pos2 strand1 strand2\n"
+    unsorted.write_text(header + "\n".join(lines) + "\n")
+    hio.sort_pairs(str(unsorted), str(out), keys=keys)
+    rows = [line.split("\t") for line in out.read_text().splitlines() if not line.startswith("#")]
+    assert sorted("\t".join(row) for row in rows) == sorted(lines)
+    return rows
+
+
+def _blocks(values):
+    """The values in order, with each run of equal values counted once."""
+    return [v for i, v in enumerate(values) if i == 0 or v != values[i - 1]]
+
+
+#: Contig names, some of which sort -V (coreutils >= 9.1) finds equal although
+#: they differ: contig_01 and contig_1, a and a0, k141_10 and k141_010.
+TIED_CONTIGS = ["contig_01", "contig_1", "contig_2", "contig_10", "a", "a0", "k141_10", "k141_010"]
+
+
+@pytest.mark.parametrize(
+    "keys", [["chr1", "chr2", "pos1", "pos2"], ["chr1", "pos1", "chr2", "pos2"]], ids="-".join
+)
+def test_sort_pairs_one_block_per_contig(tmp_path, keys):
+    """Each contig forms one block, also when version order ties it with another."""
+    rng = random.Random(1)
+    lines = [
+        f"r{i}\t{chr1}\t{rng.randint(1, 50)}\t{chr2}\t{rng.randint(1, 50)}\t+\t-"
+        for i, (chr1, chr2) in enumerate(
+            (chr1, chr2) for chr1 in TIED_CONTIGS for chr2 in TIED_CONTIGS for _ in range(4)
+        )
+    ]
+    rows = _sort_pairs_lines(tmp_path, lines, keys)
+
+    chr1_blocks = _blocks([row[1] for row in rows])
+    assert sorted(chr1_blocks) == sorted(TIED_CONTIGS)
+    # Still in version order
+    assert chr1_blocks.index("contig_2") < chr1_blocks.index("contig_10")
+    if keys[1] == "chr2":
+        # One block per chromosome pair, sorted by positions: what pairix
+        # needs to index the file
+        groups = [(row[1], row[3]) for row in rows]
+        within = [(int(row[2]), int(row[4])) for row in rows]
+    else:
+        groups = [row[1] for row in rows]
+        within = [int(row[2]) for row in rows]
+    assert len(_blocks(groups)) == len(set(groups))
+    for group in set(groups):
+        values = [value for g, value in zip(groups, within) if g == group]
+        assert values == sorted(values)
+
+
+def test_sort_pairs_one_block_per_read(tmp_path):
+    """Each read forms one block, also when dictionary order ties it with another."""
+    # Dictionary order ignores punctuation: r.1, r:1 and r1 compare equal, and
+    # so do these two Illumina read names (tile 1101, x 111 and 11)
+    names = ["r.1", "r1", "r:1", "A1:1101:111:1000", "A1:1101:11:11000"]
+    lines = [f"{name}\t{chrom}\t1\t{chrom}\t2\t+\t+" for name in names for chrom in "ABC"]
+    rows = _sort_pairs_lines(tmp_path, lines, keys=["readID", "chr1"])
+    # Tied names come in byte order
+    assert _blocks([row[0] for row in rows]) == [
+        "A1:1101:111:1000",
+        "A1:1101:11:11000",
+        "r.1",
+        "r1",
+        "r:1",
+    ]
+
+
+def test_sort_pairs_runs_sort_in_c_locale(tmp_path, monkeypatch):
+    """sort runs in the C locale whatever the caller's, so ties are broken byte by byte."""
+    monkeypatch.setenv("LC_ALL", "en_US.UTF-8")
+    real_popen, envs = hio.sp.Popen, []
+
+    def popen(cmd, *args, **kwargs):
+        if cmd[0] == "sort" and "--version" not in cmd:
+            envs.append(kwargs.get("env"))
+        return real_popen(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(hio.sp, "Popen", popen)
+    _sort_pairs_lines(tmp_path, ["r1\tA\t1\tA\t2\t+\t+"], keys=["readID"])
+    assert [env and env.get("LC_ALL") for env in envs] == ["C"]
+
+
+def test_sort_pairs_duplicates_adjacent(tmp_path):
+    """Pairs with the same coordinates are adjacent, as filter_pcr_dup needs."""
+    lines = [
+        f"r{i}\tA\t10\t{chr2}\t20\t+\t+" for i, chr2 in enumerate(["contig_01", "contig_1"] * 3)
+    ]
+    rows = _sort_pairs_lines(tmp_path, lines, keys=["chr1", "pos1", "chr2", "pos2"])
+    assert _blocks([row[3] for row in rows]) == ["contig_01", "contig_1"]
+
+
+@pytest.mark.parametrize("key", ["strand1", "strand2"])
+def test_sort_pairs_by_strand(tmp_path, key):
+    """Strands sort: dictionary order alone ignores + and -."""
+    lines = [f"r{i}\tA\t{i}\tA\t{i}\t{'+-'[i % 2]}\t{'-+'[i % 3 % 2]}" for i in range(12)]
+    rows = _sort_pairs_lines(tmp_path, lines, keys=[key])
+    strands = [row[5 if key == "strand1" else 6] for row in rows]
+    assert strands == sorted(strands)
+    assert _blocks(strands) == ["+", "-"]
+
+
 def test_sort_pairs_unknown_key(tmp_path):
     """An unknown sort key is refused before the output is created."""
     out = tmp_path / "sorted.pairs"
