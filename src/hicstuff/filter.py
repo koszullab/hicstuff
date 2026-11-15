@@ -19,6 +19,7 @@ attributed.
 """
 
 import sys
+import zlib
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -110,11 +111,54 @@ def process_read_pair(line):
     return p
 
 
-def get_thresholds(in_dat, interactive=False, plot_events=False, fig_path=None, prefix=None):
+def _sample_pairs(in_dat, size):
+    """Draw about ``size`` pairs from the whole of a pairs file
+
+    A file of at most ``size`` pairs is drawn whole. In a file of ``n`` pairs,
+    a pair is drawn when the CRC-32 of its line, an integer below 2**32, is
+    below ``size * 2**32 / n``. The sample is then the same whatever the order
+    of the lines, and spread over the whole library. The first ``size`` pairs
+    would not be: in a file sorted by coordinates, they all come from the
+    first chromosomes. The whole line is hashed, not just its read ID, because
+    a pairs file may have none: every read ID is then "." (as written by
+    pairtools parse --drop-readid), and its CRC-32 would draw all the pairs
+    or none.
+
+    Parameters
+    ----------
+    in_dat : str
+        Path to the .pairs file.
+    size : int
+        Number of pairs to draw.
+
+    Yields
+    ------
+    str
+        The data lines of the pairs drawn, in the order of the file.
+    """
+    with open(in_dat) as pairs:
+        n_pairs = sum(1 for line in pairs if not line.startswith("#"))
+    bound = None
+    if n_pairs > size:
+        bound = (size << 32) // n_pairs
+        logger.info(f"Estimating the thresholds from about {size} of {n_pairs} pairs")
+    with open(in_dat) as pairs:
+        for line in pairs:
+            if line.startswith("#"):
+                continue
+            # The final newline is left out, as the last line may lack one
+            if bound is None or zlib.crc32(line.rstrip("\n").encode()) < bound:
+                yield line
+
+
+def get_thresholds(
+    in_dat, interactive=False, plot_events=False, fig_path=None, prefix=None, sample_size=1_000_000
+):
     """Guess distance threshold for event filtering
 
-    Analyse the events in the first million of Hi-C pairs in the library, plot
-    the occurrences of each event type according to number of restriction
+    Analyse the events in about a million Hi-C pairs drawn from the whole
+    library, the same pairs whatever the order of the file, plot the
+    occurrences of each event type according to number of restriction
     fragments, and ask user interactively for the minimum threshold for uncuts
     and loops.
 
@@ -131,6 +175,10 @@ def get_thresholds(in_dat, interactive=False, plot_events=False, fig_path=None, 
         diplayed interactively.
     prefix : str
         If the library has a name, it will be shown on plots.
+    sample_size : int
+        Number of pairs from which the thresholds are estimated. Larger
+        libraries are sampled by a hash of each line, the same pairs
+        whatever the order of the file. Smaller ones are used whole.
 
     Returns
     -------
@@ -150,25 +198,15 @@ def get_thresholds(in_dat, interactive=False, plot_events=False, fig_path=None, 
     }
     colors = {"++": "#222222", "+-": "r", "--": "#666666", "-+": "tab:orange"}
     n_events = {event: np.zeros(max_sites) for event in legend}
-    i = 0
-    # open the file for reading (just the first 1 000 000 lines)
-    with open(in_dat) as pairs:
-        for line in pairs:
-            # Skip header lines
-            if line.startswith("#"):
-                continue
-            i += 1
-            # Only use the first million pairs to estimate thresholds
-            if i == 1000000:
-                break
-            # Process Hi-C pair into a dictionary
-            p = process_read_pair(line)
-            # Type of event and number of restriction site between reads
-            etype = p["type"]
-            nsites = p["nsites"]
-            # Count number of events for intrachrom pairs
-            if etype != "inter" and nsites < max_sites:
-                n_events[etype][nsites] += 1
+    for line in _sample_pairs(in_dat, sample_size):
+        # Process Hi-C pair into a dictionary
+        p = process_read_pair(line)
+        # Type of event and number of restriction site between reads
+        etype = p["type"]
+        nsites = p["nsites"]
+        # Count number of events for intrachrom pairs
+        if etype != "inter" and nsites < max_sites:
+            n_events[etype][nsites] += 1
 
     def plot_event(n_events, legend, name):
         """Plot the frequency of a given event types over distance."""

@@ -5,7 +5,11 @@ import hashlib
 import os
 from tempfile import NamedTemporaryFile
 
+import numpy as np
+
 from hicstuff import filter as hcf
+
+PAIRS = "test_data/valid_idx.pairs"
 
 
 def hash_file(filename):
@@ -63,3 +67,128 @@ def test_filter_pairs():
     if os.path.isfile(fig_file):
         os.remove(fig_file)
     os.unlink(filt_pairs.name)
+
+
+def read_pairs(path):
+    """Header lines and data lines of a pairs file."""
+    with open(path) as pairs:
+        lines = pairs.readlines()
+    return [x for x in lines if x.startswith("#")], [x for x in lines if not x.startswith("#")]
+
+
+def write_pairs(path, header, lines):
+    with open(path, "w") as pairs:
+        pairs.writelines(header + list(lines))
+    return str(path)
+
+
+def by_coord(line, chrom_order):
+    """Sort key of a pairs line: chromosome (in the given order), then position."""
+    fields = line.split("\t")
+    return chrom_order.index(fields[1]), int(fields[2])
+
+
+def test_sample_pairs_whole_small_file():
+    """A file of at most the sample size is used whole, as before."""
+    _, lines = read_pairs(PAIRS)
+    assert list(hcf._sample_pairs(PAIRS, len(lines))) == lines
+    assert list(hcf._sample_pairs(PAIRS, 1_000_000)) == lines
+
+
+def test_sample_pairs_ignore_order(tmp_path):
+    """The same pairs are drawn whatever the order of the file, from all of it."""
+    header, lines = read_pairs(PAIRS)
+    rng = np.random.default_rng(0)
+    orders = {
+        "seq1_first": sorted(lines, key=lambda x: by_coord(x, ["seq1", "seq2"])),
+        "seq2_first": sorted(lines, key=lambda x: by_coord(x, ["seq2", "seq1"])),
+        "shuffled": [lines[i] for i in rng.permutation(len(lines))],
+    }
+    samples = {
+        name: sorted(hcf._sample_pairs(write_pairs(tmp_path / name, header, ordered), 1000))
+        for name, ordered in orders.items()
+    }
+    sample = samples["shuffled"]
+    assert samples["seq1_first"] == sample
+    assert samples["seq2_first"] == sample
+    # About 1000 of the 10000 pairs (standard deviation 30)...
+    assert 900 <= len(sample) <= 1100
+
+    # ...spread over both chromosomes as the whole library is, whereas the
+    # first 1000 pairs of a sorted file are all on its first chromosome.
+    def seq2_share(pairs):
+        return np.mean([x.split("\t")[1] == "seq2" for x in pairs])
+
+    assert abs(seq2_share(sample) - seq2_share(lines)) < 0.05
+
+
+def test_sample_pairs_without_read_ids(tmp_path):
+    """A pairs file whose read IDs are all "." (pairtools parse --drop-readid)
+    is sampled as well: hashing the read ID alone would draw all of its pairs
+    or none of them."""
+    header, lines = read_pairs(PAIRS)
+    lines = ["." + x[x.find("\t") :] for x in lines]
+    path = write_pairs(tmp_path / "no_ids", header, lines)
+    # Without read IDs, 2797 of the 10000 lines repeat another one, and
+    # identical lines are drawn together: the sample sizes spread more.
+    assert 400 <= len(list(hcf._sample_pairs(path, 500))) <= 600
+    assert 800 <= len(list(hcf._sample_pairs(path, 1000))) <= 1200
+
+
+def test_sample_pairs_last_line_without_newline(tmp_path):
+    """A pair drawn from a file is drawn too when its line comes last in
+    another order of the file, without a final newline."""
+    header, lines = read_pairs(PAIRS)
+    drawn = next(hcf._sample_pairs(PAIRS, 1000))
+    lines.remove(drawn)
+    path = write_pairs(tmp_path / "no_final_newline", header, lines + [drawn.rstrip("\n")])
+    assert list(hcf._sample_pairs(path, 1000))[-1] == drawn.rstrip("\n")
+
+
+def event_library(rng):
+    """Pairs on two chromosomes, a and b. All four orientations are equally
+    frequent at every distance (40 pairs per orientation and number of
+    restriction sites), but uncuts (+-) and loops (-+) are 10 times as
+    frequent up to 7 sites apart on a, and only up to 2 sites apart on b."""
+    events = []
+    for chrom, reach in (("a", 7), ("b", 2)):
+        for nsites in range(50):
+            for strands in ("++", "--", "+-", "-+"):
+                count = 400 if strands in ("+-", "-+") and nsites <= reach else 40
+                for frag in rng.integers(0, 10_000, size=count):
+                    events.append((chrom, int(frag), strands, nsites))
+    names = rng.permutation(len(events))
+    return [
+        f"read{name}\t{chrom}\t{frag * 100 + 10}\t{chrom}\t{(frag + nsites) * 100 + 60}"
+        f"\t{strands[0]}\t{strands[1]}\t{frag}\t{frag + nsites}\n"
+        for name, (chrom, frag, strands, nsites) in zip(names, events)
+    ]
+
+
+def test_get_thresholds_ignore_order(tmp_path):
+    """Thresholds estimated from a sample do not depend on the order of the
+    pairs, and reflect the whole library."""
+    header = [
+        "## pairs format v1.0\n",
+        "#columns: readID chr1 pos1 chr2 pos2 strand1 strand2 frag1 frag2\n",
+    ]
+    rng = np.random.default_rng(1)
+    lines = event_library(rng)
+    orders = {
+        "a_first": sorted(lines, key=lambda x: by_coord(x, ["a", "b"])),
+        "b_first": sorted(lines, key=lambda x: by_coord(x, ["b", "a"])),
+        "shuffled": [lines[i] for i in rng.permutation(len(lines))],
+    }
+    paths = {
+        name: write_pairs(tmp_path / name, header, ordered) for name, ordered in orders.items()
+    }
+    thresholds = {name: hcf.get_thresholds(path, sample_size=5000) for name, path in paths.items()}
+    assert thresholds["a_first"] == thresholds["shuffled"]
+    assert thresholds["b_first"] == thresholds["shuffled"]
+    # The uncuts and loops of chromosome a are seen even when b comes first.
+    # The first 5000 pairs of that file, all on b, would give lower thresholds.
+    uncut, loop = thresholds["b_first"]
+    assert uncut > 7 and loop > 7
+    head = write_pairs(tmp_path / "head", header, orders["b_first"][:5000])
+    head_uncut, head_loop = hcf.get_thresholds(head)
+    assert head_uncut < uncut and head_loop < loop
