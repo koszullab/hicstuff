@@ -680,7 +680,9 @@ def full_pipeline(
     min_qual : int
         Minimum mapping quality required to keep a pair of Hi-C reads.
     min_size : int
-        Minimum contig size required to keep it.
+        Minimum contig size required to keep it. Shorter contigs are left out
+        of the fragments list, and pairs with a mate on one of them are
+        discarded.
     threads : int
         Number of threads to use for parallel operations.
     no_cleanup : bool
@@ -1051,6 +1053,9 @@ def full_pipeline(
         # Make pairs file (readID, chr1, chr2, pos1, pos2, strand1, strand2)
         bam2pairs(bam1, bam2, pairs, info_contigs, min_qual=min_qual)
 
+    # Pairs with a mate on a contig shorter than min_size, which has no
+    # fragment in the fragments list
+    small_contig_pairs = 0
     # Starting from pairs file
     if start_stage <= 2:
         restrict_table = {}
@@ -1061,8 +1066,11 @@ def full_pipeline(
             )
 
         # Add fragment index to pairs (readID, chr1, pos1, chr2,
-        # pos2, strand1, strand2, frag1, frag2)
-        hcd.attribute_fragments(pairs, pairs_idx, restrict_table)
+        # pos2, strand1, strand2, frag1, frag2), without the pairs on contigs
+        # shorter than min_size
+        small_contig_pairs = hcd.attribute_fragments(
+            pairs, pairs_idx, restrict_table, min_size=min_size
+        )
 
     # Sort pairs file by coordinates (and strands, for PCR duplicate removal)
     # for next steps
@@ -1075,8 +1083,8 @@ def full_pipeline(
     )
     os.rename(pairs_idx + ".sorted", pairs_idx)
 
-    # Count total pairs
-    tot_pairs = 0
+    # Count total pairs, including those discarded on small contigs
+    tot_pairs = small_contig_pairs
     with open(pairs_idx) as file:
         for line in file:
             if line.startswith("#"):

@@ -19,6 +19,7 @@ import pytest
 import hicstuff.distance_law as hcdl
 import hicstuff.io as hio
 import hicstuff.pipeline as hpi
+import hicstuff.stats as hcs
 from tests import synthetic as syn
 
 ALIGNERS = ("bowtie2", "bwa", "minimap2")
@@ -404,6 +405,141 @@ def test_start_stages_reproduce_fastq_run(stage, fastq_run, indexed_genome, run_
     # Inputs are not deleted, intermediate files are.
     assert all(path is None or os.path.exists(path) for path in inputs)
     assert not run.tmp("valid_idx.pairs").exists()
+
+
+def _first_and_shortest_chrom(synthetic_lib):
+    """Name and length of the first chromosome, which is also the shortest."""
+    sizes = synthetic_lib.chrom_sizes
+    first = synthetic_lib.chrom_names[0]
+    assert sizes[first] < min(size for name, size in sizes.items() if name != first)
+    return first, sizes[first]
+
+
+def _start_inputs(ref, stage):
+    return {
+        "bam": (str(ref.tmp("for.bam")), str(ref.tmp("rev.bam"))),
+        "pairs": (str(ref.tmp("valid.pairs")), None),
+    }[stage]
+
+
+_MATRIX_FILES = {
+    "graal": "abs_fragments_contacts_weighted.txt",
+    "bg2": "abs_fragments_contacts_weighted.bg2",
+    "cool": "abs_fragments_contacts_weighted.cool",
+}
+
+
+def _load_matrix(run, fmt):
+    mat = str(run.path(_MATRIX_FILES[fmt]))
+    if fmt == "graal":
+        return hio.load_sparse_matrix(mat)
+    if fmt == "bg2":
+        return hio.load_bedgraph2d(mat, fragments_file=str(run.path("fragments_list.txt")))[0]
+    return hio.load_cool(mat)[0]
+
+
+@pytest.mark.parametrize(
+    "stage, fmt",
+    [("bam", "graal"), ("bam", "cool"), ("pairs", "bg2")],
+    ids=["bam-graal", "bam-cool", "pairs-bg2"],
+)
+def test_min_size_leaves_out_short_contigs(
+    stage, fmt, fastq_run, indexed_genome, run_pipeline, synthetic_lib
+):
+    """--size above the length of the first chromosome leaves it out of the
+    fragments list, and the pairs with a mate on it out of the pairs and the
+    matrix: the other pairs keep their fragments, now numbered from the second
+    chromosome. From BAM files, the pairs header lists the chromosomes kept;
+    from pairs, it lists all of them."""
+    ref = fastq_run()
+    short, length = _first_and_shortest_chrom(synthetic_lib)
+    inputs = _start_inputs(ref, stage)
+    run = run_pipeline(
+        f"min_size_{stage}_{fmt}",
+        genome=indexed_genome,
+        input1=inputs[0],
+        input2=inputs[1],
+        start_stage=stage,
+        enzyme=syn.LIBRARY_ENZYME,
+        mat_fmt=fmt,
+        min_size=length + 1,
+    )
+
+    frags = synthetic_lib.fragments()
+    frags = frags[frags.chrom != short].reset_index(drop=True)
+    written = pd.read_csv(run.path("fragments_list.txt"), sep="\t")
+    pd.testing.assert_frame_equal(written.drop(columns="gc_content"), frags)
+    kept = [name for name in synthetic_lib.chrom_names if name != short]
+    assert pd.read_csv(run.path("info_contigs.txt"), sep="\t").contig.tolist() == kept
+
+    # The pairs of the full run without those on the short chromosome, whose
+    # fragments came first.
+    all_pairs = load_pairs(ref.tmp("valid_idx.pairs"))
+    on_short = (all_pairs.chr1 == short) | (all_pairs.chr2 == short)
+    trans = all_pairs.chr1 != all_pairs.chr2
+    assert (on_short & trans).sum() > 0 and (on_short & ~trans).sum() > 0
+    shift = synthetic_lib.frag_offsets()[kept[0]]
+    expected = all_pairs[~on_short].assign(
+        frag1=lambda df: df.frag1 - shift, frag2=lambda df: df.frag2 - shift
+    )
+    pairs = load_pairs(run.path("valid_idx.pairs.gz"))
+    cols = ["readID", "chr1", "pos1", "chr2", "pos2", "strand1", "strand2", "frag1", "frag2"]
+    assert sorted(pairs[cols].itertuples(index=False)) == sorted(
+        expected[cols].itertuples(index=False)
+    )
+    with gzip.open(run.path("valid_idx.pairs.gz"), "rt") as handle:
+        chromsizes = [line.split()[1] for line in handle if line.startswith("#chromsize")]
+    assert chromsizes == kept
+
+    n = len(frags)
+    expected_mat = np.zeros((n, n), dtype=int)
+    np.add.at(
+        expected_mat,
+        (np.minimum(pairs.frag1, pairs.frag2), np.maximum(pairs.frag1, pairs.frag2)),
+        1,
+    )
+    mat = _load_matrix(run, fmt)
+    assert mat.shape == (n, n)
+    np.testing.assert_array_equal(mat.toarray(), expected_mat)
+
+    n_short = int(on_short.sum())
+    message = f"{n_short} pairs with a mate on a contig shorter than {length + 1} bp were discarded"
+    assert message in run.log_text
+    if stage == "bam":
+        # The pairs on the short chromosome were mapped, then removed.
+        stats = hcs.get_pipeline_stats(run.log)
+        assert stats["Recovered contacts"] == len(all_pairs)
+        assert stats["Small contigs"] == stats["Removed contacts"] == n_short
+        assert stats["Final contacts"] == len(pairs) == expected_mat.sum()
+
+
+def test_min_size_keeps_contigs_of_that_size(
+    fastq_run, indexed_genome, run_pipeline, synthetic_lib
+):
+    """--size is a minimum: with the length of the shortest chromosome, every
+    output is the one of a run without it."""
+    ref = fastq_run()
+    _, length = _first_and_shortest_chrom(synthetic_lib)
+    inputs = _start_inputs(ref, "bam")
+    runs = [
+        run_pipeline(
+            f"min_size_{size}",
+            genome=indexed_genome,
+            input1=inputs[0],
+            input2=inputs[1],
+            start_stage="bam",
+            enzyme=syn.LIBRARY_ENZYME,
+            mat_fmt="graal",
+            min_size=size,
+        )
+        for size in (0, length)
+    ]
+    for name in ("fragments_list.txt", "info_contigs.txt", _MATRIX_FILES["graal"]):
+        assert runs[0].path(name).read_bytes() == runs[1].path(name).read_bytes()
+    with gzip.open(runs[0].path("valid_idx.pairs.gz")) as a:
+        with gzip.open(runs[1].path("valid_idx.pairs.gz")) as b:
+            assert a.read() == b.read()
+    assert "pairs with a mate on a contig shorter than" not in runs[1].log_text
 
 
 def test_graal_bg2_and_cool_agree(matrices, final_pairs, synthetic_lib):

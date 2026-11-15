@@ -31,6 +31,8 @@ def get_pipeline_stats(log_file):
         - Number (% of total reads) of unmapped reads
         - Number (% of total reads) of mapped reads
         - Number (% of total reads) of pairs
+        - Number (% of total pairs) of pairs on contigs shorter than the
+          minimum size
         - Number (% of total pairs) of filtered pairs
             - Number (% of total pairs) of loops
             - Number (% of total pairs) of uncuts
@@ -74,7 +76,11 @@ def get_pipeline_stats(log_file):
     tot_pairs = re.sub(" pairs successfully.*", "", tot_pairs)
     tot_pairs = int(float(tot_pairs))
 
-    # 4. Number (% of total) of filtered pairs
+    # 4. Number (% of total) of pairs on contigs shorter than the minimum size
+    small_contigs = _search(r"(\d+) pairs with a mate on a contig shorter than", log_lines)
+    small_pairs = 0 if small_contigs is None else int(small_contigs[1])
+
+    # 5. Number (% of total) of filtered pairs
     filtered_pairs = [s for s in log_lines if re.search("pairs discarded:", s)]
     if len(filtered_pairs) > 0:
         filtered_pairs = filtered_pairs[0]
@@ -95,7 +101,7 @@ def get_pipeline_stats(log_file):
         abnormal_pairs = 0
         filtered_pairs = 0
 
-    # 5. Number (% of total) of PCR duplicates pairs
+    # 6. Number (% of total) of PCR duplicates pairs
     pcr_pairs = [s for s in log_lines if re.search("PCR duplicates have been filtered", s)]
     if len(pcr_pairs) > 0:
         pcr_pairs = pcr_pairs[0]
@@ -105,11 +111,11 @@ def get_pipeline_stats(log_file):
     else:
         pcr_pairs = 0
 
-    # 6. Number (%) of final pairs
-    removed_pairs = filtered_pairs + pcr_pairs
+    # 7. Number (%) of final pairs
+    removed_pairs = small_pairs + filtered_pairs + pcr_pairs
     final_pairs = tot_pairs - removed_pairs
 
-    # 7. Final stats
+    # 8. Final stats
     stats = {
         "Sample": re.sub(".hicstuff.*", "", basename(log_file)),
         "Total read pairs": fastq_pairs,
@@ -118,6 +124,7 @@ def get_pipeline_stats(log_file):
         "Recovered contacts": tot_pairs,
         "Final contacts": final_pairs,
         "Removed contacts": removed_pairs,
+        "Small contigs": small_pairs,
         "Filtered out": filtered_pairs,
         "Loops": loops_pairs,
         "Uncuts": uncuts_pairs,
@@ -136,6 +143,8 @@ def write_pipeline_stats(stats, out_file):
     tot_pairs = stats["Recovered contacts"]
     final_pairs = stats["Final contacts"]
     removed_pairs = stats["Removed contacts"]
+    # Stats saved by earlier hicstuff versions have no such entry
+    small_pairs = stats.get("Small contigs", 0)
     filtered_pairs = stats["Filtered out"]
     loops_pairs = stats["Loops"]
     uncuts_pairs = stats["Uncuts"]
@@ -146,6 +155,7 @@ def write_pipeline_stats(stats, out_file):
     tot_reads = tot_mapped + tot_unmapped
     pct_mapped = round(tot_mapped / tot_reads * 100, 2) if tot_reads > 0 else 0.0
     pct_unmapped = round(tot_unmapped / tot_reads * 100, 2) if tot_reads > 0 else 0.0
+    pct_small = round(small_pairs / tot_pairs * 100, 2) if tot_pairs > 0 else 0.0
     pct_filtered = round(filtered_pairs / tot_pairs * 100, 2) if tot_pairs > 0 else 0.0
     pct_loops_pairs = round(loops_pairs / tot_pairs * 100, 2) if tot_pairs > 0 else 0.0
     pct_uncuts_pairs = round(uncuts_pairs / tot_pairs * 100, 2) if tot_pairs > 0 else 0.0
@@ -181,6 +191,11 @@ def write_pipeline_stats(stats, out_file):
             stats_file.write(
                 "Removed contacts:   {removed_pairs} ({pct_removed}% of all contacts)\n".format(
                     removed_pairs=f"{removed_pairs:,}", pct_removed=pct_removed
+                )
+            )
+            stats_file.write(
+                "  Small contigs:    {small_pairs} ({pct_small}% of all contacts)\n".format(
+                    small_pairs=f"{small_pairs:,}", pct_small=pct_small
                 )
             )
             stats_file.write(

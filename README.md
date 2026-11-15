@@ -163,7 +163,8 @@ hicstuff pipeline --help
 │    --remove-centromeres  -r  INT        kb to remove around centromere positions. [default: 0]   │
 │    --read-len            -R  INT        Maximum read length (estimated from first read if        │
 │                                         omitted).                                                │
-│    --size                -s  INT        Minimum contig size threshold. [default: 0]              │
+│    --size                -s  INT        Minimum contig size (bp): shorter contigs, and the pairs │
+│                                         on them, are left out. [default: 0]                      │
 │    --start-stage         -S  STR        Pipeline start stage. [default: fastq]                   │
 │    --threads             -t  INT        Number of parallel threads. [default: 1]                 │
 │    --tmpdir              -T  DIR        Temporary directory.                                     │
@@ -272,7 +273,8 @@ hicstuff digest --help
 │ *  --enzyme    -e  ENZ[,ENZ2,...]  Restriction enzyme name(s) or fixed chunk size in bp.         │
 │                                    [required]                                                    │
 │    --outdir    -o  DIR             Output directory (default: current directory).                │
-│    --size      -s  INT             Minimum fragment size to keep. [default: 0]                   │
+│    --size      -s  INT             Minimum contig size (bp): shorter contigs are left out.       │
+│                                    [default: 0]                                                  │
 │    --circular  -c                  Genome is circular.                                           │
 │    --plot      -p                  Show fragment length distribution histogram.                  │
 │    --figdir    -f  DIR             Directory to save the distribution figure.                    │

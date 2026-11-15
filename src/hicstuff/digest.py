@@ -132,12 +132,20 @@ def write_frag_info(
                 info_contigs.write(current_contig_line)
 
 
-def attribute_fragments(pairs_file, idx_pairs_file, restriction_table):
+def attribute_fragments(
+    pairs_file, idx_pairs_file, restriction_table, min_size=DEFAULT_THRESHOLD_SIZE
+):
     """
     Writes the indexed pairs file, which has two more columns than the input
     pairs file corresponding to the restriction fragment index of each read.
     Note that pairs files have 1bp point positions whereas restriction table
     has 0bp point poisitions.
+
+    Fragments are numbered genome-wide, in the order of the ``#chromsize``
+    lines of the pairs header. Contigs shorter than min_size are left out, as
+    write_frag_info leaves them out of the fragments list: their ``#chromsize``
+    lines are removed and their fragments get no index. Pairs with a mate on
+    such a contig, or on a contig the header does not list, are discarded.
 
     Parameters
     ----------
@@ -151,12 +159,26 @@ def attribute_fragments(pairs_file, idx_pairs_file, restriction_table):
         on whole genome.
     restriction_table: dict
         Dictionary with chromosome identifiers (str) as keys and list of
-        positions (int) of restriction sites as values.
+        positions (int) of restriction sites as values. The last position of
+        each list is the length of the chromosome, as returned by
+        get_restriction_table.
+    min_size : float, optional
+        Size below which contigs are left out. Default is 0, i.e. all contigs
+        are retained.
+
+    Returns
+    -------
+    int
+        The number of pairs discarded because a mate is on a contig shorter
+        than min_size.
     """
 
     # NOTE: Bottlenecks here are 1. binary search in find_frag and 2. writerow
     # 1. could be reduced by searching groups of N frags in parallel and 2. by
     # writing N frags simultaneously using a single call of writerows.
+
+    # Contigs that write_frag_info leaves out of the fragments list
+    too_short = {chrom for chrom, sites in restriction_table.items() if sites[-1] < int(min_size)}
 
     # Parse and update header section
     pairs_header = hio.get_pairs_header(pairs_file)
@@ -168,7 +190,10 @@ def attribute_fragments(pairs_file, idx_pairs_file, restriction_table):
             if line.startswith("#columns"):
                 line = line.rstrip() + " frag1 frag2"
             if line.startswith("#chromsize"):
-                chrom_order.append(line.split()[1])
+                chrom = line.split()[1]
+                if chrom in too_short:
+                    continue
+                chrom_order.append(chrom)
             idx_pairs.write(line + "\n")
 
     # Get number of fragments per chrom to allow genome-based indices
@@ -181,7 +206,9 @@ def attribute_fragments(pairs_file, idx_pairs_file, restriction_table):
         # Idx of each chrom's frags will be shifted by n frags in previous chroms
         shift_frags[chrom] = prev_frags
 
-    missing_contigs = set()
+    n_short = 0
+    n_unlisted = 0
+    unlisted_contigs = set()
     # Attribute pairs to fragments and append them to output file (after header)
     with open(pairs_file) as pairs, open(idx_pairs_file, "a") as idx_pairs:
         # Skip header lines
@@ -205,32 +232,41 @@ def attribute_fragments(pairs_file, idx_pairs_file, restriction_table):
         pairs_writer = csv.DictWriter(idx_pairs, fieldnames=idx_cols, delimiter="\t")
 
         for pair in pairs_reader:
+            chr1, chr2 = pair["chr1"], pair["chr2"]
+            # Contigs left out of the fragments list have no fragment index
+            if chr1 in too_short or chr2 in too_short:
+                n_short += 1
+                continue
             # Get the 0-based indices of corresponding restriction fragments
             # Deducing 1 from pair position to get it into 0bp point
-            pair["frag1"] = find_frag(int(pair["pos1"]) - 1, restriction_table[pair["chr1"]])
-            pair["frag2"] = find_frag(int(pair["pos2"]) - 1, restriction_table[pair["chr2"]])
+            frag1 = find_frag(int(pair["pos1"]) - 1, restriction_table[chr1])
+            frag2 = find_frag(int(pair["pos2"]) - 1, restriction_table[chr2])
             # Shift fragment indices to make them genome-based instead of
-            # chromosome-based
-            try:
-                pair["frag1"] += shift_frags[pair["chr1"]]
-            except KeyError:
-                missing_contigs.add(pair["chr1"])
-            try:
-                pair["frag2"] += shift_frags[pair["chr2"]]
-            except KeyError:
-                missing_contigs.add(pair["chr2"])
+            # chromosome-based: contigs missing from the header have no shift.
+            if chr1 not in shift_frags or chr2 not in shift_frags:
+                unlisted_contigs.update(c for c in (chr1, chr2) if c not in shift_frags)
+                n_unlisted += 1
+                continue
+            pair["frag1"] = frag1 + shift_frags[chr1]
+            pair["frag2"] = frag2 + shift_frags[chr2]
 
             # Write indexed pairs in the new file
             pairs_writer.writerow(pair)
 
-        if missing_contigs:
-            logger.warning(
-                "Pairs on the following contigs were discarded as "
-                "those contigs are not listed in the paris file header. "
-                "This is normal if you filtered out small contigs: {}".format(
-                    " ".join(list(missing_contigs))
-                )
-            )
+    if too_short:
+        logger.info(
+            "%d pairs with a mate on a contig shorter than %d bp were discarded.",
+            n_short,
+            int(min_size),
+        )
+    if n_unlisted:
+        logger.warning(
+            "%d pairs with a mate on a contig not listed in the pairs file header "
+            "were discarded: %s",
+            n_unlisted,
+            " ".join(sorted(unlisted_contigs)),
+        )
+    return n_short
 
 
 def get_restriction_table(seq, enzyme, circular=False):
