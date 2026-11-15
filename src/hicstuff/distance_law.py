@@ -345,14 +345,14 @@ def _get_pairs_distance(
     line : OrderedDict
         Line of a pair reads file with the these keys readID, chr1, pos1, chr2,
         pos2, strand1, strand2, frag1, frag2. The values are in a dictionnary.
-    fragments : pandas.DataFrame
-        Table containing in the first coulum the ID of the fragment, in the
-        second the names of the chromosome in the third and fourth the start
-        position and the end position of the fragment. The file have no header.
-        (File like the 'fragments_list.txt' from hicstuff)
-    chr_segment_bins : list of floats
+    fragments : pandas.DataFrame or dict of numpy.ndarray
+        The "start_pos" and "end_pos" of each fragment, indexed by fragment ID
+        (the frag1 and frag2 columns): the 'fragments_list.txt' table from
+        hicstuff, or its two columns as arrays, which are much faster to index.
+    chr_segment_bins : numpy.ndarray or list of floats
         The start and end indices of chromosomes/arms to compute the distance
-        law on each chromosome/arm separately.
+        law on each chromosome/arm separately. Pass an array: a list is
+        converted to one on every call.
     chr_segment_length: list of floats
         List of the size in base pairs of the different arms or chromosomes.
     xs : list of lists
@@ -621,6 +621,11 @@ def get_distance_law(
     ps = [None] * len(chr_segment_length)
     for i in range(len(xs)):
         ps[i] = [0] * len(xs[i])
+    # Every pair looks up the segment and the coordinates of its fragments:
+    # build the arrays once. np.searchsorted on the list converts it to an
+    # array on every call, which made each pair cost O(chromosomes).
+    segment_bins = np.asarray(chr_segment_bins)
+    frag_pos = {col: fragments[col].to_numpy() for col in ("start_pos", "end_pos")}
     # Read the pair reads file (supports plain and gzip-compressed files)
     with hio.read_compressed(pairs_reads_file) as reads:
         # Skip header lines (lines starting with '#')
@@ -648,9 +653,7 @@ def get_distance_law(
             delimiter="\t",
         )
         for line in reader:
-            _get_pairs_distance(
-                line, fragments, chr_segment_bins, chr_segment_length, xs, ps, circular
-            )
+            _get_pairs_distance(line, frag_pos, segment_bins, chr_segment_length, xs, ps, circular)
     # Divide the number of contacts by the area of the logbin
     for i in range(len(xs)):
         n = chr_segment_length[i]
