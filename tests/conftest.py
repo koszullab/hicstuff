@@ -52,10 +52,8 @@ def require_tools():
 
 @pytest.fixture(scope="session")
 def indexed_genome(synthetic_lib, require_tools, tmp_path_factory):
-    """Copy of the synthetic genome with bowtie2 and bwa indices next to it.
-
-    It lives in its own directory: hicstuff detects bwa indices by listing the
-    whole directory, so indices must not sit next to other FASTA files.
+    """Copy of the synthetic genome with bowtie2 and bwa indices next to it,
+    named after it (genome.fa.1.bt2, genome.fa.bwt...), in its own directory.
     """
     genome = tmp_path_factory.mktemp("index") / "genome.fa"
     shutil.copy(synthetic_lib.genome, genome)

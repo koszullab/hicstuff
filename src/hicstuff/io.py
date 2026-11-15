@@ -6,7 +6,6 @@ import functools
 import gzip
 import io
 import os
-import pathlib
 import re
 import subprocess as sp
 import sys
@@ -1305,7 +1304,7 @@ def reorder_fasta(genome, output=None, threshold=100000):
     """
 
     if output is None:
-        output = "{}_renamed.fa".format(genome.split(".")[0])
+        output = f"{os.path.splitext(genome)[0]}_renamed.fa"
 
     handle = SeqIO.parse(genome, "fasta")
     handle_to_write = sorted((u for u in handle if len(u) > threshold), key=len, reverse=True)
@@ -1331,7 +1330,7 @@ def rename_genome(genome, output=None, ambiguous=True):
     """
 
     if output is None:
-        output = "{}_renamed.fa".format(genome.split(".")[0])
+        output = f"{os.path.splitext(genome)[0]}_renamed.fa"
 
     with open(output, "w") as output_handle:
         for record in SeqIO.parse(genome, "fasta"):
@@ -1351,15 +1350,35 @@ def rename_genome(genome, output=None, ambiguous=True):
             output_handle.write(f"{new_seq}\n")
 
 
+#: Files of an aligner's index, after its prefix, for each layout that the
+#: aligner finds from the prefix alone: bowtie2-build writes .bt2 files, or
+#: .bt2l ones for a large index; bwa index writes <prefix>.*, or <prefix>.64.*
+#: with -6.
+_INDEX_SUFFIXES = {
+    "bowtie2": [
+        [f"{name}.{ext}" for name in (".1", ".2", ".3", ".4", ".rev.1", ".rev.2")]
+        for ext in ("bt2", "bt2l")
+    ],
+    "bwa": [
+        [f"{infix}.{ext}" for ext in ("amb", "ann", "bwt", "pac", "sa")] for infix in ("", ".64")
+    ],
+}
+
+
 def check_fasta_index(ref, mode="bowtie2"):
     """
     Checks for the existence of a bowtie2 or bwa index based on the reference
     file name.
 
+    The index must be named after the reference path as given, which is how
+    bowtie2 and bwa find it: <ref>.1.bt2 to <ref>.rev.2.bt2 (or .bt2l) for
+    bowtie2, <ref>.amb, .ann, .bwt, .pac and .sa for bwa. The reference path
+    is kept as is: relative (./ or ../), absolute, or with dots in its name.
+
     Parameters
     ----------
-    ref : str
-        Path to the reference genome.
+    ref : str or pathlib.Path
+        Path to the reference genome, or to the index prefix.
     mode : str
         The alignment software used to build the index. bowtie2 or bwa. If any
         other value is given, the function returns the reference path.
@@ -1367,27 +1386,17 @@ def check_fasta_index(ref, mode="bowtie2"):
     Returns
     -------
     index : str
-        The bowtie2 or bwa index basename. None if no index was found
+        The bowtie2 or bwa index prefix, i.e. ref. None if no index was found
     """
-    ref = pathlib.Path(ref)
-    if mode == "bowtie2":
-        # Bowtie2 should have 6 index files
-        bt2_idx_files = list(ref.parent.glob(f"{ref.name}*bt2*"))
-        index = None if len(bt2_idx_files) < 6 else bt2_idx_files
-    elif mode == "bwa":
-        refdir = str(ref.parent)
-        refdir_files = os.listdir(refdir)
-        bwa_idx_files = [
-            join(refdir, f) for f in refdir_files if re.search(r".*\.(sa|pac|bwt|ann|amb)$", f)
-        ]
-        index = None if len(bwa_idx_files) < 5 else bwa_idx_files
-    else:
-        index = [ref]
-    if index is not None:
-        # Convert the PosixPath objects to strings and get the longest common prefix to obtain
-        # index basename (without the dot)
-        index = os.path.commonprefix(list(map(str, index))).strip(".")
-    return index
+    ref = os.fspath(ref)
+    if mode not in _INDEX_SUFFIXES:
+        return ref
+    # Index files are named by appending to the prefix: it is never parsed,
+    # so leading ./ or ../ and dots in names are kept.
+    for suffixes in _INDEX_SUFFIXES[mode]:
+        if all(os.path.isfile(ref + suffix) for suffix in suffixes):
+            return ref
+    return None
 
 
 def check_is_fasta(in_file):

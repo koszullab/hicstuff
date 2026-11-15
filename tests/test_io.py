@@ -341,17 +341,89 @@ def test_hic_format():
         assert hio.get_hic_format("test_data/valid.pairs")
 
 
-def test_check_fasta_index():
-    f = NamedTemporaryFile("w", delete=False)
-    f.close()
-    assert hio.check_fasta_index(f.name, mode="minimap2") == f.name
-    for i in range(6):
-        Path(f.name + f".{i}.bt2").touch()
-    assert hio.check_fasta_index(f.name, mode="bowtie2") == f.name
-    assert hio.check_fasta_index(f.name, mode="bwa") is None
-    os.unlink(f.name)
-    for i in range(6):
-        os.unlink(f.name + f".{i}.bt2")
+#: Files of an index after its prefix, as each aligner (and layout) writes them
+INDEX_FILES = {
+    "bowtie2": [".1.bt2", ".2.bt2", ".3.bt2", ".4.bt2", ".rev.1.bt2", ".rev.2.bt2"],
+    "bowtie2-large": [".1.bt2l", ".2.bt2l", ".3.bt2l", ".4.bt2l", ".rev.1.bt2l", ".rev.2.bt2l"],
+    "bwa": [".amb", ".ann", ".bwt", ".pac", ".sa"],
+    "bwa-64": [".64.amb", ".64.ann", ".64.bwt", ".64.pac", ".64.sa"],
+}
+
+
+def _touch_index(prefix, suffixes):
+    for suffix in suffixes:
+        Path(f"{prefix}{suffix}").touch()
+
+
+@pytest.mark.parametrize("layout", INDEX_FILES)
+@pytest.mark.parametrize("name", ["genome", "genome.v2", "genome.v2.fa"])
+def test_check_fasta_index(tmp_path, monkeypatch, layout, name):
+    """An index is found from its prefix written in any form, and that prefix
+    is returned as given: relative with ./ or ../, absolute, dots in names."""
+    mode = layout.split("-")[0]
+    other_mode = {"bowtie2": "bwa", "bwa": "bowtie2"}[mode]
+    # A hidden directory, with a dot in its name, holding the index next to
+    # the index of another version of the genome.
+    index_dir = tmp_path / ".refs" / "v2.0"
+    index_dir.mkdir(parents=True)
+    _touch_index(index_dir / name, INDEX_FILES[layout])
+    _touch_index(index_dir / "genome.v1.fa", INDEX_FILES[layout])
+    (tmp_path / "work").mkdir()
+    monkeypatch.chdir(tmp_path / "work")
+
+    rel = f"../.refs/v2.0/{name}"
+    for ref in (rel, f"./{rel}", str(index_dir / name)):
+        assert hio.check_fasta_index(ref, mode=mode) == ref
+        assert hio.check_fasta_index(ref, mode=other_mode) is None
+    assert hio.check_fasta_index(Path(rel), mode=mode) == rel
+    # Neither a partial prefix, nor a prefix with an extra extension, nor the
+    # prefix of an index that does not exist.
+    for ref in ("../.refs/v2.0/gen", f"{rel}.fa", "../.refs/v2.0/genome.v3.fa"):
+        assert hio.check_fasta_index(ref, mode=mode) is None
+
+    monkeypatch.chdir(index_dir)
+    for ref in (name, f"./{name}"):
+        assert hio.check_fasta_index(ref, mode=mode) == ref
+
+
+def test_check_fasta_index_incomplete(tmp_path):
+    """An index missing a file is no index, nor are bowtie2 files of both sizes."""
+    prefix = tmp_path / "genome.fa"
+    _touch_index(prefix, INDEX_FILES["bowtie2"][:3] + INDEX_FILES["bowtie2-large"][3:])
+    _touch_index(prefix, INDEX_FILES["bwa"][:-1] + INDEX_FILES["bwa-64"][-1:])
+    for mode in ("bowtie2", "bwa"):
+        assert hio.check_fasta_index(prefix, mode=mode) is None
+    # The missing file completes the index
+    _touch_index(prefix, INDEX_FILES["bwa"][-1:])
+    assert hio.check_fasta_index(prefix, mode="bwa") == str(prefix)
+
+
+@pytest.mark.parametrize(
+    "ref", ["../ref/genome.v2.fa", "./genome.v2.fa.gz", "../genome.v2.mmi", "/data/genome.fasta"]
+)
+def test_check_fasta_index_minimap2(ref):
+    """minimap2 aligns on the FASTA or .mmi file itself: its path is kept as given."""
+    assert hio.check_fasta_index(ref, mode="minimap2") == ref
+
+
+def test_renamed_fasta_next_to_input(tmp_path, monkeypatch):
+    """rename_genome and reorder_fasta write by default <input without its
+    extension>_renamed.fa, next to the input."""
+    ref_dir = tmp_path / "ref.v2"
+    ref_dir.mkdir()
+    shutil.copy(GENOME, ref_dir / "genome.v2.fa")
+    expected = [rec.id for rec in SeqIO.parse(GENOME, "fasta")]
+    renamed = ref_dir / "genome.v2_renamed.fa"
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+
+    hio.rename_genome("../ref.v2/genome.v2.fa")
+    assert [rec.id for rec in SeqIO.parse(renamed, "fasta")] == expected
+    renamed.unlink()
+    hio.reorder_fasta(Path("./../ref.v2/genome.v2.fa"), threshold=0)
+    assert sorted(rec.id for rec in SeqIO.parse(renamed, "fasta")) == sorted(expected)
+    assert list(work.iterdir()) == []
 
 
 def test_check_is_fasta(tmp_path):
