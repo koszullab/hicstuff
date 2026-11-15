@@ -1118,6 +1118,76 @@ def gc_bins(genome_path, frags):
     return gc_bins
 
 
+#: Oldest GNU sort given --parallel: 8.23 fixed a deadlock of multi-threaded
+#: sort introduced in 8.6 (coreutils NEWS).
+_GNU_SORT_PARALLEL = (8, 23)
+
+
+def _sort_implementation(version_text):
+    """Identify a UNIX sort from what ``sort --version`` printed.
+
+    Parameters
+    ----------
+    version_text : str
+        Standard output of ``sort --version``. The first line names the
+        implementation: "sort (GNU coreutils) 9.4", "sort (uutils coreutils)
+        0.10.0" (the default sort of Ubuntu 26.04), "2.3-FreeBSD" or
+        "2.3-Apple (199)". busybox sort has no --version and prints nothing.
+
+    Returns
+    -------
+    name : str
+        "GNU", "uutils", "BSD" or "unknown".
+    version : tuple of int or None
+        (major, minor) of GNU and uutils sort, else None.
+    """
+    first_line = version_text.strip().split("\n", 1)[0]
+    # The version follows the package name in parentheses
+    version = re.match(r"\s*(\d+)\.(\d+)", first_line.rpartition(")")[2])
+    version = tuple(map(int, version.groups())) if version else None
+    if "(GNU coreutils)" in first_line and version:
+        return "GNU", version
+    if "(uutils coreutils)" in first_line:
+        return "uutils", version
+    if re.match(r"\d+\.\d+-(\w*BSD|Apple)\b", first_line):
+        return "BSD", None
+    return "unknown", None
+
+
+def _sort_parallel_ok(version_text):
+    """Whether sort_pairs can give sort --parallel, warning when it cannot.
+
+    Parameters
+    ----------
+    version_text : str
+        Standard output of ``sort --version``.
+
+    Returns
+    -------
+    bool
+        True for GNU sort 8.23 or later, and for uutils sort.
+    """
+    name, version = _sort_implementation(version_text)
+    if name == "uutils" or (name == "GNU" and version >= _GNU_SORT_PARALLEL):
+        return True
+    if name == "GNU":
+        logger.warning(
+            "GNU sort version is %s but %s or later is required for parallel sort. "
+            "Sorting without --parallel.",
+            ".".join(map(str, version)),
+            ".".join(map(str, _GNU_SORT_PARALLEL)),
+        )
+    elif name == "BSD":
+        # BSD sort uses a single thread when it reads stdin, as here
+        logger.warning("Using BSD sort instead of GNU sort, sorting on a single thread.")
+    else:
+        logger.warning(
+            "Unknown sort (sort --version printed %r): sorting without --parallel.",
+            version_text.strip().split("\n", 1)[0],
+        )
+    return False
+
+
 def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
     """
     Sort a pairs file in batches using UNIX sort.
@@ -1141,7 +1211,8 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
         Path to the directory where temporary files will be created. Defaults
         to sort's own: $TMPDIR, else /tmp (/var/tmp for BSD sort).
     threads : int
-        Number of parallel sorting threads.
+        Number of parallel sorting threads, given with --parallel to GNU sort
+        8.23 or later and to uutils sort. Other sorts choose their own.
     buffer : str
         Buffer size used for sorting. Consists of a number and a unit.
 
@@ -1155,24 +1226,10 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
     # TODO: Write a pure python implementation to drop GNU coreutils depencency,
     # could be inspired from: https://stackoverflow.com/q/14465154/8440675
 
-    # Check if UNIX sort version supports parallelism
-    parallel_ok = True
-    sort_ver = sp.Popen(["sort", "--version"], stdout=sp.PIPE)
-    sort_ver = sort_ver.communicate()[0].decode().split("\n")[0].split(" ")[-1].split(".")
-    # If so, specify threads, otherwise don't mention it in the command line
-    try:
-        sort_ver = list(map(int, sort_ver))
-        if sort_ver[0] < 8 or (sort_ver[0] == 8 and sort_ver[1] < 23):
-            logger.warning(
-                "GNU sort version is {} but >8.23 is required for parallel "
-                "sort. Sorting on a single thread.".format(".".join(map(str, sort_ver)))
-            )
-            parallel_ok = False
-    # BSD sort has a different format and will throw error upon parsing. It does
-    # not support parallel processes anyway.
-    except ValueError:
-        logger.warning("Using BSD sort instead of GNU sort, sorting on a single thread.")
-        parallel_ok = False
+    # Pass the number of threads only to a sort known to accept --parallel.
+    # stderr is dropped: a sort without --version (busybox) prints its usage.
+    sort_ver = sp.run(["sort", "--version"], stdout=sp.PIPE, stderr=sp.DEVNULL).stdout
+    parallel_ok = _sort_parallel_ok(sort_ver.decode(errors="replace"))
 
     # sort runs in the C locale, where a plain key compares byte by byte and
     # finds two values equal only if they are identical: each chromosome
