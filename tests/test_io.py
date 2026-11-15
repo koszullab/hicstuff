@@ -406,6 +406,26 @@ def test_check_fasta_index_minimap2(ref):
     assert hio.check_fasta_index(ref, mode="minimap2") == ref
 
 
+def test_renamed_fasta_next_to_input(tmp_path, monkeypatch):
+    """rename_genome and reorder_fasta write by default <input without its
+    extension>_renamed.fa, next to the input."""
+    ref_dir = tmp_path / "ref.v2"
+    ref_dir.mkdir()
+    shutil.copy(GENOME, ref_dir / "genome.v2.fa")
+    expected = [rec.id for rec in SeqIO.parse(GENOME, "fasta")]
+    renamed = ref_dir / "genome.v2_renamed.fa"
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+
+    hio.rename_genome("../ref.v2/genome.v2.fa")
+    assert [rec.id for rec in SeqIO.parse(renamed, "fasta")] == expected
+    renamed.unlink()
+    hio.reorder_fasta(Path("./../ref.v2/genome.v2.fa"), threshold=0)
+    assert sorted(rec.id for rec in SeqIO.parse(renamed, "fasta")) == sorted(expected)
+    assert list(work.iterdir()) == []
+
+
 def test_check_is_fasta(tmp_path):
     """FASTA input, plain or compressed, is recognised; anything else is not."""
     assert hio.check_is_fasta(GENOME)

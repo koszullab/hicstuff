@@ -1304,7 +1304,7 @@ def reorder_fasta(genome, output=None, threshold=100000):
     """
 
     if output is None:
-        output = "{}_renamed.fa".format(genome.split(".")[0])
+        output = f"{os.path.splitext(genome)[0]}_renamed.fa"
 
     handle = SeqIO.parse(genome, "fasta")
     handle_to_write = sorted((u for u in handle if len(u) > threshold), key=len, reverse=True)
@@ -1330,7 +1330,7 @@ def rename_genome(genome, output=None, ambiguous=True):
     """
 
     if output is None:
-        output = "{}_renamed.fa".format(genome.split(".")[0])
+        output = f"{os.path.splitext(genome)[0]}_renamed.fa"
 
     with open(output, "w") as output_handle:
         for record in SeqIO.parse(genome, "fasta"):
