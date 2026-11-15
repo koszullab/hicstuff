@@ -123,12 +123,73 @@ def align_reads(
     os.remove(tmp_bam)
 
 
+#: Digit runs in a read name, which ``samtools sort -n`` compares by value.
+_DIGIT_RUNS = re.compile(r"([0-9]+)")
+
+
+def _natural_key(name):
+    """Sort key ordering read names as ``samtools sort -n`` does.
+
+    samtools compares names character by character, except that runs of
+    digits found at the same place in both names are compared by value
+    (``strnum_cmp`` in samtools' ``bam_sort.c``): ``r9 < r10``, although
+    ``"r9" > "r10"`` as strings. Leading zeros do not count: ``r010`` and
+    ``r10`` are equal under this key, as under samtools 1.17 and later.
+    samtools 1.16 and earlier put ``r010`` before ``r10``; only names whose
+    numbers are zero-padded to different widths are ordered differently.
+
+    Parameters
+    ----------
+    name : str
+        Read name.
+
+    Returns
+    -------
+    tuple
+        Text runs at even positions and the values of digit runs at odd ones.
+        A text run followed by digits ends with ``"0"``: samtools compares a
+        digit with a non-digit character as characters, and every digit
+        compares alike against a non-digit.
+
+    Examples
+    --------
+    >>> sorted(["r10", "r9", "r1"], key=_natural_key)
+    ['r1', 'r9', 'r10']
+    >>> _natural_key("r010") == _natural_key("r10")
+    True
+    """
+    parts = _DIGIT_RUNS.split(name)
+    key = []
+    for i in range(1, len(parts), 2):
+        key.append(parts[i - 1] + "0")
+        key.append(int(parts[i]))
+    key.append(parts[-1])
+    return tuple(key)
+
+
+def _name_order_key(bam):
+    """Sort key of the read name order of a BAM file sorted by name:
+    :func:`_natural_key`, or ``str`` for lexicographical order.
+
+    ``samtools sort -n`` sorts names in natural order, ``samtools sort -N``
+    (samtools 1.19 and later) in lexicographical order, which it records as
+    ``SS:queryname:lexicographical`` in the ``@HD`` line.
+    """
+    first_line = str(bam.header).split("\n", 1)[0]
+    if first_line.startswith("@HD") and "SS:queryname:lexicographical" in first_line.split("\t"):
+        return str
+    return _natural_key
+
+
 def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30):
     """
     Make a .pairs file from two Hi-C bam files sorted by read names.
-    The Hi-C mates are matched by read identifier. Pairs where at least one
-    reads maps with MAPQ below  min_qual threshold are discarded. Pairs are
-    sorted by readID and stored in upper triangle (first pair higher).
+    The Hi-C mates are matched by read identifier, walking both files in the
+    order they are sorted in: ``samtools sort -n`` (natural) order, or
+    ``samtools sort -N`` (lexicographical) order if both headers say so.
+    Reads whose mate is missing from the other file are skipped. Pairs where
+    at least one reads maps with MAPQ below min_qual threshold are discarded.
+    Pairs are sorted by readID and stored in upper triangle (first pair higher).
 
     Parameters
     ----------
@@ -146,6 +207,15 @@ def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30):
     """
     forward = ps.AlignmentFile(bam1, "rb")
     reverse = ps.AlignmentFile(bam2, "rb")
+    # Mates are matched by walking both files in the order they are sorted in
+    name_key = _name_order_key(forward)
+    if _name_order_key(reverse) is not name_key:
+        forward.close()
+        reverse.close()
+        raise ValueError(
+            f"{bam1} and {bam2} are not sorted in the same read name order: "
+            "sort both with samtools sort -n."
+        )
 
     # Generate header lines
     format_version = "## pairs format v1.0\n"
@@ -165,29 +235,33 @@ def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30):
         end_regex = re.compile(r"/[12]$")
 
         def next_read(bam):
-            """Next read of a BAM file, without end-specific suffix, and
-            whether it passes the quality filter. None at the end of the file."""
+            """Next read of a BAM file, its name without end-specific suffix,
+            and whether it passes the quality filter. None at the end of the
+            file."""
             read = next(bam, None)
             if read is None:
-                return None, False
-            read.query_name = re.sub(end_regex, "", read.query_name)
+                return None, None, False
             n_reads["total"] += 1
             passed = read.mapping_quality >= min_qual
             n_reads["mapped"] += passed
-            return read, passed
+            return read, end_regex.sub("", read.query_name), passed
 
         # Iterate on both BAM simultaneously, skipping reads whose mate is
         # missing from the other file, until both files are exhausted.
-        end1, end1_passed = next_read(forward)
-        end2, end2_passed = next_read(reverse)
+        end1, name1, end1_passed = next_read(forward)
+        end2, name2, end2_passed = next_read(reverse)
         while end1 is not None or end2 is not None:
-            if end2 is None or (end1 is not None and end1.query_name < end2.query_name):
+            if name1 != name2:
+                # Skip the read that comes first in the order the files are
+                # sorted in, by name as stored (suffix included): its mate, if
+                # any, would have come before the other read.
                 unmatched_reads += 1
-                end1, end1_passed = next_read(forward)
-                continue
-            if end1 is None or end1.query_name > end2.query_name:
-                unmatched_reads += 1
-                end2, end2_passed = next_read(reverse)
+                if end2 is None or (
+                    end1 is not None and name_key(end1.query_name) < name_key(end2.query_name)
+                ):
+                    end1, name1, end1_passed = next_read(forward)
+                else:
+                    end2, name2, end2_passed = next_read(reverse)
                 continue
             # Keep only pairs where both reads have good quality
             if end1_passed and end2_passed:
@@ -199,7 +273,7 @@ def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30):
                     end1, end2 = end2, end1
                 pairs_writer.writerow(
                     [
-                        end1.query_name,
+                        name1,
                         end1.reference_name,
                         end1.reference_start + 1,
                         end2.reference_name,
@@ -208,8 +282,8 @@ def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30):
                         "-" if end2.is_reverse else "+",
                     ]
                 )
-            end1, end1_passed = next_read(forward)
-            end2, end2_passed = next_read(reverse)
+            end1, name1, end1_passed = next_read(forward)
+            end2, name2, end2_passed = next_read(reverse)
     pairs.close()
     if unmatched_reads > 0:
         logger.warning(

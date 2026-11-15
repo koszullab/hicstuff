@@ -4,12 +4,15 @@ import filecmp
 import gzip
 import os
 import random
+import re
 import shutil
+import subprocess as sp
 from tempfile import NamedTemporaryFile
 
 import cooler
 import numpy as np
 import pandas as pd
+import pysam
 import pytest
 
 import hicstuff.io as hio
@@ -469,3 +472,159 @@ def test_full_pipeline_bin(mapping, aligner):
     shutil.rmtree(out_dir)
     if mapping == "iterative" and aligner == "minimap2":
         shutil.rmtree("test_out/")
+
+
+# ---------------------------------------------------------------------------
+# bam2pairs: matching mates in name-sorted BAM files
+# ---------------------------------------------------------------------------
+
+BAM_REFS = [("chr1", 20000), ("chr2", 8000)]
+
+
+def _samtools_version():
+    """Version of the samtools on the PATH, as a tuple of ints; skip without one."""
+    if shutil.which("samtools") is None:
+        pytest.skip("samtools is not installed")
+    # Only the first line: the rest is not always valid UTF-8
+    out = sp.run(["samtools", "--version"], capture_output=True, check=True).stdout
+    return tuple(int(x) for x in re.match(rb"samtools (\d+)\.(\d+)", out).groups())
+
+
+def _write_bam(path, reads, header_hd=None):
+    """Write reads, given as (name, ref_id, pos, reverse, mapq) in that order,
+    to a BAM file. ref_id -1 makes an unmapped read."""
+    header = {"HD": header_hd or {"VN": "1.6"}, "SQ": [{"SN": n, "LN": ln} for n, ln in BAM_REFS]}
+    with pysam.AlignmentFile(str(path), "wb", header=header) as bam:
+        for name, ref_id, pos, reverse, mapq in reads:
+            read = pysam.AlignedSegment(bam.header)
+            read.query_name = name
+            read.query_sequence = "A" * 20
+            if ref_id < 0:
+                read.flag = 4
+            else:
+                read.flag = 16 if reverse else 0
+                read.reference_id = ref_id
+                read.reference_start = pos
+                read.mapping_quality = mapq
+                read.cigarstring = "20M"
+            bam.write(read)
+
+
+def _name_sorted_bam(path, reads, flag, tmp_path):
+    """Name-sorted BAM of reads, sorted by ``samtools sort <flag>``."""
+    unsorted = tmp_path / f"unsorted_{path.name}"
+    _write_bam(unsorted, reads)
+    sp.run(["samtools", "sort", flag, "-o", str(path), str(unsorted)], check=True)
+    return str(path)
+
+
+def _bam_names(path):
+    with pysam.AlignmentFile(str(path), "rb", check_sq=False) as bam:
+        return [read.query_name for read in bam]
+
+
+def test_natural_key_follows_samtools_sort_n(tmp_path):
+    """Read names come out of ``samtools sort -n`` in _natural_key order.
+
+    The names mix digit runs, with and without leading zeros, with characters
+    sorting before ('!', '-', '.', '/') and after (':', 'A', '_', 'z', '~')
+    digits."""
+    version = _samtools_version()
+    rng = random.Random(0)
+    alphabet = "0000123456789" * 2 + "!-./:A_z~"
+    names = {"r9", "r10", "r9.1", "r9:1", "r010", "x1", "x.1", "x:1", "a0b", "a00c"}
+    while len(names) < 3000:
+        names.add("".join(rng.choice(alphabet) for _ in range(rng.randint(1, 10))))
+    names = sorted(names)
+    rng.shuffle(names)
+    sorted_names = _bam_names(
+        _name_sorted_bam(
+            tmp_path / "sorted.bam", [(n, -1, 0, False, 0) for n in names], "-n", tmp_path
+        )
+    )
+    if version < (1, 17):
+        # samtools 1.16 and earlier put r010 before r10, before comparing what
+        # follows the numbers: leave out names with zero-padded numbers.
+        padded = re.compile(r"(?<![0-9])0[0-9]")
+        sorted_names = [name for name in sorted_names if not padded.search(name)]
+    keys = [hpi._natural_key(name) for name in sorted_names]
+    # Names equal under the key (r010, r10) may come in either order
+    assert all(a <= b for a, b in zip(keys, keys[1:]))
+    # The test is only meaningful if samtools' order is not the string order
+    assert sorted_names != sorted(sorted_names)
+
+
+@pytest.mark.parametrize("suffixes", [("", ""), ("/1", "/2")], ids=["plain", "suffixed"])
+@pytest.mark.parametrize("flag", ["-n", "-N"])
+def test_bam2pairs_matches_mates_in_samtools_name_order(tmp_path, caplog, flag, suffixes):
+    """Every pair is found when mates are missing from either BAM file, as with
+    BAM files aligned with --no-unal, in the order samtools sorted them in.
+
+    Read names r1, r2... sort differently as strings (r10 < r9) and naturally
+    (r9 < r10, samtools sort -n)."""
+    if _samtools_version() < (1, 19) and flag == "-N":
+        pytest.skip("samtools sort -N needs samtools 1.19 or later")
+    rng = random.Random(1)
+    n_reads = 300
+    names = [f"r{i}" for i in range(1, n_reads + 1)]
+    mates = {}
+    for end in ("for", "rev"):
+        # (contig, position, reverse strand, MAPQ), with a tenth of MAPQ < 30
+        mates[end] = {
+            name: (
+                rng.randrange(2),
+                rng.randrange(7000),
+                rng.random() < 0.5,
+                rng.choice([5] + [40] * 9),
+            )
+            for name in names
+        }
+    # Reads absent from one file, as when unaligned reads are not written
+    del_for = {name for i, name in enumerate(names, 1) if i % 7 == 3 or i % 11 == 0}
+    del_rev = {name for i, name in enumerate(names, 1) if i % 5 == 2 or i in (9, 99)}
+    for end, deleted, suffix in zip(("for", "rev"), (del_for, del_rev), suffixes):
+        mates[end] = {name: mates[end][name] for name in names if name not in deleted}
+        reads = [(name + suffix, *aln) for name, aln in mates[end].items()]
+        rng.shuffle(reads)
+        _name_sorted_bam(tmp_path / f"{end}.bam", reads, flag, tmp_path)
+    info_contigs = tmp_path / "info_contigs.txt"
+    info_contigs.write_text(
+        "contig\tlength\tn_frags\tcumul_length\n"
+        + "".join(f"{name}\t{length}\t1\t0\n" for name, length in BAM_REFS)
+    )
+    out = tmp_path / "out.pairs"
+
+    hpi.bam2pairs(str(tmp_path / "for.bam"), str(tmp_path / "rev.bam"), str(out), str(info_contigs))
+
+    expected = []
+    for name in mates["for"].keys() & mates["rev"].keys():
+        aln1, aln2 = mates["for"][name], mates["rev"][name]
+        if min(aln1[3], aln2[3]) < 30:
+            continue
+        if aln1[:2] > aln2[:2]:
+            aln1, aln2 = aln2, aln1
+        expected.append(
+            [name]
+            + [BAM_REFS[aln1[0]][0], aln1[1] + 1, BAM_REFS[aln2[0]][0], aln2[1] + 1]
+            + ["-" if aln1[2] else "+", "-" if aln2[2] else "+"]
+        )
+    pairs = pd.read_csv(out, sep="\t", comment="#", header=None)
+    assert sorted(pairs.values.tolist()) == sorted(expected)
+    n_unmatched = len(del_for ^ del_rev)
+    assert f"{n_unmatched} reads were only present in one BAM file" in caplog.text
+
+
+def test_bam2pairs_rejects_bams_sorted_in_different_orders(tmp_path):
+    """BAM files sorted by name in different orders cannot be walked together."""
+    reads = [("r1", 0, 10, False, 40), ("r10", 0, 20, False, 40), ("r9", 0, 30, False, 40)]
+    lexicographical = {"VN": "1.6", "SO": "queryname", "SS": "queryname:lexicographical"}
+    _write_bam(tmp_path / "for.bam", reads, header_hd=lexicographical)
+    _write_bam(tmp_path / "rev.bam", reads[::2] + reads[1:2])
+    with pytest.raises(ValueError, match="not sorted in the same read name order"):
+        hpi.bam2pairs(
+            str(tmp_path / "for.bam"),
+            str(tmp_path / "rev.bam"),
+            str(tmp_path / "out.pairs"),
+            "test_data/info_contigs.txt",
+        )
+    assert not (tmp_path / "out.pairs").exists()
