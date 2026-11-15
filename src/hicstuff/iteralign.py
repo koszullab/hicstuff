@@ -205,8 +205,8 @@ def iterative_align(
     temp_bam = ps.AlignmentFile(temp_alignment, "rb", check_sq=False)
     unmapped = ps.AlignmentFile(iter_out[-1], "wb", template=temp_bam)
     for r in temp_bam:
-        # Do not write supplementary alignments (keeping 1 alignment/read)
-        if r.query_name in remaining_reads and not r.is_supplementary:
+        # Only write primary records (keeping 1 alignment/read)
+        if r.query_name in remaining_reads and _is_primary(r):
             unmapped.write(r)
     unmapped.close()
     temp_bam.close()
@@ -259,6 +259,13 @@ def _truncate_reads(tmp_dir, infile, unaligned_set, trunc_len, first_round):
     return outfile
 
 
+def _is_primary(read):
+    """Whether a BAM record is its read's primary record: the SAM format gives
+    each read exactly one record that is neither secondary (0x100) nor
+    supplementary (0x800)."""
+    return not (read.is_secondary or read.is_supplementary)
+
+
 def _filter_bamfile(temp_alignment, filtered_out, min_qual=30):
     """Filter alignment BAM files
 
@@ -266,6 +273,12 @@ def _filter_bamfile(temp_alignment, filtered_out, min_qual=30):
     Write reads to the output file if they are aligned with a good
     quality, otherwise add their name in a set to stage them for the next round
     of alignment.
+
+    A read is classified by its primary record alone, which is the only one
+    written. Its secondary and supplementary records, such as those bwa mem
+    and minimap2 report for the two sides of a ligation junction, are skipped:
+    staging a read for the next round because of them would write it again in
+    every remaining round, although its primary record was kept.
 
     Parameters
     ----------
@@ -289,6 +302,9 @@ def _filter_bamfile(temp_alignment, filtered_out, min_qual=30):
     temp_bam = ps.AlignmentFile(temp_alignment, "rb", check_sq=False)
     outf = ps.AlignmentFile(filtered_out, "wb", template=temp_bam)
     for r in temp_bam:
+        # Each read has one primary record, which alone decides its fate.
+        if not _is_primary(r):
+            continue
         if r.flag in [0, 16] and r.mapping_quality >= min_qual:
             outf.write(r)
         else:
