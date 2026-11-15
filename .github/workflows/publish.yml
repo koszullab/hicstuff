@@ -46,8 +46,11 @@ jobs:
       - name: Build distributions
         run: uv build
 
+      # Trusted publishing (OIDC), no stored token: koszullab/hicstuff is
+      # registered on PyPI as a trusted publisher of the hicstuff project,
+      # for this workflow (publish.yml).
       - name: Publish to PyPI
-        run: uv publish --token ${{ secrets.PYPI_TOKEN }}
+        run: uv publish --trusted-publishing always
 
   build-and-push-docker:
     name: Build and push Docker image to GHCR
