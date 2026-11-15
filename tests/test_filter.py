@@ -122,6 +122,29 @@ def test_sample_pairs_ignore_order(tmp_path):
     assert abs(seq2_share(sample) - seq2_share(lines)) < 0.05
 
 
+def test_sample_pairs_without_read_ids(tmp_path):
+    """A pairs file whose read IDs are all "." (pairtools parse --drop-readid)
+    is sampled as well: hashing the read ID alone would draw all of its pairs
+    or none of them."""
+    header, lines = read_pairs(PAIRS)
+    lines = ["." + x[x.find("\t") :] for x in lines]
+    path = write_pairs(tmp_path / "no_ids", header, lines)
+    # Without read IDs, 2797 of the 10000 lines repeat another one, and
+    # identical lines are drawn together: the sample sizes spread more.
+    assert 400 <= len(list(hcf._sample_pairs(path, 500))) <= 600
+    assert 800 <= len(list(hcf._sample_pairs(path, 1000))) <= 1200
+
+
+def test_sample_pairs_last_line_without_newline(tmp_path):
+    """A pair drawn from a file is drawn too when its line comes last in
+    another order of the file, without a final newline."""
+    header, lines = read_pairs(PAIRS)
+    drawn = next(hcf._sample_pairs(PAIRS, 1000))
+    lines.remove(drawn)
+    path = write_pairs(tmp_path / "no_final_newline", header, lines + [drawn.rstrip("\n")])
+    assert list(hcf._sample_pairs(path, 1000))[-1] == drawn.rstrip("\n")
+
+
 def event_library(rng):
     """Pairs on two chromosomes, a and b. All four orientations are equally
     frequent at every distance (40 pairs per orientation and number of

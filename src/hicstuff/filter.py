@@ -115,11 +115,14 @@ def _sample_pairs(in_dat, size):
     """Draw about ``size`` pairs from the whole of a pairs file
 
     A file of at most ``size`` pairs is drawn whole. In a file of ``n`` pairs,
-    a pair is drawn when the CRC-32 of its read ID, an integer below 2**32, is
+    a pair is drawn when the CRC-32 of its line, an integer below 2**32, is
     below ``size * 2**32 / n``. The sample is then the same whatever the order
-    of the lines, and since read IDs say nothing about where reads map, it is
-    spread over the whole library. The first ``size`` pairs would not be: in
-    a file sorted by coordinates, they all come from the first chromosomes.
+    of the lines, and spread over the whole library. The first ``size`` pairs
+    would not be: in a file sorted by coordinates, they all come from the
+    first chromosomes. The whole line is hashed, not just its read ID, because
+    a pairs file may have none: every read ID is then "." (as written by
+    pairtools parse --drop-readid), and its CRC-32 would draw all the pairs
+    or none.
 
     Parameters
     ----------
@@ -143,7 +146,8 @@ def _sample_pairs(in_dat, size):
         for line in pairs:
             if line.startswith("#"):
                 continue
-            if bound is None or zlib.crc32(line[: line.find("\t")].encode()) < bound:
+            # The final newline is left out, as the last line may lack one
+            if bound is None or zlib.crc32(line.rstrip("\n").encode()) < bound:
                 yield line
 
 
@@ -173,7 +177,8 @@ def get_thresholds(
         If the library has a name, it will be shown on plots.
     sample_size : int
         Number of pairs from which the thresholds are estimated. Larger
-        libraries are sampled by read ID, smaller ones are used whole.
+        libraries are sampled by a hash of each line, the same pairs
+        whatever the order of the file. Smaller ones are used whole.
 
     Returns
     -------
