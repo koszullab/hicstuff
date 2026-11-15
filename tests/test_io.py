@@ -159,8 +159,9 @@ def _blocks(values):
     return [v for i, v in enumerate(values) if i == 0 or v != values[i - 1]]
 
 
-#: Contig names, some of which sort -V (coreutils >= 9.1) finds equal although
-#: they differ: contig_01 and contig_1, a and a0, k141_10 and k141_010.
+#: Contig names whose byte and version orders differ (contig_2 and contig_10),
+#: and names that sort -V (coreutils >= 9.1) finds equal although they differ:
+#: contig_01 and contig_1, a and a0, k141_10 and k141_010.
 TIED_CONTIGS = ["contig_01", "contig_1", "contig_2", "contig_10", "a", "a0", "k141_10", "k141_010"]
 
 
@@ -168,7 +169,7 @@ TIED_CONTIGS = ["contig_01", "contig_1", "contig_2", "contig_10", "a", "a0", "k1
     "keys", [["chr1", "chr2", "pos1", "pos2"], ["chr1", "pos1", "chr2", "pos2"]], ids="-".join
 )
 def test_sort_pairs_one_block_per_contig(tmp_path, keys):
-    """Each contig forms one block, also when version order ties it with another."""
+    """Each contig forms one block, in byte order, also when version order would tie it."""
     rng = random.Random(1)
     lines = [
         f"r{i}\t{chr1}\t{rng.randint(1, 50)}\t{chr2}\t{rng.randint(1, 50)}\t+\t-"
@@ -178,10 +179,9 @@ def test_sort_pairs_one_block_per_contig(tmp_path, keys):
     ]
     rows = _sort_pairs_lines(tmp_path, lines, keys)
 
-    chr1_blocks = _blocks([row[1] for row in rows])
-    assert sorted(chr1_blocks) == sorted(TIED_CONTIGS)
-    # Still in version order
-    assert chr1_blocks.index("contig_2") < chr1_blocks.index("contig_10")
+    # One block per contig, in byte order (contig_10 before contig_2), as
+    # pairtools sort
+    assert _blocks([row[1] for row in rows]) == sorted(TIED_CONTIGS)
     if keys[1] == "chr2":
         # One block per chromosome pair, sorted by positions: what pairix
         # needs to index the file
@@ -190,7 +190,7 @@ def test_sort_pairs_one_block_per_contig(tmp_path, keys):
     else:
         groups = [row[1] for row in rows]
         within = [int(row[2]) for row in rows]
-    assert len(_blocks(groups)) == len(set(groups))
+    assert _blocks(groups) == sorted(set(groups))
     for group in set(groups):
         values = [value for g, value in zip(groups, within) if g == group]
         assert values == sorted(values)

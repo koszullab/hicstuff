@@ -1133,11 +1133,11 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
     keys : list of str
         list of columns to use as sort keys. Each column can be one of readID,
         chr1, pos1, chr2, pos2, strand1, strand2, frag1, frag2. Key priorities
-        are according to the order in the list. Chromosomes sort in version
-        order (chr2 before chr10), positions and fragments numerically, read
-        names and strands in dictionary order. Text values that these orders
-        find equal but that differ (contig_01 and contig_1) are ordered byte
-        by byte, so that each value forms one block.
+        are according to the order in the list. Chromosomes sort byte by byte
+        (chr1, chr10, chr2, as pairtools sort), positions and fragments
+        numerically, read names and strands in dictionary order. Read names
+        that dictionary order finds equal but that differ (r.1 and r1) are
+        ordered byte by byte, so that each one forms one block.
     tmp_dir : str
         Path to the directory where temporary files will be created. Defaults
         to sort's own: $TMPDIR, else /tmp (/var/tmp for BSD sort).
@@ -1175,17 +1175,19 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
         logger.warning("Using BSD sort instead of GNU sort, sorting on a single thread.")
         parallel_ok = False
 
-    # Each text column is followed by a plain comparison of the same column,
-    # which only decides between values the first one finds equal. Without
-    # it, such values interleave instead of forming one block each: sort -V
-    # (coreutils >= 9.1) ties contig_01 with contig_1, and -d ties r.1 with r1
-    # and + with - (it ignores punctuation). sort runs in the C locale, which
-    # makes that comparison byte by byte: equal only for identical values.
+    # sort runs in the C locale, where a plain key compares byte by byte and
+    # finds two values equal only if they are identical: each chromosome
+    # then forms one block. Version order (-V) would not: from coreutils 9.1
+    # it ties contig_01 with contig_1, whose pairs then interleave and cannot
+    # be indexed by pairix. Byte order is also the order of pairtools sort,
+    # which pairtools merge expects. Dictionary order (-d) ignores
+    # punctuation, so it ties r.1 with r1, and + with -: a plain comparison
+    # of the same column follows it and decides between such values.
     key_map = {
         "readID": ["-k1,1d", "-k1,1"],
-        "chr1": ["-k2,2V", "-k2,2"],
+        "chr1": ["-k2,2"],
         "pos1": ["-k3,3n"],
-        "chr2": ["-k4,4V", "-k4,4"],
+        "chr2": ["-k4,4"],
         "pos2": ["-k5,5n"],
         "strand1": ["-k6,6d", "-k6,6"],
         "strand2": ["-k7,7d", "-k7,7"],
