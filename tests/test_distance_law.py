@@ -1,7 +1,6 @@
 # Tests for the hicstuff filter module.
 # 20190409
 
-import gc
 import hashlib as hashlib
 import os as os
 import time
@@ -195,37 +194,41 @@ def _write_contigs(directory, n_contigs, n_pairs, seed=0):
     return str(pairs), str(frags), contig
 
 
-def _cpu_time(func, *args):
-    """CPU time of one call (immune to other processes), without GC pauses."""
-    gc.collect()
-    gc.disable()
-    try:
-        start = time.process_time()
-        result = func(*args)
-        return time.process_time() - start, result
-    finally:
-        gc.enable()
-
-
-@pytest.mark.parametrize("with_frags", [True, False], ids=["fragments", "chromsizes"])
-def test_distance_law_per_pair_cost_does_not_grow_with_contigs(tmp_path, with_frags):
+@pytest.mark.parametrize(
+    "with_frags, per_pair_function",
+    [(True, "_get_pairs_distance"), (False, "_get_pairs_distance_pos")],
+    ids=["fragments", "chromsizes"],
+)
+def test_distance_law_time_per_pair_does_not_grow_with_contigs(
+    tmp_path, monkeypatch, with_frags, per_pair_function
+):
     """Each pair used to find its contig with np.searchsorted on a list, which
     copies the list into an array on every call: 1 M pairs over 20,000 contigs
-    did not finish in 10 minutes. The time per pair (a run minus the same run
-    without pairs, which leaves the per-contig setup) must not depend on the
-    number of contigs; it was 16 times higher with 5,000 contigs than with 10.
+    did not finish in 10 minutes. The time per pair must not depend on the
+    number of contigs: it was about 20 times higher over 5,000 contigs than
+    over 10.
+
+    A pair's time is the interval between two consecutive calls of the
+    per-pair function: one turn of the loop over the pairs, without the
+    per-contig setup before it. Their median ignores the turns that another
+    process or the garbage collector interrupted.
     """
-    n_pairs = 20_000
+    original = getattr(hcdl, per_pair_function)
+    calls = []
+
+    def stamped(*args, **kwargs):
+        calls.append(time.perf_counter())
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(hcdl, per_pair_function, stamped)
+    n_pairs = 2_000
 
     def per_pair(n_contigs):
-        times = []
-        for n in (0, n_pairs):
-            pairs, frags, contig = _write_contigs(tmp_path / f"{n_contigs}_{n}", n_contigs, n)
-            frags = frags if with_frags else None
-            elapsed, (_, ps, names) = _cpu_time(hcdl.get_distance_law, pairs, frags)
-            times.append(elapsed)
-        assert len(names) == n_contigs
-        return (times[1] - times[0]) / n_pairs, ps, contig
+        del calls[:]
+        pairs, frags, contig = _write_contigs(tmp_path / str(n_contigs), n_contigs, n_pairs)
+        _, ps, names = hcdl.get_distance_law(pairs, frags if with_frags else None)
+        assert len(names) == n_contigs and len(calls) == n_pairs
+        return np.median(np.diff(calls)), ps, contig
 
     few, _, _ = per_pair(10)
     many, ps, contig = per_pair(5_000)
