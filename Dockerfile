@@ -1,6 +1,6 @@
 FROM mambaorg/micromamba:latest
 
-LABEL Name=hicstuff Version=3.2.5
+LABEL Name=hicstuff Version=3.3.0
 
 COPY --chown=$MAMBA_USER:$MAMBA_USER . ./
 
