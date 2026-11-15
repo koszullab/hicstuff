@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "hicstuff"
-version = "3.2.5"
+version = "3.3.0"
 description = "General purpose stuff to generate and handle Hi-C data in its simplest form."
 readme = "README.md"
 requires-python = ">=3.8"
@@ -74,7 +74,7 @@ where = ["src"]
 hicstuff = ["*"]
 
 [tool.bumpversion]
-current_version = "3.2.5"
+current_version = "3.3.0"
 commit = true
 tag = true
 tag_name = "v{new_version}"
