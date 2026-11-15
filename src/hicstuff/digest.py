@@ -141,11 +141,13 @@ def attribute_fragments(
     Note that pairs files have 1bp point positions whereas restriction table
     has 0bp point poisitions.
 
-    Fragments are numbered genome-wide, in the order of the ``#chromsize``
-    lines of the pairs header. Contigs shorter than min_size are left out, as
-    write_frag_info leaves them out of the fragments list: their ``#chromsize``
-    lines are removed and their fragments get no index. Pairs with a mate on
-    such a contig, or on a contig the header does not list, are discarded.
+    Fragments are numbered genome-wide as in the fragments list written by
+    write_frag_info: contig by contig, in the order of restriction_table (that
+    of the genome), whatever ``#chromsize`` lines the pairs header has.
+    Contigs shorter than min_size are left out, as write_frag_info leaves them
+    out of the fragments list: their fragments get no index, their
+    ``#chromsize`` lines are removed, and pairs with a mate on one of them
+    are discarded.
 
     Parameters
     ----------
@@ -159,9 +161,9 @@ def attribute_fragments(
         on whole genome.
     restriction_table: dict
         Dictionary with chromosome identifiers (str) as keys and list of
-        positions (int) of restriction sites as values. The last position of
-        each list is the length of the chromosome, as returned by
-        get_restriction_table.
+        positions (int) of restriction sites as values, in the order of the
+        genome. The last position of each list is the length of the
+        chromosome, as returned by get_restriction_table.
     min_size : float, optional
         Size below which contigs are left out. Default is 0, i.e. all contigs
         are retained.
@@ -180,35 +182,32 @@ def attribute_fragments(
     # Contigs that write_frag_info leaves out of the fragments list
     too_short = {chrom for chrom, sites in restriction_table.items() if sites[-1] < int(min_size)}
 
+    # Index of the first fragment of each contig in the fragments list, which
+    # follows the genome, as restriction_table does, without the contigs too
+    # short. The pairs header plays no part: hicstuff writes its #chromsize
+    # lines in that order, but other tools may not, or may not write any.
+    shift_frags = {}
+    n_frags = 0
+    for chrom, sites in restriction_table.items():
+        if chrom not in too_short:
+            shift_frags[chrom] = n_frags
+            # Note the "-1" because there are nfrags + 1 sites in rest table
+            n_frags += len(sites) - 1
+
     # Parse and update header section
     pairs_header = hio.get_pairs_header(pairs_file)
     header_size = len(pairs_header)
-    chrom_order = []
     with open(idx_pairs_file, "w") as idx_pairs:
         for line in pairs_header:
             # Add new column names to header
             if line.startswith("#columns"):
                 line = line.rstrip() + " frag1 frag2"
-            if line.startswith("#chromsize"):
-                chrom = line.split()[1]
-                if chrom in too_short:
-                    continue
-                chrom_order.append(chrom)
+            # Contigs left out of the fragments list are left out of the header
+            if line.startswith("#chromsize") and line.split()[1] in too_short:
+                continue
             idx_pairs.write(line + "\n")
 
-    # Get number of fragments per chrom to allow genome-based indices
-    shift_frags = {}
-    prev_frags = 0
-    for rank, chrom in enumerate(chrom_order):
-        if rank > 0:
-            # Note the "-1" because there are nfrags + 1 sites in rest table
-            prev_frags += len(restriction_table[chrom_order[rank - 1]]) - 1
-        # Idx of each chrom's frags will be shifted by n frags in previous chroms
-        shift_frags[chrom] = prev_frags
-
     n_short = 0
-    n_unlisted = 0
-    unlisted_contigs = set()
     # Attribute pairs to fragments and append them to output file (after header)
     with open(pairs_file) as pairs, open(idx_pairs_file, "a") as idx_pairs:
         # Skip header lines
@@ -239,16 +238,12 @@ def attribute_fragments(
                 continue
             # Get the 0-based indices of corresponding restriction fragments
             # Deducing 1 from pair position to get it into 0bp point
-            frag1 = find_frag(int(pair["pos1"]) - 1, restriction_table[chr1])
-            frag2 = find_frag(int(pair["pos2"]) - 1, restriction_table[chr2])
+            pair["frag1"] = find_frag(int(pair["pos1"]) - 1, restriction_table[chr1])
+            pair["frag2"] = find_frag(int(pair["pos2"]) - 1, restriction_table[chr2])
             # Shift fragment indices to make them genome-based instead of
-            # chromosome-based: contigs missing from the header have no shift.
-            if chr1 not in shift_frags or chr2 not in shift_frags:
-                unlisted_contigs.update(c for c in (chr1, chr2) if c not in shift_frags)
-                n_unlisted += 1
-                continue
-            pair["frag1"] = frag1 + shift_frags[chr1]
-            pair["frag2"] = frag2 + shift_frags[chr2]
+            # chromosome-based
+            pair["frag1"] += shift_frags[chr1]
+            pair["frag2"] += shift_frags[chr2]
 
             # Write indexed pairs in the new file
             pairs_writer.writerow(pair)
@@ -258,13 +253,6 @@ def attribute_fragments(
             "%d pairs with a mate on a contig shorter than %d bp were discarded.",
             n_short,
             int(min_size),
-        )
-    if n_unlisted:
-        logger.warning(
-            "%d pairs with a mate on a contig not listed in the pairs file header "
-            "were discarded: %s",
-            n_unlisted,
-            " ".join(sorted(unlisted_contigs)),
         )
     return n_short
 

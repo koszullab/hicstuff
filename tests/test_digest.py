@@ -78,6 +78,23 @@ CHUNK_PAIRS = [
     ("r5", "ctgC", 300, "ctgC", 1, 6, 4),
     ("r6", "ctgC", 120, "ctgA", 240, None, None),
 ]
+#: The fragment indices of CHUNK_PAIRS with every contig, ctgA first.
+ALL_CONTIGS_FRAGS = {
+    "r1": (4, 6),
+    "r2": (0, 3),
+    "r3": (0, 2),
+    "r4": (6, 8),
+    "r5": (9, 7),
+    "r6": (8, 2),
+}
+#: #chromsize lines of the pairs header: as hicstuff writes them, without the
+#: short contig, in another order than the genome, or none at all.
+HEADERS = {
+    "header-lists-all": ["ctgA", "ctgB", "ctgC"],
+    "header-omits-ctgA": ["ctgB", "ctgC"],
+    "header-reordered": ["ctgC", "ctgA", "ctgB"],
+    "no-chromsize": [],
+}
 
 
 def _chunk_inputs(tmp_path, listed):
@@ -106,20 +123,19 @@ def _chunk_inputs(tmp_path, listed):
     return genome, pairs, table
 
 
-def _check_chunk_output(idx_pairs, frags_file, listed):
-    """The output keeps the pairs not on ctgA, with fragment indices that
-    point, in the fragments list, at the fragment holding each read."""
+def _check_chunk_output(idx_pairs, frags_file, header_chroms, expected):
+    """The output header lists header_chroms and the output pairs are those
+    of ``expected`` (readID: (frag1, frag2)), whose fragment indices point, in
+    the fragments list, at the fragment holding each read."""
     expected_header = [
         "## pairs format v1.0",
         "#sorted: readID",
         "#columns: readID chr1 pos1 chr2 pos2 strand1 strand2 frag1 frag2",
-    ] + [f"#chromsize: {name} {CHUNK_GENOME[name]}" for name in listed if name != "ctgA"]
+    ] + [f"#chromsize: {name} {CHUNK_GENOME[name]}" for name in header_chroms]
     assert hio.get_pairs_header(str(idx_pairs)) == expected_header
     out = pd.read_csv(idx_pairs, sep="\t", comment="#", header=None)
-    kept = [p for p in CHUNK_PAIRS if p[5] is not None]
-    assert out[0].tolist() == [p[0] for p in kept]
-    assert out[7].tolist() == [p[5] for p in kept]
-    assert out[8].tolist() == [p[6] for p in kept]
+    assert out[0].tolist() == list(expected)
+    assert list(zip(out[7], out[8])) == list(expected.values())
     frags = pd.read_csv(frags_file, sep="\t")
     for chrom, pos, frag in [(1, 2, 7), (3, 4, 8)]:
         hit = frags.iloc[out[frag]]
@@ -130,11 +146,7 @@ def _check_chunk_output(idx_pairs, frags_file, listed):
         ).all()
 
 
-@pytest.mark.parametrize(
-    "listed",
-    [["ctgA", "ctgB", "ctgC"], ["ctgB", "ctgC"]],
-    ids=["header-lists-ctgA", "header-omits-ctgA"],
-)
+@pytest.mark.parametrize("listed", list(HEADERS.values()), ids=list(HEADERS))
 def test_attribute_fragments_min_size(tmp_path, caplog, listed):
     """Contigs shorter than min_size are left out of the fragments list by
     write_frag_info: attribute_fragments leaves them out of the header and of
@@ -147,20 +159,19 @@ def test_attribute_fragments_min_size(tmp_path, caplog, listed):
     n_short = hcd.attribute_fragments(str(pairs), str(idx_pairs), table, min_size=MIN_SIZE)
     assert n_short == 3
     assert "3 pairs with a mate on a contig shorter than 300 bp were discarded" in caplog.text
-    _check_chunk_output(idx_pairs, tmp_path / "fragments_list.txt", listed)
+    expected = {p[0]: (p[5], p[6]) for p in CHUNK_PAIRS if p[5] is not None}
+    header_chroms = [name for name in listed if name != "ctgA"]
+    _check_chunk_output(idx_pairs, tmp_path / "fragments_list.txt", header_chroms, expected)
 
 
-def test_attribute_fragments_discards_unlisted_contigs(tmp_path, caplog):
-    """Pairs with a mate on a contig the header does not list cannot get a
-    genome-wide fragment index: they are discarded, as the warning says."""
-    genome, pairs, table = _chunk_inputs(tmp_path, ["ctgB", "ctgC"])
-    hcd.write_frag_info(str(genome), 100, min_size=MIN_SIZE, output_dir=str(tmp_path))
+@pytest.mark.parametrize("listed", list(HEADERS.values()), ids=list(HEADERS))
+def test_attribute_fragments_follows_genome(tmp_path, caplog, listed):
+    """Fragments are numbered as in the fragments list, in the order of the
+    genome, whatever #chromsize lines the pairs header has: every pair is kept,
+    and the header is left as it is."""
+    genome, pairs, table = _chunk_inputs(tmp_path, listed)
+    hcd.write_frag_info(str(genome), 100, output_dir=str(tmp_path))
     idx_pairs = tmp_path / "idx.pairs"
-    n_short = hcd.attribute_fragments(str(pairs), str(idx_pairs), table)
-    _check_chunk_output(idx_pairs, tmp_path / "fragments_list.txt", ["ctgB", "ctgC"])
-    # Not counted with the contigs shorter than min_size (0 here)
-    assert n_short == 0
-    assert (
-        "3 pairs with a mate on a contig not listed in the pairs file header were discarded: ctgA"
-        in caplog.text
-    )
+    assert hcd.attribute_fragments(str(pairs), str(idx_pairs), table) == 0
+    assert "discarded" not in caplog.text
+    _check_chunk_output(idx_pairs, tmp_path / "fragments_list.txt", listed, ALL_CONTIGS_FRAGS)

@@ -407,6 +407,34 @@ def test_start_stages_reproduce_fastq_run(stage, fastq_run, indexed_genome, run_
     assert not run.tmp("valid_idx.pairs").exists()
 
 
+@pytest.mark.parametrize("chromsizes", ["reversed", "none"])
+def test_fragments_follow_genome_not_pairs_header(
+    chromsizes, fastq_run, indexed_genome, run_pipeline, tmp_path
+):
+    """Fragment indices are those of the fragments list, which follows the
+    genome, even from a pairs file whose header lists the chromosomes in
+    another order, or not at all (#chromsize lines are optional)."""
+    ref = fastq_run()
+    lines = ref.tmp("valid.pairs").read_text().splitlines(keepends=True)
+    sizes = [line for line in lines if line.startswith("#chromsize")]
+    assert len(sizes) > 1
+    header = [line for line in lines if line.startswith("#") and line not in sizes]
+    body = [line for line in lines if not line.startswith("#")]
+    pairs = tmp_path / "valid.pairs"
+    pairs.write_text("".join(header + (sizes[::-1] if chromsizes == "reversed" else []) + body))
+    run = run_pipeline(
+        f"pairs_{chromsizes}_chromsizes",
+        genome=indexed_genome,
+        input1=str(pairs),
+        start_stage="pairs",
+        enzyme=syn.LIBRARY_ENZYME,
+        mat_fmt="graal",
+    )
+    assert _sorted_lines(run.path("valid_idx.pairs.gz")) == _sorted_lines(
+        ref.tmp("valid_idx.pairs")
+    )
+
+
 def _first_and_shortest_chrom(synthetic_lib):
     """Name and length of the first chromosome, which is also the shortest."""
     sizes = synthetic_lib.chrom_sizes
