@@ -300,7 +300,7 @@ def iteralign(reads_fq, genome, out_bam, threads, tempdir, aligner, min_len, rea
     show_default=True,
     type=int,
     metavar="INT",
-    help="Minimum fragment size to keep.",
+    help="Minimum contig size (bp): shorter contigs are left out.",
 )
 @click.option("-c", "--circular", is_flag=True, help="Genome is circular.")
 @click.option("-p", "--plot", is_flag=True, help="Show fragment length distribution histogram.")
@@ -863,7 +863,7 @@ def view(
     show_default=True,
     type=int,
     metavar="INT",
-    help="Minimum contig size threshold.",
+    help="Minimum contig size (bp): shorter contigs, and the pairs on them, are left out.",
 )
 @click.option(
     "-S",

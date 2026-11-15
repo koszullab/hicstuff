@@ -49,7 +49,15 @@ def test_stats_without_filtering(fastq_run, run_pipeline, synthetic_lib, indexed
         mat_fmt="graal",
     )
     stats = hcs.get_pipeline_stats(run.log)
-    for key in ("Filtered out", "Loops", "Uncuts", "Weirds", "PCR duplicates", "Removed contacts"):
+    for key in (
+        "Small contigs",
+        "Filtered out",
+        "Loops",
+        "Uncuts",
+        "Weirds",
+        "PCR duplicates",
+        "Removed contacts",
+    ):
         assert stats[key] == 0
     assert stats["Final contacts"] == stats["Recovered contacts"]
 
@@ -100,6 +108,7 @@ def _stats(**values):
         "Recovered contacts",
         "Final contacts",
         "Removed contacts",
+        "Small contigs",
         "Filtered out",
         "Loops",
         "Uncuts",
@@ -118,8 +127,9 @@ def test_write_pipeline_stats(tmp_path, capsys, monkeypatch):
             "Mapped reads": 3000,
             "Unmapped reads": 1000,
             "Recovered contacts": 1000,
-            "Final contacts": 750,
-            "Removed contacts": 250,
+            "Final contacts": 700,
+            "Removed contacts": 300,
+            "Small contigs": 50,
             "Filtered out": 200,
             "Loops": 50,
             "Uncuts": 150,
@@ -135,8 +145,10 @@ def test_write_pipeline_stats(tmp_path, capsys, monkeypatch):
     assert "Total read pairs:   2,000" in lines
     assert "Mapped reads:       3,000 (75.0%  of all reads)" in lines
     assert "Recovered contacts: 1,000 (50.0%  of all read pairs)" in lines
+    assert "Removed contacts:   300 (30.0% of all contacts)" in lines
+    assert "  Small contigs:    50 (5.0% of all contacts)" in lines
     assert "    Uncuts:         150 (15.0% of all contacts)" in lines
-    assert "Final contacts:     750 (75.0% of all contacts)" in lines
+    assert "Final contacts:     700 (70.0% of all contacts)" in lines
 
     monkeypatch.chdir(tmp_path)
     hcs.print_pipeline_stats(stats)
@@ -150,4 +162,13 @@ def test_write_empty_stats(tmp_path):
     hcs.write_pipeline_stats(_stats(), str(out))
     text = out.read_text()
     assert "Total read pairs:   0" in text
-    assert text.count("(0.0%") == 10
+    assert text.count("(0.0%") == 11
+
+
+def test_write_stats_without_small_contigs(tmp_path):
+    """Stats saved by earlier versions, without small contigs, still print."""
+    stats = _stats(**{"Recovered contacts": 10, "Final contacts": 10})
+    del stats["Small contigs"]
+    out = tmp_path / "old.txt"
+    hcs.write_pipeline_stats(stats, str(out))
+    assert "  Small contigs:    0 (0.0% of all contacts)" in out.read_text().splitlines()
