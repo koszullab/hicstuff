@@ -237,6 +237,26 @@ def test_filter_pcr_dup():
     os.unlink(test_rm.name)
 
 
+def test_filter_pcr_dup_after_coordinate_sort(tmp_path):
+    """A pair at the same positions on other strands does not hide a duplicate."""
+    header = (
+        "## pairs format v1.0\n#columns: readID chr1 pos1 chr2 pos2 strand1 strand2 frag1 frag2\n"
+    )
+    lines = [
+        "rA\tseq1\t10\tseq1\t50\t+\t+\t1\t2",
+        "rB\tseq1\t10\tseq1\t50\t+\t-\t1\t2",
+        "rC\tseq1\t10\tseq1\t50\t+\t+\t1\t2",
+    ]
+    unsorted, sorted_pairs = tmp_path / "unsorted.pairs", tmp_path / "sorted.pairs"
+    unsorted.write_text(header + "\n".join(lines) + "\n")
+    hio.sort_pairs(str(unsorted), str(sorted_pairs), keys=hpi.COORD_SORT_KEYS)
+    pcr_free = tmp_path / "pcrfree.pairs"
+    hpi.filter_pcr_dup(str(sorted_pairs), str(pcr_free))
+    kept = [line.split("\t")[0] for line in pcr_free.read_text().splitlines() if line[0] != "#"]
+    # rC duplicates rA; sorted by coordinates only, rB came between them
+    assert kept == ["rA", "rB"]
+
+
 def test_full_pipeline_frags():
     mapping_to_enzyme = {"normal": "DpnII", "cutsite": "DpnII,HpaII"}
     for mapping, enzyme in mapping_to_enzyme.items():
