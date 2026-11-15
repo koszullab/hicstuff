@@ -3,9 +3,11 @@
 import bz2
 import filecmp
 import gzip
+import logging
 import os
 import random
 import re
+import shlex
 import shutil
 import subprocess
 import zipfile
@@ -253,6 +255,94 @@ def test_sort_pairs_unknown_key(tmp_path):
     with pytest.raises(ValueError, match="chrom1"):
         hio.sort_pairs(PAIRS_FILE, str(out), keys=["chrom1", "pos1"])
     assert not out.exists()
+
+
+#: What sort --version prints on stdout, how sort_pairs identifies it, and the
+#: warning it gives when it does not pass --parallel. GNU 9.4 is Ubuntu 24.04's
+#: sort, captured; the uutils line is that of Ubuntu 26.04's /usr/bin/sort
+#: (rust-coreutils 0.10.0); the BSD lines are VERSION in FreeBSD's and Apple's
+#: sort.h; busybox sort has no --version and only prints its usage on stderr.
+SORT_VERSIONS = {
+    "GNU-9.4": (
+        "sort (GNU coreutils) 9.4\n"
+        "Copyright (C) 2023 Free Software Foundation, Inc.\n"
+        "License GPLv3+: GNU GPL version 3 or later <https://gnu.org/licenses/gpl.html>.\n"
+        "This is free software: you are free to change and redistribute it.\n"
+        "There is NO WARRANTY, to the extent permitted by law.\n"
+        "\n"
+        "Written by Mike Haertel and Paul Eggert.\n",
+        ("GNU", (9, 4)),
+        None,
+    ),
+    "GNU-8.23": (
+        "sort (GNU coreutils) 8.23\nCopyright (C) 2014 Free Software Foundation, Inc.\n",
+        ("GNU", (8, 23)),
+        None,
+    ),
+    "GNU-8.22": (
+        "sort (GNU coreutils) 8.22\nCopyright (C) 2013 Free Software Foundation, Inc.\n",
+        ("GNU", (8, 22)),
+        "GNU sort version is 8.22 but 8.23 or later is required",
+    ),
+    "GNU-8.4": (
+        "sort (GNU coreutils) 8.4\nCopyright (C) 2010 Free Software Foundation, Inc.\n",
+        ("GNU", (8, 4)),
+        "GNU sort version is 8.4 but 8.23 or later is required",
+    ),
+    "uutils": ("sort (uutils coreutils) 0.10.0\n", ("uutils", (0, 10)), None),
+    "FreeBSD": ("2.3-FreeBSD\n", ("BSD", None), "Using BSD sort"),
+    "macOS": ("2.3-Apple (199)\n", ("BSD", None), "Using BSD sort"),
+    "busybox": ("", ("unknown", None), "Unknown sort (sort --version printed '')"),
+}
+
+
+@pytest.mark.parametrize(
+    ("text", "implementation"), [v[:2] for v in SORT_VERSIONS.values()], ids=list(SORT_VERSIONS)
+)
+def test_sort_implementation(text, implementation):
+    """sort --version tells GNU, uutils and BSD sort apart, with their version."""
+    assert hio._sort_implementation(text) == implementation
+
+
+@pytest.mark.parametrize(
+    ("text", "warning"), [(v[0], v[2]) for v in SORT_VERSIONS.values()], ids=list(SORT_VERSIONS)
+)
+def test_sort_pairs_parallel(tmp_path, monkeypatch, caplog, capfd, text, warning):
+    """--parallel goes to GNU sort from 8.23 and to uutils sort, as Ubuntu 26.04's.
+
+    A sort that prints text for --version stands first on PATH, and runs the
+    real sort.
+    """
+    fake = tmp_path / "bin" / "sort"
+    fake.parent.mkdir()
+    fake.with_suffix(".version").write_text(text)
+    fake.write_text(
+        "#!/bin/sh\n"
+        'if [ "$1" = --version ]; then\n'
+        '    cat "$0.version"\n'
+        '    [ -s "$0.version" ] || { echo "sort: unrecognized option --version" >&2; exit 1; }\n'
+        "    exit 0\n"
+        "fi\n"
+        'echo "$@" >> "$0.args"\n'
+        f'exec {shlex.quote(shutil.which("sort"))} "$@"\n'
+    )
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake.parent}{os.pathsep}{os.environ['PATH']}")
+    out = tmp_path / "sorted.pairs"
+    hio.sort_pairs(PAIRS_FILE, str(out), keys=PAIRS_SORT_KEYS, threads=2)
+
+    args = fake.with_suffix(".args").read_text().split()
+    assert ("--parallel=2" in args) is (warning is None)
+    if warning is None:
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+    else:
+        assert warning in caplog.text
+    # busybox's usage is not shown
+    assert "unrecognized option" not in capfd.readouterr().err
+    # The pairs are all there
+    rows = [line for line in out.read_text().splitlines() if not line.startswith("#")]
+    pairs = Path(PAIRS_FILE).read_text().splitlines()
+    assert sorted(rows) == sorted(line for line in pairs if not line.startswith("#"))
 
 
 def test_sort_compressed_pairs_header_only(tmp_path):
