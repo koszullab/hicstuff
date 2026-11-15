@@ -1,12 +1,15 @@
 # Tests for the hicstuff filter module.
 # 20190409
 
+import gc
 import hashlib as hashlib
 import os as os
+import time
 from tempfile import NamedTemporaryFile
 
 import numpy as np
 import pandas as pd
+import pytest
 
 import hicstuff.distance_law as hcdl
 
@@ -149,6 +152,91 @@ def test_get_distance_law():
     assert test
     # Unlink the temporary file
     os.unlink(distance_law.name)
+
+
+def test_get_distance_law_matches_reference_table(tmp_path):
+    """The fragments path reproduces test_data/distance_law.txt exactly."""
+    out = tmp_path / "distance_law.txt"
+    hcdl.get_distance_law(pairs_reads_file, fragments_file, out_file=str(out))
+
+    def body(path):
+        with open(path) as handle:
+            return [line for line in handle if not line.startswith("#")]
+
+    assert body(out) == body(distance_law_file)
+
+
+def _write_contigs(directory, n_contigs, n_pairs, seed=0):
+    """Write a fragments list of ``n_contigs`` 200 bp contigs, of two 100 bp
+    fragments each, and an indexed pairs file of ``n_pairs`` pairs joining the
+    two fragments of a random contig on one strand, which both paths count.
+
+    Returns the pairs and fragments paths and the contig of each pair.
+    """
+    directory.mkdir()
+    rng = np.random.default_rng(seed)
+    names = [f"ctg{i:05d}" for i in range(n_contigs)]
+    frags = directory / "fragments_list.txt"
+    with open(frags, "w") as handle:
+        handle.write("id\tchrom\tstart_pos\tend_pos\tsize\tgc_content\n")
+        for name in names:
+            handle.write(f"1\t{name}\t0\t100\t100\t0.5\n2\t{name}\t100\t200\t100\t0.5\n")
+    contig = rng.integers(0, n_contigs, n_pairs)
+    strand = np.where(rng.random(n_pairs) < 0.5, "+", "-")
+    pairs = directory / "valid_idx.pairs"
+    with open(pairs, "w") as handle:
+        handle.write("## pairs format v1.0\n")
+        handle.write("#columns: readID chr1 pos1 chr2 pos2 strand1 strand2 frag1 frag2\n")
+        handle.writelines(f"#chromsize: {name} 200\n" for name in names)
+        handle.writelines(
+            f"r{i}\t{names[c]}\t10\t{names[c]}\t150\t{s}\t{s}\t{2 * c}\t{2 * c + 1}\n"
+            for i, (c, s) in enumerate(zip(contig, strand))
+        )
+    return str(pairs), str(frags), contig
+
+
+def _cpu_time(func, *args):
+    """CPU time of one call (immune to other processes), without GC pauses."""
+    gc.collect()
+    gc.disable()
+    try:
+        start = time.process_time()
+        result = func(*args)
+        return time.process_time() - start, result
+    finally:
+        gc.enable()
+
+
+@pytest.mark.parametrize("with_frags", [True, False], ids=["fragments", "chromsizes"])
+def test_distance_law_per_pair_cost_does_not_grow_with_contigs(tmp_path, with_frags):
+    """Each pair used to find its contig with np.searchsorted on a list, which
+    copies the list into an array on every call: 1 M pairs over 20,000 contigs
+    did not finish in 10 minutes. The time per pair (a run minus the same run
+    without pairs, which leaves the per-contig setup) must not depend on the
+    number of contigs; it was 16 times higher with 5,000 contigs than with 10.
+    """
+    n_pairs = 20_000
+
+    def per_pair(n_contigs):
+        times = []
+        for n in (0, n_pairs):
+            pairs, frags, contig = _write_contigs(tmp_path / f"{n_contigs}_{n}", n_contigs, n)
+            frags = frags if with_frags else None
+            elapsed, (_, ps, names) = _cpu_time(hcdl.get_distance_law, pairs, frags)
+            times.append(elapsed)
+        assert len(names) == n_contigs
+        return (times[1] - times[0]) / n_pairs, ps, contig
+
+    few, _, _ = per_pair(10)
+    many, ps, contig = per_pair(5_000)
+    assert many < 5 * few, (
+        f"{many * 1e6:.1f} us per pair over 5,000 contigs, {few * 1e6:.1f} over 10"
+    )
+    # Every pair counts in its own contig, in the same bin (one distance).
+    counted = np.array(ps).sum(axis=1)
+    np.testing.assert_allclose(
+        counted / counted.sum() * n_pairs, np.bincount(contig, minlength=5_000)
+    )
 
 
 def test_normalize_distance_law():
