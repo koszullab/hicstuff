@@ -233,11 +233,18 @@ def generate_log_header(log_path, input1, input2, genome, enzyme):
     hcl.set_file_handler(log_path, formatter=hcl.logfile_formatter)
 
 
+#: Keys of the coordinate sort that comes before PCR duplicate removal. The
+#: strands are keys too: filter_pcr_dup compares each pair with the previous
+#: one only, so a pair at the same positions on other strands must not sort
+#: between two duplicates.
+COORD_SORT_KEYS = ["chr1", "pos1", "chr2", "pos2", "strand1", "strand2"]
+
+
 def filter_pcr_dup(pairs_idx_file, filtered_file):
     """
-    Filter out PCR duplicates from a coordinate-sorted pairs file using
-    overrrepresented exact coordinates. If multiple fragments have two reads
-    with the exact same coordinates, only one of those fragments is kept.
+    Filter out PCR duplicates from a pairs file sorted by COORD_SORT_KEYS,
+    using overrrepresented exact coordinates. If multiple fragments have two
+    reads with the exact same coordinates, only one of those fragments is kept.
     Parameters
     ----------
     pairs_idx_file : str
@@ -1057,11 +1064,12 @@ def full_pipeline(
         # pos2, strand1, strand2, frag1, frag2)
         hcd.attribute_fragments(pairs, pairs_idx, restrict_table)
 
-    # Sort pairs file by coordinates for next steps
+    # Sort pairs file by coordinates (and strands, for PCR duplicate removal)
+    # for next steps
     hio.sort_pairs(
         pairs_idx,
         pairs_idx + ".sorted",
-        keys=["chr1", "pos1", "chr2", "pos2"],
+        keys=COORD_SORT_KEYS,
         threads=threads,
         tmp_dir=tmp_dir,
     )
