@@ -406,6 +406,35 @@ def test_start_stages_reproduce_fastq_run(stage, fastq_run, indexed_genome, run_
     assert not run.tmp("valid_idx.pairs").exists()
 
 
+@pytest.mark.parametrize("aligner", ["bowtie2", "bwa"])
+def test_iterative_mapping_with_index_in_parent_dir(
+    aligner, fastq_run, indexed_genome, synthetic_lib, run_pipeline, tmp_path, monkeypatch
+):
+    """An index given relative to a parent directory (../) is the same index
+    as given by its absolute path, for iterative mapping too, which looks it
+    up again."""
+    ref = fastq_run(aligner, "iterative")
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    genome = os.path.relpath(indexed_genome)
+    assert genome.startswith("../")
+    run = run_pipeline(
+        f"index_in_parent_dir_{aligner}",
+        genome=genome,
+        input1=str(synthetic_lib.reads1),
+        input2=str(synthetic_lib.reads2),
+        aligner=aligner,
+        mapping="iterative",
+        enzyme=syn.LIBRARY_ENZYME,
+        mat_fmt="graal",
+    )
+    # Without filters, the final pairs are the valid pairs
+    assert _sorted_lines(run.path("valid_idx.pairs.gz")) == _sorted_lines(
+        ref.tmp("valid_idx.pairs")
+    )
+
+
 def test_graal_bg2_and_cool_agree(matrices, final_pairs, synthetic_lib):
     pairs = load_pairs(final_pairs)
     n = len(synthetic_lib.fragments())
