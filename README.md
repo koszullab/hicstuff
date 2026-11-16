@@ -37,7 +37,7 @@ The goal is to make generation and manipulation of Hi-C matrices as simple as po
 
 ### pip
 
-To install a stable version:
+hicstuff needs Python 3.10 or later. To install a stable version:
 ```sh
 pip install hicstuff
 ```
@@ -429,7 +429,7 @@ uv run ruff format src/
 
 ### Releasing
 
-Releases are cut with [bump-my-version](https://github.com/callowayproject/bump-my-version) (configured in `pyproject.toml`, needs Python >= 3.10). From a clean, up-to-date `master`:
+Releases are cut with [bump-my-version](https://github.com/callowayproject/bump-my-version) (configured in `pyproject.toml`). From a clean, up-to-date `master`:
 
 ```bash
 uv sync --extra dev                  # once, to install bump-my-version
