@@ -210,6 +210,26 @@ def test_compartments_sparse(matrix_size):
     assert np.isclose(np.abs(pc2_d), np.abs(pc2_s), rtol=0.01).all()
 
 
+@pytest.mark.parametrize("seed", [61, 159, 245])
+def test_compartments_sparse_matches_dense(seed):
+    """Matrices where eig did not put the eigenvalue of the first or second
+    principal component first or second, for the dense or sparse method."""
+    rng = np.random.default_rng(seed)
+    m_s = np.triu(rng.random((10, 10)))
+    m_d = m_s + m_s.T - np.diag(np.diag(m_s))
+    pc1_d, pc2_d = hcs.compartments(m_d, normalize=False)
+    pc1_s, pc2_s = hcs.compartments_sparse(coo_matrix(m_s), normalize=False)
+    assert np.isclose(np.abs(pc1_d), np.abs(pc1_s), rtol=0.01).all()
+    assert np.isclose(np.abs(pc2_d), np.abs(pc2_s), rtol=0.01).all()
+
+
+def test_top_two_eigenvectors_are_those_of_the_largest_eigenvalues():
+    """eig returns the eigenvalues of a diagonal matrix in diagonal order."""
+    pc1, pc2 = hcs._top_two_eigenvectors(np.diag([1.0, 3.0, 2.0]))
+    assert np.allclose(np.abs(pc1), [0, 1, 0])
+    assert np.allclose(np.abs(pc2), [0, 0, 1])
+
+
 @pytest.mark.parametrize(*SIZE_PARAMETERS)
 def test_distance_law(matrix_size):
     M_d, M_s = _gen_matrices(matrix_size)
