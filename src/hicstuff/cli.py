@@ -1514,6 +1514,9 @@ def _missview(genome, output, read_len, aligner, resolution, force, threads, tmp
     tmp_fq = join(tmpdir, "simulated_reads.fq")
     tmp_bam = join(tmpdir, "simulated_reads.bam")
     _check_output_path(tmp_fq, force=force)
+    # bowtie2 and bwa need an index: use the genome's own or build one.
+    index = hio.check_fasta_index(genome, mode=aligner)
+    hio.require_tools(hio.alignment_tools(aligner, index), "to align the simulated reads")
 
     logger.info("Simulating reads by splitting the genome into %i bp chunks", read_len)
     with open(tmp_fq, "w") as fq_handle, hio.read_compressed(genome) as fasta:
@@ -1523,18 +1526,14 @@ def _missview(genome, output, read_len, aligner, resolution, force, threads, tmp
                     f"@NS_SIM_{rec.id}_{i}\n{str(rec.seq[i : i + read_len])}\n+\n{phred}\n"
                 )
 
-    # bowtie2 and bwa need an index: use the genome's own or build one.
-    index = genome
-    if aligner in ("bowtie2", "bwa"):
-        index = hio.check_fasta_index(genome, mode=aligner)
-        if index is None:
-            index = join(tmpdir, "genome")
-            logger.info("%s index not found, building one in %s.", aligner, tmpdir)
-            if aligner == "bowtie2":
-                build = ["bowtie2-build", "-q", genome, index]
-            else:
-                build = ["bwa", "index", "-p", index, genome]
-            sp.run(build, check=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
+    if index is None:
+        index = join(tmpdir, "genome")
+        logger.info("%s index not found, building one in %s.", aligner, tmpdir)
+        if aligner == "bowtie2":
+            build = ["bowtie2-build", "-q", genome, index]
+        else:
+            build = ["bwa", "index", "-p", index, genome]
+        sp.run(build, check=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
     hpi.align_reads(tmp_fq, index, tmp_bam, tmp_dir=tmpdir, threads=threads, aligner=aligner)
     ps.sort("-@", str(threads), "-n", "-O", "BAM", "-o", tmp_bam + ".sorted", tmp_bam)
     shutil.move(tmp_bam + ".sorted", tmp_bam)

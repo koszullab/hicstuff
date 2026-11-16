@@ -50,12 +50,21 @@ cd hicstuff
 uv sync --extra dev
 ```
 
-If `hicstuff` is installed via pip, additional system dependencies such as
-`bowtie2`, `bwa`, `minimap2` and `samtools` will be needed. You can install
-them as follows on Debian/Ubuntu:
+If `hicstuff` is installed via pip, the aligner that maps the reads is not
+installed with it: `bowtie2`, `bwa` or `minimap2`, whichever `--aligner`
+names (`bowtie2` by default). `hicstuff iteralign` and `hicstuff missview`
+always run it, and `hicstuff pipeline` only to start from FASTQ files:
+`hicstuff pipeline --start-stage bam`, `pairs` or `pairs_idx` needs no aligner,
+except `bowtie2-inspect` (part of bowtie2) when the genome is given as a
+bowtie2 index. `samtools` is not needed: hicstuff filters and sorts
+alignments with the samtools that pysam bundles. `bgzip` (from htslib) is
+optional: the final pairs file is compressed in the BGZF format, which pairix
+can index, by bgzip on several threads when it is installed, and by pysam on
+one thread otherwise. You can install them as follows on Debian/Ubuntu (the
+`tabix` package provides bgzip):
 
 ```bash
-apt-get install bowtie2 bwa minimap2 samtools libbz2-dev liblzma-dev
+apt-get install bowtie2 bwa minimap2 tabix libbz2-dev liblzma-dev
 ```
 
 ### Conda
@@ -185,11 +194,11 @@ If you have already aligned your reads, hicstuff pipeline can also take bam file
 to generate a matrix in mcool file with multiple resolutions starting from 5kb, you can run:
 
 ```sh
-# Note the bam files have to be name-sorted, this can be done using samtools
-samtools sort -n aligned_for.bam -o namesorted_for.bam
-samtools sort -n aligned_rev.bam -o namesorted_rev.bam
-hicstuff pipeline -S bam -b 5000 -o out/ -g genome.fa namesorted_for.bam namesorted_rev.bam
+hicstuff pipeline -S bam -b 5000 -o out/ -g genome.fa aligned_for.bam aligned_rev.bam
 ```
+
+BAM files sorted by read name (with `samtools sort -n` or `-N`) are read as
+they are; others are sorted by read name first, in the temporary directory.
 
 The general steps of the pipeline are as follows:
 
