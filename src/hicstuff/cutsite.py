@@ -17,12 +17,14 @@ This module contains the following functions:
     - cut_ligation_sites
     - cutsite_read
     - write_pair
+    - _cut_pairs
     - _writer
 """
 
 import gzip
-import multiprocessing
+import queue as queues
 import sys
+import threading
 
 import pyfastx
 
@@ -72,20 +74,47 @@ def cut_ligation_sites(fq_for, fq_rev, digest_for, digest_rev, enzyme, mode, see
     # A stack is a string cointaining multiple read pairs
     max_stack_size = 1000
 
-    # Create count to have an idea of the digested pairs repartition.
+    # Compress and write the new reads in a thread while this one cuts them:
+    # zlib releases the GIL while it compresses. Unlike a process, a thread
+    # needs no `if __name__ == "__main__":` guard in the scripts calling
+    # hicstuff where processes are spawned (macOS, Python >= 3.14).
+    queue = queues.Queue(max(1, n_cpu - 1))
+    writer_errors = []
+    writer = threading.Thread(
+        target=_writer, args=(digest_for, digest_rev, queue, stop_token, writer_errors)
+    )
+    writer.start()
+    try:
+        original_number_of_pairs, final_number_of_pairs = _cut_pairs(
+            fq_for, fq_rev, ligation_sites, mode, seed_size, queue, max_stack_size
+        )
+    finally:
+        # Also on error, so that the writer thread ends
+        queue.put(stop_token)
+        writer.join()
+    if writer_errors:
+        raise writer_errors[0]
+
+    # Return information on the different pairs created
+    logger.info(f"Library used: {fq_for} - {fq_rev}")
+    logger.info(f"Number of pairs before digestion: {original_number_of_pairs}")
+    logger.info(f"Number of pairs after digestion: {final_number_of_pairs}")
+
+
+def _cut_pairs(fq_for, fq_rev, ligation_sites, mode, seed_size, queue, max_stack_size):
+    """Cut the read pairs of fq_for and fq_rev at their ligation sites and put
+    the new pairs on the queue, max_stack_size read pairs at a time.
+
+    Returns
+    -------
+    tuple of int
+        The number of read pairs read, and of new pairs written.
+    """
     original_number_of_pairs = 0
     final_number_of_pairs = 0
     new_reads_for = ""
     new_reads_rev = ""
     current_stack = 0
-
-    # Start parallel threading to compute the
-    # ctx = multiprocessing.get_context("spawn")
-    queue = multiprocessing.Queue(max(1, n_cpu - 1))
-    writer_process = multiprocessing.Process(
-        target=_writer, args=(digest_for, digest_rev, queue, stop_token)
-    )
-    writer_process.start()
 
     # Iterate on all pairs
     for read_for, read_rev in zip(
@@ -145,16 +174,9 @@ def cut_ligation_sites(fq_for, fq_rev, digest_for, digest_rev, enzyme, mode, see
             new_reads_for = ""
             new_reads_rev = ""
 
-    # End the parallel processing.
-    pairs = (new_reads_for.encode(), new_reads_rev.encode())
-    queue.put(pairs)
-    queue.put(stop_token)
-    writer_process.join()
-
-    # Return information on the different pairs created
-    logger.info(f"Library used: {fq_for} - {fq_rev}")
-    logger.info(f"Number of pairs before digestion: {original_number_of_pairs}")
-    logger.info(f"Number of pairs after digestion: {final_number_of_pairs}")
+    # The last, incomplete stack
+    queue.put((new_reads_for.encode(), new_reads_rev.encode()))
+    return original_number_of_pairs, final_number_of_pairs
 
 
 def cutsite_read(ligation_sites, seq, qual, seed_size=0):
@@ -346,8 +368,8 @@ def write_pair(
     return new_reads_for, new_reads_rev, final_number_of_pairs
 
 
-def _writer(output_for, output_rev, queue, stop_token):
-    """Function to write the pair throw parallel processing.
+def _writer(output_for, output_rev, queue, stop_token, errors=None):
+    """Write the new read pairs taken from the queue, until the stop token.
 
     Parameters:
     -----------
@@ -355,15 +377,26 @@ def _writer(output_for, output_rev, queue, stop_token):
         Path to the output forward compressed fastq file.
     output_rev : str
         Path to the output reverse compressed fastq file.
-    queue : multiprocessing.queues.Queue
-        Queue for the multiprocesing of the whole file.
+    queue : queue.Queue
+        Queue of (forward, reverse) stacks of reads, as bytes.
     stop_token : str
         Token to signal that the end of the file have been reached.
+    errors : list, optional
+        If given, an error is appended to it rather than raised, and the
+        queue is still emptied until the stop token, so that the thread
+        filling it is never blocked.
     """
-    with gzip.open(output_for, "wb") as for_fq, gzip.open(output_rev, "wb") as rev_fq:
-        while True:
-            line = queue.get()
-            if line == stop_token:
-                return 0
-            for_fq.write(line[0])
-            rev_fq.write(line[1])
+    try:
+        with gzip.open(output_for, "wb") as for_fq, gzip.open(output_rev, "wb") as rev_fq:
+            while True:
+                line = queue.get()
+                if line == stop_token:
+                    return 0
+                for_fq.write(line[0])
+                rev_fq.write(line[1])
+    except Exception as err:
+        if errors is None:
+            raise
+        errors.append(err)
+        while queue.get() != stop_token:
+            pass

@@ -762,7 +762,9 @@ def view(
     "--balancing-args",
     default=None,
     metavar="STR",
-    help="Extra arguments passed to `cooler balance`.",
+    help="Extra arguments passed to `cooler balance`, checked before the run "
+    "starts. Balancing uses -t processes unless they set --nproc. A balancing "
+    "failure is logged as a warning and does not stop the run.",
 )
 @click.option(
     "-b",

@@ -6,9 +6,11 @@ cmdoret, 20190322
 import csv
 import gzip
 import logging
+import multiprocessing
 import os
 import pathlib
 import re
+import shlex
 import shutil as st
 import subprocess as sp
 import sys
@@ -17,6 +19,7 @@ from datetime import datetime
 from os.path import join
 from shutil import which
 
+import click
 import cooler
 import matplotlib
 import numpy as np
@@ -528,6 +531,97 @@ def sort_and_compress_pairs(pairs_file, out_file, tmp_dir=None, threads=1):
         os.remove(sorted_tmp)
 
 
+def _cooler_command(*names):
+    """
+    Return a `cooler` command by name, e.g. ``_cooler_command("cload", "pairs")``.
+
+    The command is looked up through cooler's command-line entry point
+    (``cooler.cli:cli``, the `cooler` program), so that hicstuff relies on
+    cooler's command names and options, not on the modules defining them.
+    """
+    from cooler.cli import cli
+
+    command = cli
+    for name in names:
+        command = command.commands[name]
+    return command
+
+
+def _run_cooler(command, args, what):
+    """
+    Run a `cooler` command in this process, as `cooler` would run it from the
+    command line, and raise if it fails.
+
+    Running cooler's own command, rather than its Python functions, keeps the
+    command-line semantics (defaults, checks, and the free-form
+    `balancing_args`) without needing a `cooler` program on PATH. cooler's
+    progress records (one per chunk or balancing iteration) are kept out of
+    hicstuff's log; its warnings are not.
+
+    Parameters
+    ----------
+    command : click.Command
+        The cooler command, e.g. ``_cooler_command("balance")``.
+    args : list of str
+        Its command-line arguments.
+    what : str
+        What is being run, for the error message.
+    """
+    cooler_logger = logging.getLogger("cooler")
+    level = cooler_logger.level
+    cooler_logger.setLevel(logging.WARNING)
+    status = None
+    try:
+        status = command.main(args=list(args), prog_name="cooler", standalone_mode=False)
+    except SystemExit as err:
+        # Some commands exit rather than raise, e.g. on non-convergence
+        status = err.code
+    except click.exceptions.Abort as err:
+        # click turns an interruption, but also an EOFError (e.g. from a
+        # truncated gzip input), into Abort
+        if isinstance(err.__cause__, KeyboardInterrupt):
+            raise err.__cause__ from None
+        # No local name for the cause: it would keep cooler's frames, and
+        # with cooler < 0.11 its temporary files, alive until garbage collection
+        raise RuntimeError(f"{what} failed: {err.__cause__ or err!r}") from (err.__cause__ or err)
+    except Exception as err:
+        raise RuntimeError(f"{what} failed: {err}") from err
+    finally:
+        cooler_logger.setLevel(level)
+    # Without standalone mode, click returns the status of a `ctx.exit(status)`
+    # rather than exiting
+    if isinstance(status, (int, str)) and status not in (0, ""):
+        raise RuntimeError(f"{what} failed (exit status {status}).")
+
+
+def _run_cooler_program(names, args, what):
+    """
+    Run a `cooler` command in a new Python interpreter (`python -m cooler`),
+    and raise if it fails, as :func:`_run_cooler` does in this process.
+
+    Its standard output is hicstuff's; its log is kept and the last line of
+    it given in the error.
+
+    Parameters
+    ----------
+    names : list of str
+        The names of the cooler command, e.g. ``["balance"]``.
+    args : list of str
+        Its command-line arguments.
+    what : str
+        What is being run, for the error message.
+    """
+    proc = sp.run(
+        [sys.executable, "-m", "cooler", *names, *args],
+        stderr=sp.PIPE,
+        text=True,
+    )
+    if proc.returncode != 0:
+        lines = [line for line in proc.stderr.splitlines() if line.strip()]
+        reason = f": {lines[-1].strip()}" if lines else ""
+        raise RuntimeError(f"{what} failed (exit status {proc.returncode}){reason}")
+
+
 def _run_cooler_cload_pairs(bins, pairs_file, cool_file):
     """
     Run `cooler cload pairs` on a hicstuff pairs file and fail loudly if
@@ -545,29 +639,12 @@ def _run_cooler_cload_pairs(bins, pairs_file, cool_file):
     """
     # Field numbers are one-based and follow the hicstuff pairs columns:
     # readID chr1 pos1 chr2 pos2 strand1 strand2 [frag1 frag2]
-    cooler_cmd = [
-        "cooler",
-        "cload",
-        "pairs",
-        "--chrom1",
-        "2",
-        "--pos1",
-        "3",
-        "--chrom2",
-        "4",
-        "--pos2",
-        "5",
-        bins,
-        pairs_file,
-        cool_file,
-    ]
-    try:
-        sp.run(cooler_cmd, check=True)
-    except sp.CalledProcessError as err:
-        raise RuntimeError(
-            f"`cooler cload pairs` failed (exit code {err.returncode}) while "
-            f"generating {cool_file} from {pairs_file}. See cooler's error above."
-        ) from err
+    args = ["--chrom1", "2", "--pos1", "3", "--chrom2", "4", "--pos2", "5"]
+    _run_cooler(
+        _cooler_command("cload", "pairs"),
+        args + [bins, pairs_file, cool_file],
+        f"`cooler cload pairs` generating {cool_file} from {pairs_file}",
+    )
 
 
 def pairs2cool(pairs_file, cool_file, bins_file, exclude):
@@ -653,9 +730,54 @@ def cool2mcool(cool_file, output_file):
     cooler.zoomify_cooler(clr.filename, output_file, multires, chunksize=10000000)
 
 
-def balance(cool_file, balancing_args):
+def _balancing_args(balancing_args, threads=1):
     """
-    Balance a *binned* cooler file. See: https://github.com/mirnylab/cooler/ for more informations.
+    Split `balancing_args` into `cooler balance` arguments, the way a shell
+    would, and check them against cooler's own option definitions, so that
+    a typo fails before the pipeline runs rather than after.
+
+    Unless `balancing_args` sets it, the number of processes (--nproc) is
+    `threads` rather than cooler's default of 8.
+
+    Parameters
+    ----------
+    balancing_args : str or None
+        Extra arguments passed to `cooler balance`.
+    threads : int
+        Number of processes used to balance, unless set in `balancing_args`.
+
+    Returns
+    -------
+    list of str
+    """
+    invalid = f"Invalid balancing arguments {balancing_args!r}"
+    try:
+        args = shlex.split(balancing_args) if balancing_args else []
+    except ValueError as err:  # e.g. an unclosed quote
+        raise ValueError(f"{invalid}: {err}") from None
+    command = _cooler_command("balance")
+    try:
+        ctx = command.make_context("cooler balance", args + ["COOL_PATH"])
+    except click.ClickException as err:
+        raise ValueError(f"{invalid}: {err.format_message()}") from None
+    except click.exceptions.Exit:
+        # --help: click printed cooler's help and asks to exit
+        raise ValueError(f"{invalid}: they ask for help, printed above") from None
+    if ctx.get_parameter_source("nproc") is click.core.ParameterSource.DEFAULT:
+        args = ["--nproc", str(threads)] + args
+    return args
+
+
+def balance(cool_file, balancing_args, threads=1):
+    """
+    Balance a *binned* cooler file, every resolution of a .mcool file, with
+    `cooler balance`. See: https://github.com/mirnylab/cooler/ for more informations.
+
+    Balancing never stops the pipeline. When `cooler balance` fails at a
+    resolution, a warning carrying cooler's error is logged and that
+    resolution stays as it was; when the weights it stores did not
+    converge, a warning says so. "Matrix balanced" is logged only for the
+    resolutions that got weights.
 
     Parameters
     ----------
@@ -663,31 +785,64 @@ def balance(cool_file, balancing_args):
     cool_file : str
         Path to an existing binned .(m)cool file.
     balancing_args : str
-        Extra rguments passed to `cooler balance` (default: None)
-    """
+        Extra arguments passed to `cooler balance` (default: None)
+    threads : int
+        Number of processes used to balance, unless set in `balancing_args`.
 
-    # Balance
+    Returns
+    -------
+    list of str
+        The URIs of the resolutions that hold balancing weights.
+    """
+    args = _balancing_args(balancing_args, threads)
+    command = _cooler_command("balance")
+    params = command.make_context("cooler balance", args + ["COOL_PATH"]).params
+    # The weight column cooler writes: --name, "weight" by default
+    name = params["name"]
+    # cooler's process pool starts its workers with Python's default start
+    # method. Unless it is fork, every worker imports the script that called
+    # hicstuff again (spawn on macOS, forkserver on Linux from Python 3.14),
+    # which then fails unless that script guards its code with
+    # `if __name__ == "__main__":`. Balance in a new `python -m cooler`
+    # process then, whose main module is guarded.
+    new_process = params["nproc"] > 1 and multiprocessing.get_start_method() != "fork"
     if cooler.fileops.is_multires_file(cool_file):
-        paths = cooler.fileops.list_coolers(cool_file)
-        for path in paths:
-            cooler_cmd = "cooler balance".split(" ")
-            if balancing_args is not None:
-                sp.call(
-                    cooler_cmd + balancing_args.split(" ") + [cool_file + "::" + path],
-                    shell=False,
-                    stderr=sp.DEVNULL,
-                )
-            else:
-                sp.call(cooler_cmd + [cool_file + "::" + path], shell=False, stderr=sp.DEVNULL)
+        uris = [cool_file + "::" + path for path in cooler.fileops.list_coolers(cool_file)]
     else:
-        cooler_cmd = "cooler balance".split(" ")
-        if balancing_args is not None:
-            sp.call(
-                cooler_cmd + balancing_args.split(" ") + [cool_file], shell=False, stderr=sp.DEVNULL
+        uris = [cool_file]
+    balanced = []
+    for uri in uris:
+        try:
+            what = f"`cooler balance` of {uri}"
+            if new_process:
+                _run_cooler_program(["balance"], args + [uri], what)
+            else:
+                _run_cooler(command, args + [uri], what)
+        except RuntimeError as err:
+            logger.warning("Continuing without balancing: %s", err)
+            continue
+        with cooler.Cooler(uri).open("r") as grp:
+            weights = grp["bins"].get(name)
+            # One flag per chromosome with --cis-only or --trans-only
+            converged = weights is None or bool(np.all(weights.attrs.get("converged", True)))
+        if weights is None:
+            # e.g. --stdout, or --convergence-policy discard without convergence
+            logger.warning("`cooler balance` stored no %r column in %s.", name, uri)
+            continue
+        if not converged:
+            logger.warning(
+                "`cooler balance` did not converge for %s: its %r column is "
+                "stored with converged=False.",
+                uri,
+                name,
             )
-        else:
-            sp.call(cooler_cmd + [cool_file], shell=False, stderr=sp.DEVNULL)
-    logger.info("Matrix balanced with cooler balance.")
+        balanced.append(uri)
+    if balanced:
+        logger.info(
+            "Matrix balanced with cooler balance%s.",
+            "" if len(balanced) == len(uris) else f" ({len(balanced)} of {len(uris)} resolutions)",
+        )
+    return balanced
 
 
 def pairs2matrix(pairs_file, mat_file, fragments_file, mat_fmt="graal", threads=1, tmp_dir=None):
@@ -858,7 +1013,8 @@ def full_pipeline(
     zoomify : bool
         Whether to zoomify binned cool matrix (only used if mat_fmt == "cool" and binning is set)
     balancing_args : str
-        Arguments to pass to `chromosight balance` (default: None) (only used if zoomify == True)
+        Extra arguments passed to `cooler balance` (default: None) (only used if
+        mat_fmt == "cool" and binning is set)
     enzyme : int or strtest_data/genome/seq.fa
     circular : bool
         Use if the genome is circular.
@@ -940,6 +1096,9 @@ def full_pipeline(
                 "The cooler package is require to return matrix in cool format, please install it first."
             )
             raise ImportError("The cooler package is required.") from None
+        if binning > 0:
+            # Fail now on invalid balancing arguments, not after the alignment
+            _balancing_args(balancing_args)
 
     # Pipeline can start from 3 input types
     start_time = datetime.now()
@@ -1391,7 +1550,7 @@ def full_pipeline(
                 mat = mcool_file
 
             # Balance binned matrix
-            balance(mat, balancing_args)
+            balance(mat, balancing_args, threads=threads)
     else:
         pairs2matrix(
             use_pairs,

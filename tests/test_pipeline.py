@@ -2,14 +2,18 @@
 
 import filecmp
 import gzip
+import logging
 import os
 import random
 import re
 import shutil
 import subprocess as sp
+import sys
 from tempfile import NamedTemporaryFile
 
+import click
 import cooler
+import h5py
 import numpy as np
 import pandas as pd
 import pysam
@@ -170,7 +174,7 @@ def test_cooler_cload_columns_match_pairs_header(tmp_path, monkeypatch):
     does not depend on the installed cooler version.
     """
     calls = []
-    monkeypatch.setattr(hpi.sp, "run", lambda cmd, **kwargs: calls.append(cmd))
+    monkeypatch.setattr(hpi, "_run_cooler", lambda command, args, what: calls.append(args))
     info_contigs = str(tmp_path / "info_contigs.txt")
     shutil.copy("test_data/info_contigs.txt", info_contigs)
     hpi.pairs2binnedcool(PAIRS_FILE, str(tmp_path / "x.cool"), 1000, info_contigs, None)
@@ -200,6 +204,276 @@ def test_pairs2binnedcool_cooler_failure(tmp_path):
     with pytest.raises(RuntimeError, match="cooler cload pairs"):
         hpi.pairs2binnedcool(str(bad_pairs), cool_file, 1000, info_contigs, None)
     assert not os.path.exists(info_contigs + ".chroms")
+
+
+def _binned_mcool(tmp_path):
+    info_contigs = str(tmp_path / "info_contigs.txt")
+    shutil.copy("test_data/info_contigs.txt", info_contigs)
+    cool, mcool = str(tmp_path / "x.cool"), str(tmp_path / "x.mcool")
+    hpi.pairs2binnedcool("test_data/valid_idx.pairs", cool, 1000, info_contigs, None)
+    hpi.cool2mcool(cool, mcool)
+    return cool, mcool
+
+
+def test_cooler_steps_need_no_cooler_program(tmp_path, hide_tools):
+    """cload and balance run in-process: no `cooler` program on PATH needed."""
+    hide_tools("cooler")
+    _, mcool = _binned_mcool(tmp_path)
+    hpi.balance(mcool, None)
+    for path in cooler.fileops.list_coolers(mcool):
+        assert "weight" in cooler.Cooler(f"{mcool}::{path}").bins().columns
+
+
+@pytest.mark.parametrize(
+    "balancing_args", [None, "--max-iters 100  --ignore-diags 1", "--cis-only"]
+)
+def test_balance_matches_cooler_balance_program(tmp_path, balancing_args):
+    """In-process balancing writes what `cooler balance` writes."""
+    cool, _ = _binned_mcool(tmp_path)
+    expected = str(tmp_path / "expected.cool")
+    shutil.copy(cool, expected)
+    sp.run(
+        [sys.executable, "-m", "cooler", "balance", *hpi._balancing_args(balancing_args), expected],
+        check=True,
+        stderr=sp.DEVNULL,
+    )
+    hpi.balance(cool, balancing_args)
+    with h5py.File(expected, "r") as f_exp, h5py.File(cool, "r") as f_obs:
+        exp, obs = f_exp["bins/weight"], f_obs["bins/weight"]
+        assert exp[:].tobytes() == obs[:].tobytes()
+        assert dict(exp.attrs).keys() == dict(obs.attrs).keys()
+        for key in exp.attrs:
+            np.testing.assert_array_equal(exp.attrs[key], obs.attrs[key])
+        assert (exp.compression, exp.compression_opts, exp.shuffle) == (
+            obs.compression,
+            obs.compression_opts,
+            obs.shuffle,
+        )
+
+
+@pytest.mark.parametrize(
+    "balancing_args, message",
+    [
+        ("--bogus 3", "--bogus"),
+        ("--max-iters x", "max-iters"),
+        ("--stdout --nproc", "nproc"),
+        ("--name 'w", "closing quotation"),
+        ("--help", "help"),
+    ],
+)
+def test_invalid_balancing_args_fail_before_the_pipeline_runs(tmp_path, balancing_args, message):
+    out_dir = tmp_path / "out"
+    with pytest.raises(ValueError, match=message):
+        hpi.full_pipeline(
+            input1="test_data/sample.reads_for.fastq.gz",
+            input2="test_data/sample.reads_rev.fastq.gz",
+            genome="test_data/genome/seq",
+            enzyme="DpnII",
+            out_dir=str(out_dir),
+            binning=1000,
+            balancing_args=balancing_args,
+        )
+    assert not out_dir.exists()
+
+
+def test_balancing_processes_default_to_threads():
+    """No process pool in hicstuff's process unless asked for."""
+    assert hpi._balancing_args(None) == ["--nproc", "1"]
+    assert hpi._balancing_args("--cis-only", threads=4) == ["--nproc", "4", "--cis-only"]
+    assert hpi._balancing_args("-p 2 --cis-only", threads=4) == ["-p", "2", "--cis-only"]
+
+
+def _warnings(caplog):
+    return [r.getMessage() for r in caplog.records if r.levelno == logging.WARNING]
+
+
+def test_balance_failure_warns_and_continues(tmp_path, caplog):
+    """A failing `cooler balance` logs cooler's error as a warning and leaves
+    the matrix unbalanced, instead of stopping the run or passing silently."""
+    caplog.set_level(logging.INFO)
+    cool, _ = _binned_mcool(tmp_path)
+    args = "--max-iters 1 --tol 1e-30 --min-nnz 1 --mad-max 0 --convergence-policy error"
+    assert hpi.balance(cool, args) == []
+    assert any(
+        "Continuing without balancing" in w and "cooler balance" in w for w in _warnings(caplog)
+    )
+    assert "weight" not in cooler.Cooler(cool).bins().columns
+    assert "Matrix balanced" not in caplog.text
+    caplog.clear()
+    assert hpi.balance(cool, None) == [cool]
+    assert "Matrix balanced with cooler balance." in caplog.text
+    assert not _warnings(caplog)
+    # An existing weight column: cooler >= 0.11 raises "already exists",
+    # older versions print it and exit with status 1
+    caplog.clear()
+    assert hpi.balance(cool, None) == []
+    assert any("Continuing without balancing" in w for w in _warnings(caplog))
+    assert "Matrix balanced" not in caplog.text
+
+
+@pytest.mark.parametrize("scope", ["", " --cis-only"])
+def test_balance_warns_when_weights_do_not_converge(tmp_path, caplog, scope):
+    """Weights stored without convergence are kept, with a warning; with
+    --cis-only, cooler stores one convergence flag per chromosome."""
+    caplog.set_level(logging.INFO)
+    cool, _ = _binned_mcool(tmp_path)
+    args = "--max-iters 1 --tol 1e-30 --min-nnz 1 --mad-max 0" + scope
+    assert hpi.balance(cool, args) == [cool]
+    assert any("did not converge" in w for w in _warnings(caplog))
+    with h5py.File(cool, "r") as f:
+        assert not np.all(f["bins/weight"].attrs["converged"])
+
+
+def test_balance_warns_when_no_weights_are_stored(tmp_path, caplog, capsys):
+    """--stdout prints the weights: nothing is stored, and that is said."""
+    caplog.set_level(logging.INFO)
+    cool, _ = _binned_mcool(tmp_path)
+    assert hpi.balance(cool, "--stdout --name w2") == []
+    assert any("stored no 'w2' column" in w for w in _warnings(caplog))
+    assert "Matrix balanced" not in caplog.text
+
+
+def test_balance_counts_resolutions_that_got_weights(tmp_path, caplog):
+    """When only some resolutions of a .mcool balance, the log says how many."""
+    caplog.set_level(logging.INFO)
+    _, mcool = _binned_mcool(tmp_path)
+    paths = cooler.fileops.list_coolers(mcool)
+    assert len(hpi.balance(mcool, None)) == len(paths)
+    with h5py.File(mcool, "r+") as f:
+        del f[paths[0] + "/bins/weight"]
+    caplog.clear()
+    assert hpi.balance(mcool, None) == [f"{mcool}::{paths[0]}"]
+    assert f"Matrix balanced with cooler balance (1 of {len(paths)} resolutions)." in caplog.text
+    assert len(_warnings(caplog)) == len(paths) - 1
+
+
+def test_failed_balancing_does_not_stop_the_pipeline(tmp_path, caplog):
+    """The pipeline finishes, unbalanced, when balancing fails at every
+    resolution, and says so."""
+    caplog.set_level(logging.INFO)
+    blacklist = tmp_path / "blacklist.bed"
+    blacklist.write_text("not a bed file\n")
+    out_dir = tmp_path / "out"
+    hpi.full_pipeline(
+        input1="test_data/sample.reads_for.fastq.gz",
+        input2="test_data/sample.reads_rev.fastq.gz",
+        genome="test_data/genome/seq",
+        enzyme="DpnII",
+        out_dir=str(out_dir),
+        binning=1000,
+        balancing_args=f"--blacklist {blacklist}",
+    )
+    (mcool,) = out_dir.glob("*.mcool")
+    paths = cooler.fileops.list_coolers(str(mcool))
+    for path in paths:
+        assert "weight" not in cooler.Cooler(f"{mcool}::{path}").bins().columns
+    failed = [w for w in _warnings(caplog) if w.startswith("Continuing without balancing")]
+    assert len(failed) == len(paths)
+    assert "Matrix balanced" not in caplog.text
+    assert "Contact map generated" in caplog.text
+    assert list(out_dir.glob("*.pairs.gz"))
+
+
+UNGUARDED_SCRIPT = """\
+import multiprocessing
+import sys
+
+multiprocessing.set_start_method("spawn", force=True)
+import hicstuff.pipeline as hpi
+
+print("script body runs", flush=True)
+print(hpi.balance(sys.argv[1], None, threads=2), flush=True)
+"""
+
+
+def test_balance_needs_no_main_guard(tmp_path):
+    """A script without `if __name__ == "__main__":` can balance with several
+    processes when they are spawned (macOS, and forkserver from Python 3.14)."""
+    cool, _ = _binned_mcool(tmp_path)
+    script = tmp_path / "unguarded.py"
+    script.write_text(UNGUARDED_SCRIPT)
+    proc = sp.run(
+        [sys.executable, str(script), cool],
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.count("script body runs") == 1
+    assert proc.stdout.splitlines()[-1] == str([cool])
+    assert "weight" in cooler.Cooler(cool).bins().columns
+
+
+def test_balance_in_a_new_process_matches_in_process(tmp_path, monkeypatch):
+    """Without fork, several balancing processes run in `python -m cooler`,
+    which writes the same weights as balancing in hicstuff's process."""
+    cool, _ = _binned_mcool(tmp_path)
+    expected = str(tmp_path / "expected.cool")
+    shutil.copy(cool, expected)
+    hpi.balance(expected, None, threads=1)
+    calls = []
+    run_program = hpi._run_cooler_program
+    monkeypatch.setattr(hpi.multiprocessing, "get_start_method", lambda: "spawn")
+    monkeypatch.setattr(hpi, "_run_cooler_program", lambda *a: calls.append(a) or run_program(*a))
+    assert hpi.balance(cool, None, threads=2) == [cool]
+    assert len(calls) == 1
+    with h5py.File(expected, "r") as f_exp, h5py.File(cool, "r") as f_obs:
+        assert f_exp["bins/weight"][:].tobytes() == f_obs["bins/weight"][:].tobytes()
+    # One process, or fork: cooler runs in hicstuff's process
+    hpi.balance(cool, "--force", threads=1)
+    monkeypatch.setattr(hpi.multiprocessing, "get_start_method", lambda: "fork")
+    hpi.balance(cool, "--force", threads=2)
+    assert len(calls) == 1
+
+
+def test_run_cooler_program_failure(tmp_path):
+    """A failing `python -m cooler` raises with its exit status and the last
+    line of its log."""
+    cool, _ = _binned_mcool(tmp_path)
+    with pytest.raises(RuntimeError, match=r"balancing failed \(exit status 2\): .*--bogus"):
+        hpi._run_cooler_program(["balance"], ["--bogus", cool], "balancing")
+
+
+def test_run_cooler_exit_status_and_interrupt():
+    @click.command()
+    @click.argument("code", type=int)
+    def exits(code):
+        sys.exit(code)
+
+    @click.command()
+    @click.argument("code", type=int)
+    @click.pass_context
+    def ctx_exits(ctx, code):
+        ctx.exit(code)
+
+    @click.command()
+    def interrupted():
+        raise KeyboardInterrupt
+
+    @click.command()
+    def truncated():
+        raise EOFError("Compressed file ended before the end-of-stream marker")
+
+    hpi._run_cooler(exits, ["0"], "exits")
+    with pytest.raises(RuntimeError, match="exits failed .exit status 3"):
+        hpi._run_cooler(exits, ["3"], "exits")
+    # click returns, rather than raises, the status of ctx.exit()
+    hpi._run_cooler(ctx_exits, ["0"], "ctx_exits")
+    with pytest.raises(RuntimeError, match="ctx_exits failed .exit status 2"):
+        hpi._run_cooler(ctx_exits, ["2"], "ctx_exits")
+    with pytest.raises(KeyboardInterrupt):
+        hpi._run_cooler(interrupted, [], "interrupted")
+    # click turns an EOFError into Abort, which says nothing
+    with pytest.raises(RuntimeError, match="truncated failed: EOFError"):
+        hpi._run_cooler(truncated, [], "truncated")
+
+
+def test_cooler_commands_are_found_by_name():
+    """The commands are those of the `cooler` program, whatever their module."""
+    import cooler.cli
+
+    assert hpi._cooler_command("balance") is cooler.cli.cli.commands["balance"]
+    assert hpi._cooler_command("cload", "pairs").name == "pairs"
 
 
 def test_sam2pairs(): ...
