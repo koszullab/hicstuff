@@ -762,7 +762,7 @@ def test_iterative_mapping_with_index_in_parent_dir(
     )
 
 
-def test_pipeline_rejects_bad_inputs(synthetic_lib, indexed_genome, tmp_path, monkeypatch):
+def test_pipeline_rejects_bad_inputs(synthetic_lib, indexed_genome, tmp_path):
     common = dict(genome=indexed_genome, out_dir=str(tmp_path / "out"), enzyme="DpnII")
     reads = dict(input1=str(synthetic_lib.reads1), input2=str(synthetic_lib.reads2))
     with pytest.raises(ValueError, match="aligner"):
@@ -781,9 +781,6 @@ def test_pipeline_rejects_bad_inputs(synthetic_lib, indexed_genome, tmp_path, mo
     (tmp_path / "out2" / "tmp" / "for.bam").touch()
     with pytest.raises(OSError, match="Temporary file .* already exists"):
         hpi.full_pipeline(**reads, **dict(common, out_dir=str(tmp_path / "out2")))
-    monkeypatch.setattr(hio, "which", lambda tool: None if tool == "samtools" else tool)
-    with pytest.raises(ImportError, match="samtools"):
-        hpi.full_pipeline(**reads, **common)
 
 
 @pytest.mark.parametrize("folder", [".", "tmp"])

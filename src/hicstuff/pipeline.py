@@ -96,14 +96,14 @@ def align_reads(
             read_len=read_len,
         )
         st.rmtree(iter_tmp_dir)
-        sp.call(
-            f"samtools view -F 2048 -h -@ {threads} -O BAM {tmp_bam} -o {out_bam}",
-            shell=True,
+        # Remove supplementary alignments
+        ps.view(
+            *("-F", "2048", "-h", "-@", str(threads), "-O", "BAM", tmp_bam, "-o", out_bam),
+            catch_stdout=False,
         )
     else:
         hio.require_tools(
-            [aligner if aligner in ("minimap2", "bwa") else "bowtie2", "samtools"],
-            "to align reads",
+            [aligner if aligner in ("minimap2", "bwa") else "bowtie2"], "to align reads"
         )
         if aligner == "minimap2":
             map_cmd = "minimap2 -2 -t {threads} -ax sr {fasta} {fastq} > {sam}"
@@ -120,9 +120,9 @@ def align_reads(
         }
         sp.call(map_cmd.format(**map_args), shell=True)
         # Remove supplementary alignments and sort reads by name
-        sp.call(
-            f"samtools view -F 2048 -h -@ {threads} {tmp_bam} | samtools sort -n -@ {threads} -o {out_bam} -",
-            shell=True,
+        hio.samtools_pipe(
+            ["view", "-F", "2048", "-h", "-@", threads, tmp_bam],
+            ["sort", "-n", "-@", threads, "-o", out_bam, "-"],
         )
     os.remove(tmp_bam)
 
@@ -959,8 +959,6 @@ def full_pipeline(
             hio.alignment_tools(aligner, idx),
             f"to align the reads of start stage {stage_name}",
         )
-    if start_stage <= 1:
-        hio.require_tools(["samtools"], f"to read the alignments of start stage {stage_name}")
     if aligner == "bowtie2" and not is_fasta:
         hio.require_tools(
             ["bowtie2-inspect"], f"to extract the genome sequence from the bowtie2 index {genome}"

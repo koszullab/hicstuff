@@ -76,7 +76,7 @@ def iterative_align(
     # is refused when mapping.
     program = _aligner_program(aligner)
     if program is not None:
-        hio.require_tools([program, "samtools"], "for iterative alignment")
+        hio.require_tools([program], "for iterative alignment")
 
     # set with the name of the unaligned reads :
     remaining_reads = set()
@@ -164,12 +164,11 @@ def iterative_align(
             raise ValueError("Unknown aligner. Select bowtie2, minimap2 or bwa.")
 
         map_process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
-        sort_process = sp.Popen(
-            "samtools sort -n -@ {cpus} -O BAM -o {bam}".format(**map_args),
-            shell=True,
+        hio.samtools_pipe(
+            ["sort", "-n", "-@", n_cpu, "-O", "BAM", "-o", temp_alignment],
             stdin=map_process.stdout,
         )
-        sort_process.wait()
+        map_process.wait()
 
         # filter the reads: the reads whose truncated end was aligned are written
         # to the output file.
@@ -197,12 +196,11 @@ def iterative_align(
         cmd = f"bowtie2 -x {index} -p {n_cpu} --quiet --very-sensitive {truncated_reads}"
     map_process = sp.Popen(cmd, shell=True, stdout=sp.PIPE)
     # Keep reads sorted by name
-    sort_process = sp.Popen(
-        f"samtools sort -n -@ {n_cpu} -O BAM -o {temp_alignment}",
-        shell=True,
+    hio.samtools_pipe(
+        ["sort", "-n", "-@", n_cpu, "-O", "BAM", "-o", temp_alignment],
         stdin=map_process.stdout,
     )
-    sort_process.wait()
+    map_process.wait()
     iter_out += [join(tmp_dir, f"trunc_{str(n)}.bam")]
     remaining_reads = _filter_bamfile(temp_alignment, iter_out[-1], min_qual)
 

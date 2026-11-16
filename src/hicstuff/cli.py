@@ -1516,9 +1516,7 @@ def _missview(genome, output, read_len, aligner, resolution, force, threads, tmp
     _check_output_path(tmp_fq, force=force)
     # bowtie2 and bwa need an index: use the genome's own or build one.
     index = hio.check_fasta_index(genome, mode=aligner)
-    hio.require_tools(
-        hio.alignment_tools(aligner, index) + ["samtools"], "to align the simulated reads"
-    )
+    hio.require_tools(hio.alignment_tools(aligner, index), "to align the simulated reads")
 
     logger.info("Simulating reads by splitting the genome into %i bp chunks", read_len)
     with open(tmp_fq, "w") as fq_handle, hio.read_compressed(genome) as fasta:

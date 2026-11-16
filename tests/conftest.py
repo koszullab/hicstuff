@@ -26,7 +26,7 @@ from tests import synthetic as syn  # noqa: E402
 
 ALIGNERS = ("bowtie2", "bwa", "minimap2")
 MAPPINGS = ("normal", "iterative", "cutsite")
-EXTERNAL_TOOLS = ("bowtie2", "bowtie2-build", "bwa", "minimap2", "samtools")
+EXTERNAL_TOOLS = ("bowtie2", "bowtie2-build", "bwa", "minimap2")
 
 
 @pytest.fixture(autouse=True)

@@ -55,11 +55,12 @@ installed with it: `bowtie2`, `bwa` or `minimap2`, whichever `--aligner`
 names (`bowtie2` by default). Only runs that start from FASTQ files align
 reads: `hicstuff pipeline --start-stage bam`, `pairs` or `pairs_idx` needs no
 aligner, except `bowtie2-inspect` (part of bowtie2) when the genome is given as
-a bowtie2 index. `samtools` is needed too. You can install them as follows on
-Debian/Ubuntu:
+a bowtie2 index. `samtools` is not needed: hicstuff filters and sorts
+alignments with the samtools that pysam bundles. You can install the aligners
+as follows on Debian/Ubuntu:
 
 ```bash
-apt-get install bowtie2 bwa minimap2 samtools libbz2-dev liblzma-dev
+apt-get install bowtie2 bwa minimap2 libbz2-dev liblzma-dev
 ```
 
 ### Conda
@@ -189,11 +190,11 @@ If you have already aligned your reads, hicstuff pipeline can also take bam file
 to generate a matrix in mcool file with multiple resolutions starting from 5kb, you can run:
 
 ```sh
-# Note the bam files have to be name-sorted, this can be done using samtools
-samtools sort -n aligned_for.bam -o namesorted_for.bam
-samtools sort -n aligned_rev.bam -o namesorted_rev.bam
-hicstuff pipeline -S bam -b 5000 -o out/ -g genome.fa namesorted_for.bam namesorted_rev.bam
+hicstuff pipeline -S bam -b 5000 -o out/ -g genome.fa aligned_for.bam aligned_rev.bam
 ```
+
+BAM files sorted by read name (with `samtools sort -n` or `-N`) are read as
+they are; others are sorted by read name first, in the temporary directory.
 
 The general steps of the pipeline are as follows:
 

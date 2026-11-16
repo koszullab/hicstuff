@@ -17,6 +17,7 @@ from shutil import which
 import cooler
 import numpy as np
 import pandas as pd
+import pysam as ps
 import scipy.stats as ss
 from Bio import SeqIO, SeqUtils
 from scipy.sparse import coo_matrix, tril, triu
@@ -1591,10 +1592,71 @@ def check_bam_entries(in_file):
         How many reads listed in the input bam
     """
 
-    n_reads = sp.run(
-        ["samtools", "view", "-c", in_file],
-        capture_output=True,
-        encoding="utf-8",
-    ).stdout[:-1]
+    return int(ps.view("-c", in_file))
 
-    return int(n_reads)
+
+#: Python code that runs ``samtools <command> <args>`` with the samtools that
+#: pysam bundles, given the command and its arguments on the command line:
+#: like the samtools program, it reads from its standard input and writes to
+#: its standard output when given "-" as file name, and exits with samtools'
+#: error message if the command fails. The working directory is left out of
+#: the module search path, so that no file there can stand in for a module.
+_SAMTOOLS_CHILD = """\
+import sys
+if sys.path and sys.path[0] == "":
+    del sys.path[0]
+import pysam
+try:
+    getattr(pysam, sys.argv[1])(*sys.argv[2:], catch_stdout=False)
+except pysam.SamtoolsError as err:
+    sys.exit(err.value)
+"""
+
+
+def samtools_pipe(*commands, stdin=None):
+    """
+    Run samtools commands with the samtools that pysam bundles, each reading
+    the output of the previous one, as ``samtools view ... | samtools sort ...``
+    would.
+
+    Each command runs in its own child process, so that it can stream from and
+    to a pipe: pysam runs samtools commands within the calling process, which
+    has a single standard input and output.
+
+    Parameters
+    ----------
+    *commands : list
+        Each command: the samtools command (view, sort...) followed by its
+        arguments. All but the last write to their standard output, which the
+        next one reads with "-" (or no input file) as input.
+    stdin : file object or None
+        Standard input of the first command, such as the standard output of
+        another process. It is closed in this process once handed over, so
+        that the writing process stops if the first command does.
+
+    Raises
+    ------
+    RuntimeError
+        If any command fails, naming the failed commands.
+    """
+    processes = []
+    for i, command in enumerate(commands):
+        piped = i < len(commands) - 1
+        processes.append(
+            sp.Popen(
+                [sys.executable, "-c", _SAMTOOLS_CHILD, *map(str, command)],
+                stdin=stdin,
+                stdout=sp.PIPE if piped else None,
+            )
+        )
+        if stdin is not None:
+            stdin.close()
+        stdin = processes[-1].stdout
+    returncodes = [process.wait() for process in processes]
+    failed = [
+        f"samtools {command[0]} (exit code {returncode})"
+        for command, returncode in zip(commands, returncodes)
+        if returncode != 0
+    ]
+    if failed:
+        raise RuntimeError(f"{', '.join(failed)} failed: see samtools' error message above.")
