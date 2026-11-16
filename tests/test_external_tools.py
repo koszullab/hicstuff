@@ -432,6 +432,43 @@ def test_samtools_pipe_stops_on_ctrl_c(signalled, tmp_path):
         proc.wait()
 
 
+class _Interrupted(Exception):
+    pass
+
+
+def _interrupt(signum, frame):
+    raise _Interrupted
+
+
+def test_samtools_pipe_kills_commands_when_interrupted(tmp_path, monkeypatch):
+    """samtools_pipe kills its commands, and waits for them, when waiting for
+    them is interrupted."""
+    started = []
+
+    class Popen(sp.Popen):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            started.append(self)
+
+    monkeypatch.setattr(hio.sp, "Popen", Popen)
+    read, write = os.pipe()
+    previous = signal.signal(signal.SIGALRM, _interrupt)
+    signal.setitimer(signal.ITIMER_REAL, 2)
+    try:
+        with pytest.raises(_Interrupted):
+            # The input never ends: the commands run until killed.
+            hio.samtools_pipe(
+                ["view", "-h", "-"],
+                ["sort", "-n", "-o", tmp_path / "out.bam", "-"],
+                stdin=os.fdopen(read, "rb"),
+            )
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+        os.close(write)
+    assert [process.returncode for process in started] == [-signal.SIGKILL] * 2
+
+
 def test_check_bam_entries_without_samtools(unsorted_sam, tmp_path, hide_tools):
     sam, names = unsorted_sam
     hide_tools("samtools")
