@@ -4,6 +4,7 @@ Programs are hidden from PATH with the ``hide_tools`` fixture, so that each
 test sees which ones a run looks for, runs, or can do without.
 """
 
+import gzip
 import random
 import re
 import shutil
@@ -347,6 +348,70 @@ def test_check_bam_entries_without_samtools(unsorted_sam, tmp_path, hide_tools):
     hide_tools("samtools")
     # Every record is counted, supplementary ones included
     assert hio.check_bam_entries(str(sam)) == 2 * len(names)
+
+
+# ---------------------------------------------------------------------------
+# Final pairs file: BGZF, with or without bgzip
+# ---------------------------------------------------------------------------
+
+#: The empty block that ends a BGZF file.
+BGZF_EOF = bytes.fromhex("1f8b08040000000000ff0600424302001b0003000000000000000000")
+
+
+def _bgzf_blocks(path):
+    """Uncompressed sizes of the blocks of a BGZF file, checking that each is a
+    gzip member whose extra field gives its size, as pairix and tabix need."""
+    data = path.read_bytes()
+    sizes = []
+    pos = 0
+    while pos < len(data):
+        header = data[pos : pos + 18]
+        # gzip magic, deflate, FEXTRA flag; a 6 byte extra field "BC" holding
+        # the block size minus one
+        assert header[:4] == b"\x1f\x8b\x08\x04", pos
+        assert header[10:16] == b"\x06\x00BC\x02\x00", pos
+        end = pos + int.from_bytes(header[16:18], "little") + 1
+        assert end <= len(data)
+        sizes.append(int.from_bytes(data[end - 4 : end], "little"))
+        pos = end
+    assert data.endswith(BGZF_EOF)
+    return sizes
+
+
+def test_sort_and_compress_pairs_bgzip_and_pysam_agree(tmp_path, hide_tools):
+    """bgzip, when installed, and pysam otherwise, write BGZF files that hold
+    the same bytes."""
+    if shutil.which("bgzip") is None:
+        pytest.skip("bgzip is not installed")
+    pairs = "test_data/valid_idx.pairs"
+    bgzip, pysam_bgzf = tmp_path / "bgzip.pairs.gz", tmp_path / "pysam.pairs.gz"
+    hpi.sort_and_compress_pairs(pairs, str(bgzip), tmp_dir=str(tmp_path), threads=2)
+    hide_tools("bgzip")
+    hpi.sort_and_compress_pairs(pairs, str(pysam_bgzf), tmp_dir=str(tmp_path), threads=2)
+    # Several blocks of data, then the empty one
+    assert len(_bgzf_blocks(bgzip)) > 2
+    assert len(_bgzf_blocks(pysam_bgzf)) > 2
+    assert gzip.decompress(pysam_bgzf.read_bytes()) == gzip.decompress(bgzip.read_bytes())
+
+
+def test_pipeline_without_external_tools(final_pairs, synthetic_lib, hide_tools, tmp_path):
+    """From pairs files, the pipeline runs with none of the aligners, samtools
+    or bgzip installed, and still writes BGZF pairs."""
+    pairs = tmp_path / "valid.pairs"
+    shutil.copy(final_pairs, pairs)
+    hide_tools(*ALIGNER_TOOLS, "samtools", "bgzip")
+    out_dir = tmp_path / "out"
+    hpi.full_pipeline(
+        genome=str(synthetic_lib.genome),
+        input1=str(pairs),
+        start_stage="pairs_idx",
+        enzyme=syn.LIBRARY_ENZYME,
+        out_dir=str(out_dir),
+    )
+    final = out_dir / "valid.pairs.gz"
+    assert sum(_bgzf_blocks(final)) == len(gzip.decompress(final.read_bytes()))
+    assert _sorted_lines(final) == _sorted_lines(final_pairs)
+    assert (out_dir / "abs_fragments_contacts_weighted.cool").exists()
 
 
 # ---------------------------------------------------------------------------

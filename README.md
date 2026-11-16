@@ -56,11 +56,14 @@ names (`bowtie2` by default). Only runs that start from FASTQ files align
 reads: `hicstuff pipeline --start-stage bam`, `pairs` or `pairs_idx` needs no
 aligner, except `bowtie2-inspect` (part of bowtie2) when the genome is given as
 a bowtie2 index. `samtools` is not needed: hicstuff filters and sorts
-alignments with the samtools that pysam bundles. You can install the aligners
-as follows on Debian/Ubuntu:
+alignments with the samtools that pysam bundles. `bgzip` (from htslib) is
+optional: the final pairs file is compressed in the BGZF format, which pairix
+can index, by bgzip on several threads when it is installed, and by pysam on
+one thread otherwise. You can install them as follows on Debian/Ubuntu (the
+`tabix` package provides bgzip):
 
 ```bash
-apt-get install bowtie2 bwa minimap2 libbz2-dev liblzma-dev
+apt-get install bowtie2 bwa minimap2 tabix libbz2-dev liblzma-dev
 ```
 
 ### Conda

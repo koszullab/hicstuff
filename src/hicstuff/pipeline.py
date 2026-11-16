@@ -497,9 +497,9 @@ def filter_pcr_dup(pairs_idx_file, filtered_file):
 def sort_and_compress_pairs(pairs_file, out_file, tmp_dir=None, threads=1):
     """
     Sort a pairs file by chr1, chr2, pos1, pos2 (the standard order for
-    pairs files) and gzip-compress it. bgzip is used when available so the
-    output can be indexed with pairix, otherwise the file is compressed with
-    regular gzip.
+    pairs files) and compress it in the BGZF format, so that pairix can index
+    it: with bgzip, on several threads, if it is installed, otherwise with
+    pysam, on one thread.
 
     Parameters
     ----------
@@ -525,8 +525,7 @@ def sort_and_compress_pairs(pairs_file, out_file, tmp_dir=None, threads=1):
             with open(out_file, "wb") as out:
                 sp.run(["bgzip", "-c", "-@", str(threads), sorted_tmp], stdout=out, check=True)
         else:
-            with open(sorted_tmp, "rb") as src, gzip.open(out_file, "wb") as dst:
-                st.copyfileobj(src, dst)
+            ps.tabix_compress(sorted_tmp, out_file, force=True)
     finally:
         os.remove(sorted_tmp)
 

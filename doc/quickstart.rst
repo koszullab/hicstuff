@@ -13,7 +13,10 @@ First, make sure you have the third party dependencies:
   when the genome is given as a bowtie2 index.
 
 samtools is not needed: hicstuff filters and sorts alignments with the
-samtools that pysam bundles.
+samtools that pysam bundles. `bgzip <https://www.htslib.org/>`_ is optional:
+the final pairs file is compressed in the BGZF format, which pairix can index,
+by bgzip on several threads when it is installed, and by pysam on one thread
+otherwise.
 
 You can then install hicstuff latest stable version using pip:
 

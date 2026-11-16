@@ -102,13 +102,13 @@ def _check_sorted_pairs_gz(pairs_gz, expected_data_lines):
     assert keys == sorted(keys)
 
 
-@pytest.mark.parametrize("compressor", ["bgzip", "gzip"])
-def test_sort_and_compress_pairs(tmp_path, monkeypatch, compressor):
+@pytest.mark.parametrize("compressor", ["bgzip", "pysam"])
+def test_sort_and_compress_pairs(tmp_path, hide_tools, compressor):
     if compressor == "bgzip" and shutil.which("bgzip") is None:
         pytest.skip("bgzip is not installed")
-    if compressor == "gzip":
-        # Pretend bgzip is not available to exercise the fallback
-        monkeypatch.setattr(hpi, "which", lambda name: None)
+    if compressor == "pysam":
+        # Without bgzip, pysam compresses the pairs
+        hide_tools("bgzip")
 
     # Shuffle pairs so that the test actually exercises sorting
     with open(PAIRS_FILE) as f:
@@ -123,10 +123,9 @@ def test_sort_and_compress_pairs(tmp_path, monkeypatch, compressor):
 
     _check_sorted_pairs_gz(out_gz, data)
     assert not os.path.exists(out_gz + ".tmp")
-    if compressor == "bgzip":
-        # bgzip output starts with a gzip member carrying the BGZF "BC" extra field
-        with open(out_gz, "rb") as f:
-            assert f.read(16)[12:14] == b"BC"
+    # BGZF output starts with a gzip member carrying the BGZF "BC" extra field
+    with open(out_gz, "rb") as f:
+        assert f.read(16)[12:14] == b"BC"
 
 
 def test_sort_pairs_failure_raises(tmp_path):
