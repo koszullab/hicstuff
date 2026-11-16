@@ -1595,6 +1595,38 @@ def check_bam_entries(in_file):
     return int(ps.view("-c", in_file))
 
 
+#: Mate suffix at the end of a read name.
+_MATE_SUFFIX = re.compile(r"/[12]$")
+
+
+def strip_mate_suffix(name):
+    """
+    Read name without its mate suffix, ``/1`` or ``/2``, if it has one.
+
+    Aligners do not all keep the suffix in the names they write: bwa mem
+    drops it, while bowtie2 and minimap2 keep it when aligning single reads.
+    Names compared without it match whichever aligner wrote them.
+
+    Parameters
+    ----------
+    name : str
+        Read name, as in a FASTQ or BAM file.
+
+    Returns
+    -------
+    str :
+        The name without a trailing ``/1`` or ``/2``.
+
+    Examples
+    --------
+    >>> strip_mate_suffix("SRR1.7/1")
+    'SRR1.7'
+    >>> strip_mate_suffix("read/12")
+    'read/12'
+    """
+    return _MATE_SUFFIX.sub("", name)
+
+
 #: Python code that runs ``samtools <command> <args>`` with the samtools that
 #: pysam bundles, given the command and its arguments on the command line:
 #: like the samtools program, it reads from its standard input and writes to

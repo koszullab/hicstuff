@@ -572,3 +572,21 @@ def test_check_fastq_entries():
     assert nreads == 10000
     nreads = hio.check_fastq_entries(filen, threads=2)
     assert nreads == 10000
+
+
+@pytest.mark.parametrize(
+    "name, stripped",
+    [
+        ("SRR1.7/1", "SRR1.7"),
+        ("SRR1.7/2", "SRR1.7"),
+        ("read", "read"),
+        # Only a trailing /1 or /2 is a mate suffix
+        ("read/3", "read/3"),
+        ("read/12", "read/12"),
+        ("read_1", "read_1"),
+        ("read/1/2", "read/1"),
+        ("read/1x", "read/1x"),
+    ],
+)
+def test_strip_mate_suffix(name, stripped):
+    assert hio.strip_mate_suffix(name) == stripped

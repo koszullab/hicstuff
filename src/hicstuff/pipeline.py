@@ -198,8 +198,6 @@ class _NameSortedBam:
     the reads read ("total") and those passing ``min_qual`` ("mapped").
     """
 
-    _end_regex = re.compile(r"/[12]$")
-
     def __init__(self, bam, path, name_key, min_qual, counts):
         self.bam = bam
         self.path = path
@@ -217,7 +215,7 @@ class _NameSortedBam:
         if self.read is None:
             self.name, self.passed = None, False
             return
-        self.name = self._end_regex.sub("", self.read.query_name)
+        self.name = hio.strip_mate_suffix(self.read.query_name)
         self.passed = self.read.mapping_quality >= self.min_qual
         self.counts["total"] += 1
         self.counts["mapped"] += self.passed
