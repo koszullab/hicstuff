@@ -50,9 +50,13 @@ cd hicstuff
 uv sync --extra dev
 ```
 
-If `hicstuff` is installed via pip, additional system dependencies such as
-`bowtie2`, `bwa`, `minimap2` and `samtools` will be needed. You can install
-them as follows on Debian/Ubuntu:
+If `hicstuff` is installed via pip, the aligner that maps the reads is not
+installed with it: `bowtie2`, `bwa` or `minimap2`, whichever `--aligner`
+names (`bowtie2` by default). Only runs that start from FASTQ files align
+reads: `hicstuff pipeline --start-stage bam`, `pairs` or `pairs_idx` needs no
+aligner, except `bowtie2-inspect` (part of bowtie2) when the genome is given as
+a bowtie2 index. `samtools` is needed too. You can install them as follows on
+Debian/Ubuntu:
 
 ```bash
 apt-get install bowtie2 bwa minimap2 samtools libbz2-dev liblzma-dev

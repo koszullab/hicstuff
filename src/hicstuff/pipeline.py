@@ -101,6 +101,10 @@ def align_reads(
             shell=True,
         )
     else:
+        hio.require_tools(
+            [aligner if aligner in ("minimap2", "bwa") else "bowtie2", "samtools"],
+            "to align reads",
+        )
         if aligner == "minimap2":
             map_cmd = "minimap2 -2 -t {threads} -ax sr {fasta} {fastq} > {sam}"
         elif aligner == "bwa":
@@ -928,17 +932,9 @@ def full_pipeline(
         If True, skip counting reads in the input FASTQ files. Useful for very
         large files where counting is slow.
     """
-    # Check if third parties can be run
-    if aligner in ("bowtie2", "minimap2", "bwa"):
-        if (not check_tool(aligner)) | (check_tool(aligner) is None):
-            logger.error("%s is not installed or not on PATH", aligner)
-            raise ImportError(f"{aligner} is required.")
-    else:
+    if aligner not in ("bowtie2", "minimap2", "bwa"):
         logger.error("Incompatible aligner software, choose bowtie2, minimap2 or bwa.")
         raise ValueError("aligner should be either bowtie2, minimap2 or bwa.")
-    if (not check_tool("samtools")) | (check_tool("samtools") is None):
-        logger.error("samtools is not installed or not on PATH")
-        raise ImportError("samtools is required.")
     if mat_fmt == "cool":
         try:
             import cooler
@@ -951,7 +947,24 @@ def full_pipeline(
     # Pipeline can start from 3 input types
     start_time = datetime.now()
     stages = {"fastq": 0, "bam": 1, "pairs": 2, "pairs_idx": 3}
-    start_stage = stages[start_stage]
+    stage_name, start_stage = start_stage, stages[start_stage]
+
+    # Check if the genome is an index or fasta file
+    idx = hio.check_fasta_index(genome, mode=aligner)
+    is_fasta = hio.check_is_fasta(genome)
+    # Check that the third parties the run uses can be run: the aligner only
+    # aligns reads from fastq files.
+    if start_stage == 0:
+        hio.require_tools(
+            hio.alignment_tools(aligner, idx),
+            f"to align the reads of start stage {stage_name}",
+        )
+    if start_stage <= 1:
+        hio.require_tools(["samtools"], f"to read the alignments of start stage {stage_name}")
+    if aligner == "bowtie2" and not is_fasta:
+        hio.require_tools(
+            ["bowtie2-inspect"], f"to extract the genome sequence from the bowtie2 index {genome}"
+        )
 
     # Check if the number of input files is correct
     if start_stage <= 1:
@@ -1045,12 +1058,6 @@ def full_pipeline(
         except:
             raise
 
-    # If the user chose bowtie2 and supplied an index, extract fasta from it
-    # For later steps of the pipeline (digestion / frag attribution)
-    # Check if the genome is an index or fasta file
-    idx = hio.check_fasta_index(genome, mode=aligner)
-    is_fasta = hio.check_is_fasta(genome)
-
     # Different aligners accept different files. Make sure the input format is good.
     # Note bowtie2 can extract fasta from the index, but bwa cannot
     sane_input = {"bowtie2": is_fasta or idx, "minimap2": is_fasta, "bwa": is_fasta}
@@ -1070,7 +1077,8 @@ def full_pipeline(
             genome = tmp_genome
         fasta = tmp_genome
 
-    # Bowtie2-specific feature: extract fasta from the index
+    # Bowtie2-specific feature: extract fasta from the index, for later steps
+    # of the pipeline (digestion / frag attribution)
     if aligner == "bowtie2" and not is_fasta:
         # Index is present, extract fasta file from it and compress it
         bt2fa = sp.Popen(

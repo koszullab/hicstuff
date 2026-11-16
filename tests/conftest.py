@@ -50,6 +50,37 @@ def require_tools():
         pytest.skip(f"external tools not installed: {', '.join(missing)}")
 
 
+@pytest.fixture
+def hide_tools(tmp_path_factory, monkeypatch):
+    """Hide programs from PATH for the rest of the test.
+
+    ``hide_tools("samtools", "bwa")`` sets PATH to a directory of links to
+    every other program found on the test's PATH, the first of each name as a
+    lookup would find it, so that neither shutil.which nor a shell finds the
+    hidden ones while everything else keeps running. Each call replaces the
+    previous one.
+    """
+    path = os.environ.get("PATH", "")
+
+    def _hide(*tools):
+        shadow = tmp_path_factory.mktemp("path")
+        for directory in path.split(os.pathsep):
+            if not os.path.isdir(directory):
+                continue
+            for name in sorted(os.listdir(directory)):
+                target = os.path.join(directory, name)
+                link = shadow / name
+                if name in tools or os.path.lexists(link):
+                    continue
+                if os.path.isfile(target) and os.access(target, os.X_OK):
+                    link.symlink_to(target)
+        monkeypatch.setenv("PATH", str(shadow))
+        assert all(shutil.which(tool) is None for tool in tools)
+        return shadow
+
+    return _hide
+
+
 @pytest.fixture(scope="session")
 def indexed_genome(synthetic_lib, require_tools, tmp_path_factory):
     """Copy of the synthetic genome with bowtie2 and bwa indices next to it,

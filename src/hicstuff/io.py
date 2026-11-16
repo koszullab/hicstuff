@@ -1456,6 +1456,62 @@ def check_fasta_index(ref, mode="bowtie2"):
     return None
 
 
+#: Program that builds the index of each aligner that needs one.
+_INDEX_BUILDERS = {"bowtie2": "bowtie2-build", "bwa": "bwa"}
+
+
+def alignment_tools(aligner, index):
+    """
+    Programs that aligning reads with an aligner runs.
+
+    Parameters
+    ----------
+    aligner : str
+        The aligner: bowtie2, bwa or minimap2.
+    index : str or None
+        The index prefix found by check_fasta_index, or None if the index of
+        the reference must be built first.
+
+    Returns
+    -------
+    list of str
+        The aligner, and the program that builds its index if there is none
+        (bowtie2-build for bowtie2; bwa builds its own).
+    """
+    tools = [aligner]
+    builder = _INDEX_BUILDERS.get(aligner)
+    if index is None and builder is not None and builder != aligner:
+        tools.append(builder)
+    return tools
+
+
+def require_tools(tools, purpose):
+    """
+    Check that programs are on PATH before running them.
+
+    Parameters
+    ----------
+    tools : list of str
+        Names of the programs.
+    purpose : str
+        What they are needed for, completing "needed ...", for the error
+        message.
+
+    Raises
+    ------
+    ImportError
+        If any of the programs is not on PATH, naming the missing ones.
+    """
+    missing = [tool for tool in tools if which(tool) is None]
+    if missing:
+        msg = (
+            f"{' and '.join(missing)} {'is' if len(missing) == 1 else 'are'} not "
+            f"installed or not on PATH, and needed {purpose}."
+        )
+        logger.error(msg)
+        raise ImportError(msg)
+
+
 def check_is_fasta(in_file):
     """
     Checks whether input file is in fasta format.

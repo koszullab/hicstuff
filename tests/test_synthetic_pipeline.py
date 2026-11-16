@@ -781,7 +781,7 @@ def test_pipeline_rejects_bad_inputs(synthetic_lib, indexed_genome, tmp_path, mo
     (tmp_path / "out2" / "tmp" / "for.bam").touch()
     with pytest.raises(OSError, match="Temporary file .* already exists"):
         hpi.full_pipeline(**reads, **dict(common, out_dir=str(tmp_path / "out2")))
-    monkeypatch.setattr(hpi, "which", lambda tool: None if tool == "samtools" else tool)
+    monkeypatch.setattr(hio, "which", lambda tool: None if tool == "samtools" else tool)
     with pytest.raises(ImportError, match="samtools"):
         hpi.full_pipeline(**reads, **common)
 

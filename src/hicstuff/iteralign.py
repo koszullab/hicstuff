@@ -72,6 +72,12 @@ def iterative_align(
     iterative_align(fq_in='example_for.fastq', ref='example_bt2_index', bam_out='example_for.bam', aligner="bowtie2")
     iterative_align(fq_in='example_for.fastq', ref='example_genome.fa', bam_out='example_for.bam', aligner="minimap2")
     """
+    # The aligner program that maps the truncated reads: an unknown aligner
+    # is refused when mapping.
+    program = _aligner_program(aligner)
+    if program is not None:
+        hio.require_tools([program, "samtools"], "for iterative alignment")
+
     # set with the name of the unaligned reads :
     remaining_reads = set()
     total_reads = 0
@@ -146,11 +152,11 @@ def iterative_align(
             "idx": index,
             "bam": temp_alignment,
         }
-        if re.match(r"^(minimap[2]?|mm[2]?)$", aligner, flags=re.IGNORECASE):
+        if program == "minimap2":
             cmd = "minimap2 -x sr -a -t {cpus} {fa} {fq}".format(**map_args)
-        elif re.match(r"^(bwa)$", aligner, flags=re.IGNORECASE):
+        elif program == "bwa":
             cmd = "bwa mem -t {cpus} -v 1 {idx} {fq}".format(**map_args)
-        elif re.match(r"^(bowtie[2]?|bt[2]?)$", aligner, flags=re.IGNORECASE):
+        elif program == "bowtie2":
             cmd = ("bowtie2 -x {idx} -p {cpus} --quiet --very-sensitive-local -U {fq}").format(
                 **map_args
             )
@@ -218,6 +224,23 @@ def iterative_align(
     )
 
     return 0
+
+
+#: Aligner programs, and the aligner names iterative_align runs them for.
+_ALIGNER_PROGRAMS = {
+    "minimap2": r"^(minimap[2]?|mm[2]?)$",
+    "bwa": r"^(bwa)$",
+    "bowtie2": r"^(bowtie[2]?|bt[2]?)$",
+}
+
+
+def _aligner_program(aligner):
+    """The program that iterative_align maps reads with for ``aligner``, or
+    None if it is not an aligner name."""
+    for program, pattern in _ALIGNER_PROGRAMS.items():
+        if re.match(pattern, aligner, flags=re.IGNORECASE):
+            return program
+    return None
 
 
 def _truncate_reads(tmp_dir, infile, unaligned_set, trunc_len, first_round):
