@@ -45,6 +45,7 @@ dependencies = [
     "pysam",
     "pyfastx",
     "cooler",
+    "click>=8.0",
 ]
 
 [project.optional-dependencies]
