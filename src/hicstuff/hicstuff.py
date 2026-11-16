@@ -811,10 +811,7 @@ def compartments(M, normalize=True):
     N[np.isnan(N)] = 0.0
 
     # Computation of eigen vectors:
-    eig_val, eig_vec = eig(N)
-    PC1 = eig_vec[:, 0]
-    PC2 = eig_vec[:, 1]
-    return PC1, PC2
+    return _top_two_eigenvectors(N)
 
 
 def corrcoef_sparse(A, B=None):
@@ -892,6 +889,27 @@ def compartments_sparse(M, normalize=True):
     N = corrcoef_sparse(N)
     N[np.isnan(N)] = 0.0
     # Extract eigen vectors and eigen values
-    [eigen_vals, pr_comp] = eig(N)
+    return _top_two_eigenvectors(N)
 
-    return pr_comp[:, 0], pr_comp[:, 1]
+
+def _top_two_eigenvectors(N):
+    """
+    Return the eigenvectors of the two largest eigenvalues of N, the first
+    and second principal components of a correlation matrix.
+
+    eig returns the eigenvalues in no particular order, so its first two
+    eigenvectors need not be those of the two largest eigenvalues.
+
+    Parameters
+    ----------
+    N : numpy.ndarray
+        A square correlation matrix.
+
+    Returns
+    -------
+    tuple of numpy.ndarray
+        The eigenvectors of the largest and second largest eigenvalues.
+    """
+    eigen_vals, eigen_vecs = eig(N)
+    order = np.argsort(eigen_vals.real)[::-1]
+    return eigen_vecs[:, order[0]], eigen_vecs[:, order[1]]
