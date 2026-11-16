@@ -1601,10 +1601,14 @@ def check_bam_entries(in_file):
 #: its standard output when given "-" as file name, and exits with samtools'
 #: error message if the command fails. The working directory is left out of
 #: the module search path, so that no file there can stand in for a module.
+#: Ctrl-C stops it at once, as it stops the samtools program: Python would
+#: only raise KeyboardInterrupt once samtools returns.
 _SAMTOOLS_CHILD = """\
 import sys
 if sys.path and sys.path[0] == "":
     del sys.path[0]
+import signal
+signal.signal(signal.SIGINT, signal.SIG_DFL)
 import pysam
 try:
     getattr(pysam, sys.argv[1])(*sys.argv[2:], catch_stdout=False)
@@ -1640,19 +1644,27 @@ def samtools_pipe(*commands, stdin=None):
         If any command fails, naming the failed commands.
     """
     processes = []
-    for i, command in enumerate(commands):
-        piped = i < len(commands) - 1
-        processes.append(
-            sp.Popen(
-                [sys.executable, "-c", _SAMTOOLS_CHILD, *map(str, command)],
-                stdin=stdin,
-                stdout=sp.PIPE if piped else None,
+    try:
+        for i, command in enumerate(commands):
+            piped = i < len(commands) - 1
+            processes.append(
+                sp.Popen(
+                    [sys.executable, "-c", _SAMTOOLS_CHILD, *map(str, command)],
+                    stdin=stdin,
+                    stdout=sp.PIPE if piped else None,
+                )
             )
-        )
-        if stdin is not None:
-            stdin.close()
-        stdin = processes[-1].stdout
-    returncodes = [process.wait() for process in processes]
+            if stdin is not None:
+                stdin.close()
+            stdin = processes[-1].stdout
+        returncodes = [process.wait() for process in processes]
+    except BaseException:
+        # Interrupted, by Ctrl-C or otherwise: stop the commands, as
+        # subprocess.run does, rather than leave them running.
+        for process in processes:
+            process.kill()
+            process.wait()
+        raise
     failed = [
         f"samtools {command[0]} (exit code {returncode})"
         for command, returncode in zip(commands, returncodes)

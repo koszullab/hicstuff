@@ -4,11 +4,16 @@ Programs are hidden from PATH with the ``hide_tools`` fixture, so that each
 test sees which ones a run looks for, runs, or can do without.
 """
 
+import contextlib
 import gzip
+import os
 import random
 import re
 import shutil
+import signal
 import subprocess as sp
+import sys
+import time
 
 import cooler
 import pysam
@@ -341,6 +346,90 @@ def test_samtools_pipe_ignores_modules_in_working_directory(unsorted_sam, tmp_pa
     monkeypatch.chdir(work)
     hio.samtools_pipe(["view", "-F", "2048", "-h", sam], ["sort", "-n", "-o", "out.bam", "-"])
     assert _names(work / "out.bam") == [(name, 0) for name in names]
+
+
+#: Runs samtools_pipe until interrupted, on a standard input that never ends:
+#: the read end of a pipe, given as file descriptor.
+_INTERRUPTED_PIPE = """\
+import os
+import sys
+
+import hicstuff.io as hio
+
+try:
+    hio.samtools_pipe(
+        ["view", "-h", "-"],
+        ["sort", "-n", "-o", sys.argv[2], "-"],
+        stdin=os.fdopen(int(sys.argv[1]), "rb"),
+    )
+except KeyboardInterrupt:
+    sys.exit(42)
+"""
+
+
+def _running(pgid):
+    """Processes of a process group that have not exited."""
+    pids = []
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            with open(f"/proc/{entry}/stat") as handle:
+                # After the command name: state, parent, process group...
+                fields = handle.read().rsplit(")", 1)[1].split()
+        except OSError:
+            continue
+        if int(fields[2]) == pgid and fields[0] != "Z":
+            pids.append(int(entry))
+    return pids
+
+
+def _runs_samtools(pid):
+    """Whether a process has loaded the samtools of pysam."""
+    try:
+        with open(f"/proc/{pid}/maps") as handle:
+            return "libcsamtools" in handle.read()
+    except OSError:
+        return False
+
+
+@pytest.mark.skipif(not os.path.isdir("/proc"), reason="reads processes from /proc")
+@pytest.mark.parametrize("signalled", ["group", "hicstuff"])
+def test_samtools_pipe_stops_on_ctrl_c(signalled, tmp_path):
+    """Ctrl-C, which signals every process of the terminal's foreground group,
+    stops the samtools commands as it stops samtools programs, and so does an
+    interruption of hicstuff alone: no command is left running after it."""
+    read, write = os.pipe()
+    script = tmp_path / "pipe.py"
+    script.write_text(_INTERRUPTED_PIPE)
+    proc = sp.Popen(
+        [sys.executable, str(script), str(read), str(tmp_path / "out.bam")],
+        pass_fds=(read,),
+        start_new_session=True,
+    )
+    os.close(read)
+    try:
+        deadline = time.monotonic() + 60
+        while True:
+            commands = [pid for pid in _running(proc.pid) if pid != proc.pid]
+            if len(commands) == 2 and all(_runs_samtools(pid) for pid in commands):
+                break
+            assert time.monotonic() < deadline, "the samtools commands did not start"
+            time.sleep(0.1)
+        # Both commands now wait for input, in samtools
+        time.sleep(0.5)
+        if signalled == "group":
+            os.killpg(proc.pid, signal.SIGINT)
+        else:
+            os.kill(proc.pid, signal.SIGINT)
+        assert proc.wait(timeout=60) == 42
+        assert _running(proc.pid) == []
+    finally:
+        # A command left running would wait for this write end to close.
+        os.close(write)
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(proc.pid, signal.SIGKILL)
+        proc.wait()
 
 
 def test_check_bam_entries_without_samtools(unsorted_sam, tmp_path, hide_tools):
