@@ -256,7 +256,9 @@ def _truncate_reads(tmp_dir, infile, unaligned_set, trunc_len, first_round):
         Path to the fastq file to truncate.
     unaligned_set : set
         Contains the names of all reads that did not map unambiguously in
-        previous rounds.
+        previous rounds, as the aligner wrote them. bwa mem drops a ``/1``
+        or ``/2`` suffix from the names it writes, so a read of infile is
+        also looked up by its name without that suffix.
     trunc_len : int
         The number of basepairs to keep in each truncated sequence.
     first_round : bool
@@ -273,7 +275,11 @@ def _truncate_reads(tmp_dir, infile, unaligned_set, trunc_len, first_round):
     with ps.FastxFile(infile, "r") as inf, open(outfile, "w") as outf:
         for entry in inf:
             # If the read did not align in previous round or this is the first round
-            if (entry.name in unaligned_set) or first_round:
+            if (
+                first_round
+                or entry.name in unaligned_set
+                or hio.strip_mate_suffix(entry.name) in unaligned_set
+            ):
                 entry.sequence = entry.sequence[:trunc_len]
                 entry.quality = entry.quality[:trunc_len]
                 outf.write(str(entry) + "\n")
@@ -313,7 +319,7 @@ def _filter_bamfile(temp_alignment, filtered_out, min_qual=30):
     Returns
     -------
     set:
-        Contains the names reads that did not align.
+        Contains the names of the reads that did not align.
     """
     # Check the quality and status of each aligned fragment.
     # Write the ones with good quality in the final output file.

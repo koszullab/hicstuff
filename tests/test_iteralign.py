@@ -11,9 +11,15 @@ each ``chimeric`` read is a 45 bp repeat (MAPQ 0), so it fails every
 truncation up to 80 bp; at 100 or 120 bp, its unique 3' end becomes the
 primary record, with a MAPQ that passes, and the repeat a supplementary
 record.
+
+The same reads, named with a ``/1`` or ``/2`` mate suffix, must be realigned
+in every round as others are: bwa mem drops the suffix from the names it
+writes, while bowtie2 and minimap2 keep it.
 """
 
 import collections
+import logging
+import re
 import subprocess as sp
 
 import numpy as np
@@ -60,8 +66,9 @@ def chimeric_lib(tmp_path_factory, require_tools):
     * ``unmapped``: the forward mate is random sequence.
 
     Returns the genome (indexed for all three aligners), both FASTQ files,
-    the info_contigs file and, per read ID, the class and the 0-based
-    position the unique 3' end of a chimeric forward mate starts at.
+    the same reads named with a mate suffix (``read0000/1`` and
+    ``read0000/2``), the info_contigs file and, per read ID, the class and the
+    0-based position the unique 3' end of a chimeric forward mate starts at.
     """
     root = tmp_path_factory.mktemp("chimeric")
     rng = np.random.default_rng(1984)
@@ -101,12 +108,16 @@ def chimeric_lib(tmp_path_factory, require_tools):
     sp.run(["bwa", "index", str(genome)], check=True, stderr=sp.DEVNULL)
     _write_fastq(root / "reads1.fq", reads1)
     _write_fastq(root / "reads2.fq", reads2)
+    _write_fastq(root / "reads1_suffix.fq", [(f"{name}/1", seq) for name, seq in reads1])
+    _write_fastq(root / "reads2_suffix.fq", [(f"{name}/2", seq) for name, seq in reads2])
     info_contigs = root / "info_contigs.txt"
     info_contigs.write_text(f"contig\tlength\nchr1\t{CHROM_LEN}\nchr2\t{CHROM_LEN}\n")
     return {
         "genome": str(genome),
         "reads1": str(root / "reads1.fq"),
         "reads2": str(root / "reads2.fq"),
+        "reads1/1": str(root / "reads1_suffix.fq"),
+        "reads2/2": str(root / "reads2_suffix.fq"),
         "info_contigs": str(info_contigs),
         "truth": truth,
     }
@@ -143,12 +154,35 @@ def test_library_has_supplementary_records(chimeric_lib, aligner, tmp_path):
 
 
 @pytest.mark.parametrize("aligner", ["bowtie2", "bwa", "minimap2"])
-def test_iterative_align_writes_each_read_once(chimeric_lib, aligner, tmp_path):
+def test_aligners_keep_or_drop_mate_suffix(chimeric_lib, aligner, tmp_path):
+    """Premise of the tests of reads named with a mate suffix: aligning single
+    reads as iterative alignment does, bwa mem drops the /1 suffix from the
+    read names it writes, while bowtie2 and minimap2 keep it."""
+    genome, fastq = chimeric_lib["genome"], chimeric_lib["reads1/1"]
+    cmd = {
+        "bowtie2": ["bowtie2", "-x", genome, "--quiet", "--very-sensitive-local", "-U", fastq],
+        "bwa": ["bwa", "mem", "-v", "1", genome, fastq],
+        "minimap2": ["minimap2", "-x", "sr", "-a", genome, fastq],
+    }[aligner]
+    sam = tmp_path / "reads.sam"
+    with open(sam, "w") as out:
+        sp.run(cmd, check=True, stdout=out, stderr=sp.DEVNULL)
+    with pysam.AlignmentFile(str(sam), "r") as handle:
+        names = {r.query_name for r in handle}
+    read_ids = set(chimeric_lib["truth"])
+    assert names == (read_ids if aligner == "bwa" else {f"{name}/1" for name in read_ids})
+
+
+@pytest.mark.parametrize("suffix", ["", "/1"])
+@pytest.mark.parametrize("aligner", ["bowtie2", "bwa", "minimap2"])
+def test_iterative_align_writes_each_read_once(chimeric_lib, aligner, suffix, tmp_path, caplog):
     """Each read is written once, with its primary record: from the round its
-    primary record passed in, or from the unaligned reads of the last round."""
+    primary record passed in, or from the unaligned reads of the last round.
+    Reads named with a /1 suffix are realigned until they pass, as others."""
+    caplog.set_level(logging.INFO)
     out = tmp_path / "reads1.bam"
     hci.iterative_align(
-        chimeric_lib["reads1"],
+        chimeric_lib["reads1" + suffix],
         str(tmp_path),
         chimeric_lib["genome"],
         1,
@@ -157,13 +191,18 @@ def test_iterative_align_writes_each_read_once(chimeric_lib, aligner, tmp_path):
         min_qual=MIN_QUAL,
     )
     records = _records(out)
-    counts = collections.Counter(r.query_name for r in records)
+    # Read IDs, without the suffix that bowtie2 and minimap2 keep
+    read_ids = [re.sub("/1$", "", r.query_name) for r in records]
+    counts = collections.Counter(read_ids)
     assert {name: n for name, n in counts.items() if n > 1} == {}
     assert sorted(counts) == sorted(chimeric_lib["truth"])
     # Only primary records: one record per read, as non-iterative alignment
     assert not [r.query_name for r in records if r.flag & 0x900]
-    for r in records:
-        kind, start = chimeric_lib["truth"][r.query_name]
+    # The reads counted as aligned are those written with a MAPQ that passes
+    passed = sum(not r.is_unmapped and r.mapping_quality >= MIN_QUAL for r in records)
+    assert f"{passed} reads aligned / {len(chimeric_lib['truth'])} total reads." in caplog.text
+    for read_id, r in zip(read_ids, records):
+        kind, start = chimeric_lib["truth"][read_id]
         # bowtie2 reports no supplementary records and does not pass chimeric
         # reads here: its local MAPQ for the unique end stays below 30 (the
         # repeat scores close behind), and its last, end-to-end round leaves
@@ -179,14 +218,16 @@ def test_iterative_align_writes_each_read_once(chimeric_lib, aligner, tmp_path):
             assert r.is_unmapped
 
 
+@pytest.mark.parametrize("suffixes", [("", ""), ("/1", "/2")])
 @pytest.mark.parametrize("aligner", ["bwa", "minimap2"])
-def test_iterative_pairs_written_once(chimeric_lib, aligner, tmp_path, caplog):
-    """The pipeline writes one pair per read pair whose mates both pass."""
+def test_iterative_pairs_written_once(chimeric_lib, aligner, suffixes, tmp_path, caplog):
+    """The pipeline writes one pair per read pair whose mates both pass, with
+    or without /1 and /2 mate suffixes in the read names."""
     bams = []
-    for mate in ("reads1", "reads2"):
+    for mate, suffix in zip(("reads1", "reads2"), suffixes):
         bam = str(tmp_path / f"{mate}.bam")
         hpi.align_reads(
-            chimeric_lib[mate],
+            chimeric_lib[mate + suffix],
             chimeric_lib["genome"],
             bam,
             tmp_dir=str(tmp_path),
@@ -256,3 +297,56 @@ def test_filter_bamfile_classifies_reads_by_primary_record(tmp_path):
     assert remaining == {"c", "d", "e"}
     kept = [(r.query_name, r.flag, r.reference_start) for r in _records(bam_out)]
     assert kept == [("a", 0, 10), ("b", 16, 20)]
+
+
+def test_filter_bamfile_returns_names_as_written(tmp_path):
+    """Reads are staged for the next round by the name the aligner wrote, so
+    two mates of one file (x/1 and x/2) stay apart with bowtie2 and minimap2,
+    which keep the suffix; the records written keep their names."""
+    records = [
+        ("a/1", 0, 0, 10, 60),
+        ("b/1", 4, -1, -1, 0),
+        ("c/2", 16, 0, 20, 10),
+        ("d", 0, 0, 30, 0),
+        ("e/3", 4, -1, -1, 0),
+    ]
+    bam_in, bam_out = tmp_path / "in.bam", tmp_path / "out.bam"
+    _write_bam(bam_in, records)
+    remaining = hci._filter_bamfile(str(bam_in), str(bam_out), min_qual=30)
+    assert remaining == {"b/1", "c/2", "d", "e/3"}
+    assert [r.query_name for r in _records(bam_out)] == ["a/1"]
+
+
+def test_truncate_reads_matches_names_without_mate_suffix(tmp_path):
+    """A read is truncated for the next round when its name, or its name
+    without /1 or /2 suffix (which bwa mem drops), is among the names left to
+    map; the reads written keep their names."""
+    fastq = tmp_path / "reads.fq"
+    reads = [
+        ("a/1", "ACGTAC"),
+        ("b/1", "CCGGTT"),
+        ("c/2", "GGATCC"),
+        ("d", "TTAACC"),
+        ("e/3", "AAGCTT"),
+    ]
+    _write_fastq(fastq, reads)
+    # Names left to map as _filter_bamfile returns them
+    out = hci._truncate_reads(str(tmp_path), str(fastq), {"a", "c", "d", "e/3"}, 4, False)
+    with pysam.FastxFile(out) as handle:
+        truncated = [(entry.name, entry.sequence, entry.quality) for entry in handle]
+    assert truncated == [
+        ("a/1", "ACGT", "IIII"),
+        ("c/2", "GGAT", "IIII"),
+        ("d", "TTAA", "IIII"),
+        ("e/3", "AAGC", "IIII"),
+    ]
+    # Every read in the first round
+    out = hci._truncate_reads(str(tmp_path), str(fastq), set(), 4, True)
+    with pysam.FastxFile(out) as handle:
+        assert [entry.name for entry in handle] == [name for name, _ in reads]
+    # Names as bowtie2 and minimap2 write them, suffix kept: an exact match
+    # only, so the other mate of the same file is not realigned with it.
+    _write_fastq(fastq, reads + [("b/2", "TTGGCC")])
+    out = hci._truncate_reads(str(tmp_path), str(fastq), {"b/1"}, 4, False)
+    with pysam.FastxFile(out) as handle:
+        assert [entry.name for entry in handle] == ["b/1"]
