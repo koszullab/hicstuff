@@ -5,12 +5,14 @@ Installation
 ============
 First, make sure you have the third party dependencies:
 
-* the aligner that maps the reads, to start from FASTQ files:
+* the aligner that maps the reads:
   `bowtie2 <https://github.com/BenLangmead/bowtie2>`_ (the default),
   `bwa <https://github.com/lh3/bwa>`_ or
-  `minimap2 <https://github.com/lh3/minimap2>`_. Runs that start from BAM or
-  pairs files need no aligner, except ``bowtie2-inspect`` (part of bowtie2)
-  when the genome is given as a bowtie2 index.
+  `minimap2 <https://github.com/lh3/minimap2>`_. ``hicstuff iteralign`` and
+  ``hicstuff missview`` always run it, and ``hicstuff pipeline`` only to start
+  from FASTQ files: pipeline runs that start from BAM or pairs files need no
+  aligner, except ``bowtie2-inspect`` (part of bowtie2) when the genome is
+  given as a bowtie2 index.
 
 samtools is not needed: hicstuff filters and sorts alignments with the
 samtools that pysam bundles. `bgzip <https://www.htslib.org/>`_ is optional:
