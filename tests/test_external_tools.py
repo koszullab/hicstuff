@@ -226,6 +226,40 @@ def test_bowtie2_index_genome_without_gzip(run_pipeline, hide_tools, tmp_path):
         assert index.path(name).read_bytes() == fasta.path(name).read_bytes()
 
 
+@pytest.mark.parametrize("mat_fmt", ["graal", "cool"])
+def test_fastq_run_without_sort(mat_fmt, fastq_run, run_pipeline, hide_tools):
+    """Pairs are sorted in Python when no sort is on PATH: the run writes what
+    a run with sort writes."""
+    # cool is the default format: the cached runs then differ by name
+    ref = fastq_run("bowtie2", "normal", **({"mat_fmt": mat_fmt} if mat_fmt == "graal" else {}))
+    # The genome is indexed already
+    hide_tools("sort", "bowtie2-build")
+    run = run_pipeline(f"bowtie2_normal_{mat_fmt}_without_sort", **ref.kwargs)
+    # The pairs are sorted by coordinates, by fragments for a graal matrix,
+    # and the final pairs
+    n_sorts = 3 if mat_fmt == "graal" else 2
+    assert run.log_text.count("No sort program on PATH: sorting pairs in Python.") == n_sorts
+    names = ["fragments_list.txt", "info_contigs.txt", "valid_idx_pcrfree.pairs.gz"]
+    names.append(
+        "abs_fragments_contacts_weighted.txt"
+        if mat_fmt == "graal"
+        else "abs_fragments_contacts_weighted.cool"
+    )
+    for name in names:
+        if name.endswith(".cool"):
+            assert _content(run.path(name)) == _content(ref.path(name))
+        else:
+            assert _bytes(run.path(name)) == _bytes(ref.path(name))
+    for name in ("valid_idx.pairs", "valid_idx_filtered.pairs"):
+        assert run.tmp(name).read_bytes() == ref.tmp(name).read_bytes()
+
+
+def _bytes(path):
+    """Bytes of a file, decompressed if gzip-compressed."""
+    data = path.read_bytes()
+    return gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data
+
+
 @pytest.mark.parametrize("aligner", ALIGNERS)
 def test_align_reads_needs_the_aligner(
     aligner, synthetic_lib, indexed_genome, hide_tools, tmp_path
