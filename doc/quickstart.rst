@@ -18,7 +18,10 @@ samtools is not needed: hicstuff filters and sorts alignments with the
 samtools that pysam bundles. `bgzip <https://www.htslib.org/>`_ is optional:
 the final pairs file is compressed in the BGZF format, which pairix can index,
 by bgzip on several threads when it is installed, and by pysam on one thread
-otherwise.
+otherwise. Pairs are sorted by GNU, BSD or uutils ``sort`` when one is
+installed, and in Python on one thread otherwise (busybox ``sort`` lacks the
+options hicstuff needs); set ``HICSTUFF_SORT=python`` to always sort them in
+Python.
 
 hicstuff needs Python 3.10 or later. You can then install hicstuff latest
 stable version using pip:
