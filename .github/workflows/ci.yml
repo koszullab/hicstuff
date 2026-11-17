@@ -50,8 +50,11 @@ jobs:
       - name: Build hicstuff's wheel
         run: python -m pip wheel --no-deps -w dist .
 
-      # Fails if a dependency would need a compiler. pybwa has no wheel for
-      # macOS with Python 3.14, and builds from source there.
+      # Fails if a dependency has no wheel in any version hicstuff allows.
+      # Where only the newest versions lack one, pip installs an older one
+      # instead (biopython on Intel macOS): the wheels job checks the versions
+      # a plain pip install picks. pybwa has no wheel for macOS with Python
+      # 3.14, and builds from source there.
       - name: Install from wheels
         run: |
           python -m venv "$RUNNER_TEMP/venv"
@@ -82,11 +85,12 @@ jobs:
       - name: Run tests
         run: env -i HOME="$HOME" PATH=/nonexistent "$RUNNER_TEMP/venv/bin/python" -m pytest -q
 
-  # Every dependency has wheels on the platforms hicstuff supports, so that a
-  # pip install needs no compiler. Cheaper than a runner per platform: it
-  # catches a dependency that stops publishing wheels before users do. Left
-  # out: musl, where biopython and matplotlib publish no wheels, and macOS with
-  # Python 3.14, where pybwa has none.
+  # Whether a plain pip install needs a compiler, on the platforms hicstuff
+  # supports. Cheaper than a runner per platform, it catches a dependency that
+  # stops publishing wheels before users do. Resolving from wheels only is not
+  # enough: it falls back to older versions that have wheels. So each platform
+  # is resolved as pip install resolves it, then every version picked must have
+  # a wheel. Left out: musl, where biopython and matplotlib publish no wheels.
   wheels:
     name: Wheels for every platform
     runs-on: ubuntu-latest
@@ -96,21 +100,39 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
 
-      - name: Resolve the dependencies from wheels only
+      # Built from source, with a warning: pybwa on macOS with Python 3.14,
+      # which has no wheel, and biopython on Intel macOS, which has none since
+      # 1.87.
+      - name: Check that pip install finds wheels
         run: |
           status=0
+          out=$(mktemp -d)
           for platform in x86_64-manylinux_2_28 aarch64-manylinux_2_28 aarch64-apple-darwin x86_64-apple-darwin; do
             for python in 3.10 3.11 3.12 3.13 3.14; do
-              case "$platform-$python" in *-apple-darwin-3.14) continue ;; esac
-              if uv pip compile --quiet --only-binary :all: --python-platform "$platform" \
-                  --python-version "$python" pyproject.toml -o /dev/null; then
-                echo "ok      $platform Python $python"
+              cell="$platform, Python $python"
+              # One file per cell: uv prefers the versions of an existing output file
+              pins="$out/$platform-$python.txt"
+              target=(--python-platform "$platform" --python-version "$python" pyproject.toml)
+              allowed=()
+              case "$platform-$python" in *-apple-darwin-3.14) allowed+=(pybwa) ;; esac
+              case "$platform" in x86_64-apple-darwin) allowed+=(biopython) ;; esac
+              wheels=(--only-binary :all: -c "$pins" "${target[@]}" -o "$pins.wheels")
+              if ! uv pip compile --quiet "${target[@]}" -o "$pins"; then
+                echo "FAILED  $cell: the dependencies do not resolve"
+                status=1
+              elif uv pip compile --quiet "${wheels[@]}" 2>/dev/null; then
+                echo "ok      $cell"
+              elif uv pip compile --quiet "${allowed[@]/#/--no-binary=}" "${wheels[@]}" 2>/dev/null; then
+                echo "::warning::$cell: pip install builds from source what has no wheel among: ${allowed[*]}"
               else
-                echo "FAILED  $platform Python $python"
+                echo "FAILED  $cell: no wheel for a version that pip install picks"
+                uv pip compile --quiet "${allowed[@]/#/--no-binary=}" "${wheels[@]}" 2>&1 \
+                  | awk '{ print "        " $0 }' || true
                 status=1
               fi
             done
           done
+          rm -r "$out"
           exit $status
 
   test:
