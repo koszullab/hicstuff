@@ -129,6 +129,7 @@ def test_check_bam_entries(fastq_run, synthetic_lib):
     assert hio.check_bam_entries(str(run.tmp("for.bam"))) == synthetic_lib.params.n_pairs
 
 
+@pytest.mark.needs("bowtie2-build")
 def test_check_fasta_index(indexed_genome, synthetic_lib):
     for mode in ("bowtie2", "bwa", "minimap2"):
         assert hio.check_fasta_index(indexed_genome, mode=mode) == indexed_genome

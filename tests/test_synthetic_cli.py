@@ -103,7 +103,10 @@ def test_command_help(runner, command):
         ["convert", "-T", "bg2", "missing.bg2", "out"],
         ["subsample", "missing.bg2", "out"],
         ["digest", "-e", "DpnII", "-o", "{tmp}/out", "missing.fa"],
-        ["pipeline", "-g", "{genome}", "-o", "{tmp}/out", "missing_R1.fq", "missing_R2.fq"],
+        pytest.param(
+            ["pipeline", "-g", "{genome}", "-o", "{tmp}/out", "missing_R1.fq", "missing_R2.fq"],
+            marks=pytest.mark.needs("bowtie2", "bowtie2-build"),
+        ),
     ],
     ids=lambda args: args[0],
 )

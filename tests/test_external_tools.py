@@ -110,6 +110,8 @@ def test_fastq_start_needs_the_aligner(
     """Without its aligner, a run from fastq files stops before writing
     anything, naming the aligner and the start stage that needs it, and
     running with bwa in-process if pybwa is installed. bwa needs either."""
+    if aligner == "bowtie2" and shutil.which("bowtie2-build") is None:
+        pytest.skip("not on PATH: bowtie2-build, which indexes the genome")
     hide_tools(aligner)
     if aligner == "bwa":
         # bwa runs in-process when pybwa is installed
@@ -131,6 +133,7 @@ def test_fastq_start_needs_the_aligner(
     assert not out_dir.exists()
 
 
+@pytest.mark.needs("bowtie2")
 def test_fastq_start_needs_bowtie2_build_without_index(synthetic_lib, hide_tools, tmp_path):
     """A genome without bowtie2 index is indexed first, with bowtie2-build."""
     genome = tmp_path / "genome.fa"
@@ -153,6 +156,7 @@ def test_fastq_start_needs_bowtie2_build_without_index(synthetic_lib, hide_tools
     assert not out_dir.exists()
 
 
+@pytest.mark.needs("bowtie2-inspect")
 def test_bowtie2_index_genome_needs_bowtie2_inspect(hide_tools, tmp_path):
     """The genome sequence is read from a bowtie2 index with bowtie2-inspect,
     whatever the start stage: the only aligner program such a run needs."""
@@ -229,6 +233,7 @@ def test_fastq_run_without_gzip_or_wc(mapping, fastq_run, run_pipeline, hide_too
         assert _content(run.path(name)) == _content(ref.path(name))
 
 
+@pytest.mark.needs("bowtie2-inspect")
 def test_bowtie2_index_genome_without_gzip(run_pipeline, hide_tools, tmp_path):
     """The genome sequence that bowtie2-inspect reads from a bowtie2 index is
     compressed in Python, without gzip: the run writes what a run from the
@@ -348,6 +353,9 @@ def test_missview_needs_the_aligner(aligner, hidden, synthetic_lib, hide_tools, 
     """missview aligns reads it simulates, with the aligner, after building
     an index for a genome that has none: it checks for both first. bwa needs
     the bwa program or pybwa."""
+    others = [tool for tool in hio.alignment_tools(aligner, None) if tool != hidden]
+    if any(shutil.which(tool) is None for tool in others):
+        pytest.skip(f"not on PATH: {', '.join(others)}")
     genome = tmp_path / "small.fa"
     genome.write_text(">chr3\n" + synthetic_lib.chroms["chr3"][:4000] + "\n")
     work = tmp_path / "work"
@@ -360,6 +368,7 @@ def test_missview_needs_the_aligner(aligner, hidden, synthetic_lib, hide_tools, 
     assert not (work / "simulated_reads.fq").exists()
 
 
+@pytest.mark.needs("minimap2")
 def test_missview_without_samtools(synthetic_lib, hide_tools, tmp_path, monkeypatch):
     genome = tmp_path / "small.fa"
     genome.write_text(">chr3\n" + synthetic_lib.chroms["chr3"][:4000] + "\n")
@@ -420,6 +429,7 @@ def test_samtools_pipe_filters_and_sorts(unsorted_sam, tmp_path, hide_tools):
     assert _names(out) == [(name, 0) for name in names]
 
 
+@pytest.mark.needs("cat")
 def test_samtools_pipe_reads_another_process(unsorted_sam, tmp_path, hide_tools):
     """``aligner | samtools sort -n``, as iterative alignment runs it."""
     sam, names = unsorted_sam
@@ -716,6 +726,7 @@ def test_check_fastq_entries_counts_damaged_gzip_as_zcat(damage, tmp_path, hide_
     assert hio.check_fastq_entries(str(path)) == n_lines // 4 > 0
 
 
+@pytest.mark.needs("sort")
 def test_require_tools_names_every_missing_tool(hide_tools):
     hide_tools("bowtie2", "bwa")
     with pytest.raises(ImportError, match=_missing(["bowtie2", "bwa"], "for this")):

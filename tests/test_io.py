@@ -215,6 +215,7 @@ def test_sort_pairs_one_block_per_read(tmp_path):
     ]
 
 
+@pytest.mark.needs("sort")
 def test_sort_pairs_runs_sort_in_c_locale(tmp_path, monkeypatch):
     """sort runs in the C locale whatever the caller's, so ties are broken byte by byte."""
     monkeypatch.setenv("LC_ALL", "en_US.UTF-8")
@@ -318,6 +319,8 @@ def test_sort_pairs_parallel(tmp_path, monkeypatch, caplog, capfd, text, warning
     real sort. An unknown sort, as busybox's, is not run: the pairs are
     sorted in Python.
     """
+    if hio._sort_implementation(text)[0] != "unknown" and shutil.which("sort") is None:
+        pytest.skip("not on PATH: sort")
     fake = tmp_path / "bin" / "sort"
     fake.parent.mkdir()
     fake.with_suffix(".version").write_text(text)
@@ -606,6 +609,7 @@ def test_sort_compressed_pairs_header_only(tmp_path):
     )
 
 
+@pytest.mark.needs("sort")
 def test_sort_compressed_pairs_failure_raises(tmp_path):
     """A failing UNIX sort must raise, also when it stops reading early."""
     plain = tmp_path / "unsorted.pairs"

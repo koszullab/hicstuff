@@ -21,6 +21,7 @@ import pytest
 
 import hicstuff.io as hio
 import hicstuff.pipeline as hpi
+from tests.conftest import skip_unless_can_align
 
 MAPPING_PARAMETERS = ("mapping", ["normal", "iterative"])
 ALIGNER_PARAMETERS = ("aligner", ["bowtie2", "bwa", "minimap2"])
@@ -132,6 +133,7 @@ def test_sort_and_compress_pairs(tmp_path, hide_tools, compressor):
         assert f.read(16)[12:14] == b"BC"
 
 
+@pytest.mark.needs("sort")
 def test_sort_pairs_failure_raises(tmp_path):
     """A failing UNIX sort must raise instead of leaving a truncated file."""
     with pytest.raises(RuntimeError, match="Sorting pairs"):
@@ -143,6 +145,7 @@ def test_sort_pairs_failure_raises(tmp_path):
         )
 
 
+@pytest.mark.needs("bowtie2", "bowtie2-inspect")
 def test_full_pipeline_writes_final_pairs(tmp_path):
     """The pipeline must leave a sorted, compressed pairs file in out_dir."""
     out_dir = tmp_path / "out"
@@ -347,6 +350,7 @@ def test_balance_counts_resolutions_that_got_weights(tmp_path, caplog):
     assert len(_warnings(caplog)) == len(paths) - 1
 
 
+@pytest.mark.needs("bowtie2", "bowtie2-inspect")
 def test_failed_balancing_does_not_stop_the_pipeline(tmp_path, caplog):
     """The pipeline finishes, unbalanced, when balancing fails at every
     resolution, and says so."""
@@ -533,6 +537,7 @@ def test_filter_pcr_dup_after_coordinate_sort(tmp_path):
     assert kept == ["rA", "rB"]
 
 
+@pytest.mark.needs("bowtie2", "bowtie2-inspect")
 def test_full_pipeline_frags():
     mapping_to_enzyme = {"normal": "DpnII", "cutsite": "DpnII,HpaII"}
     for mapping, enzyme in mapping_to_enzyme.items():
@@ -559,6 +564,7 @@ def test_full_pipeline_frags():
 # binning: zoomify, tweaked balancing
 
 
+@pytest.mark.needs("bowtie2", "bowtie2-inspect")
 def test_full_pipeline_frags_with_binning_balancing():
     hpi.full_pipeline(
         input1="test_data/sample.reads_for.fastq.gz",
@@ -683,6 +689,7 @@ def test_full_pipeline_frags_with_binning_balancing():
     )
 
 
+@pytest.mark.needs("bowtie2", "bowtie2-build")
 def test_full_pipeline_frags_gzipped_genome():
     mapping_to_enzyme = {"normal": "DpnII", "cutsite": "DpnII,HpaII"}
     for mapping, enzyme in mapping_to_enzyme.items():
@@ -707,8 +714,11 @@ def test_full_pipeline_frags_gzipped_genome():
 
 @pytest.mark.parametrize(*MAPPING_PARAMETERS)
 @pytest.mark.parametrize(*ALIGNER_PARAMETERS)
+@pytest.mark.needs("bowtie2", "bowtie2-inspect")
 def test_full_pipeline_bin(mapping, aligner):
-    """Crash Test for the whole pipeline"""
+    """Crash Test for the whole pipeline. It starts from bam files that
+    test_full_pipeline_frags writes."""
+    skip_unless_can_align(aligner)
     out_dir = f"test_out_{aligner}_{mapping}"
     # Copy test_data/valid_idx.pairs into a writable location so the pipeline
     # can sort it in-place without touching the read-only test_data directory.

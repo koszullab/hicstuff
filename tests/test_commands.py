@@ -55,6 +55,7 @@ def test_view(runner, mat):
     assert result.exit_code == 0, result.output
 
 
+@pytest.mark.needs("bowtie2", "bowtie2-inspect")
 def test_pipeline(runner):
     result = runner.invoke(
         cli,
@@ -185,6 +186,7 @@ def test_distance_law_2(runner):
     assert result.exit_code == 0, result.output
 
 
+@pytest.mark.needs("bowtie2")
 def test_iteralign(runner):
     result = runner.invoke(
         cli,

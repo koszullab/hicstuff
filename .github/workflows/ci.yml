@@ -24,6 +24,117 @@ jobs:
       - name: ruff format
         run: uvx ruff format --check src/
 
+  # A pip install alone runs the pipeline: no apt, no conda, and no program on
+  # PATH. hicstuff is called by absolute path with an empty PATH, as `uv tool
+  # install` or an unactivated venv leaves it. pip installs the newest pysam,
+  # which pybwa is compiled against: the job also catches a pysam release that
+  # breaks pybwa.
+  pip-only:
+    name: pip only (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel]
+        python-version: ["3.10", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      # hicstuff's own wheel first, so that --only-binary applies to its
+      # dependencies only
+      - name: Build hicstuff's wheel
+        run: python -m pip wheel --no-deps -w dist .
+
+      # Fails if a dependency has no wheel in any version hicstuff allows.
+      # Where only the newest versions lack one, pip installs an older one
+      # instead (biopython on Intel macOS): the wheels job checks the versions
+      # a plain pip install picks. pybwa has no wheel for macOS with Python
+      # 3.14, and builds from source there.
+      - name: Install from wheels
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          source_builds=""
+          if [ "$RUNNER_OS" = macOS ] && [ "${{ matrix.python-version }}" = 3.14 ]; then
+            source_builds="--no-binary pybwa"
+          fi
+          "$RUNNER_TEMP/venv/bin/pip" install --only-binary :all: $source_builds dist/*.whl pytest
+
+      - name: Check that no program is on PATH
+        run: >-
+          env -i HOME="$HOME" PATH=/nonexistent "$RUNNER_TEMP/venv/bin/python" -c
+          'import shutil;
+          tools = ["bowtie2", "bowtie2-build", "bowtie2-inspect", "bwa", "minimap2",
+          "samtools", "sort", "bgzip", "zcat", "pigz", "gzip", "wc", "cooler", "hicstuff"];
+          found = [tool for tool in tools if shutil.which(tool)];
+          assert not found, found'
+
+      - name: Run the pipeline with bwa in-process
+        run: |
+          env -i HOME="$HOME" PATH=/nonexistent "$RUNNER_TEMP/venv/bin/hicstuff" pipeline \
+            -a bwa -e DpnII -g test_data/genome/seq.fa -o out \
+            test_data/sample.reads_for.fastq.gz test_data/sample.reads_rev.fastq.gz
+          ls out/abs_fragments_contacts_weighted.cool out/valid_idx.pairs.gz
+          grep "## aligner: bwa mem in-process, pybwa" out/hicstuff_*.log
+
+      # Tests that need a program are skipped
+      - name: Run tests
+        run: env -i HOME="$HOME" PATH=/nonexistent "$RUNNER_TEMP/venv/bin/python" -m pytest -q
+
+  # Whether a plain pip install needs a compiler, on the platforms hicstuff
+  # supports. Cheaper than a runner per platform, it catches a dependency that
+  # stops publishing wheels before users do. Resolving from wheels only is not
+  # enough: it falls back to older versions that have wheels. So each platform
+  # is resolved as pip install resolves it, then every version picked must have
+  # a wheel. Left out: musl, where biopython and matplotlib publish no wheels.
+  wheels:
+    name: Wheels for every platform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      # Built from source, with a warning: pybwa on macOS with Python 3.14,
+      # which has no wheel, and biopython on Intel macOS, which has none since
+      # 1.87.
+      - name: Check that pip install finds wheels
+        run: |
+          status=0
+          out=$(mktemp -d)
+          for platform in x86_64-manylinux_2_28 aarch64-manylinux_2_28 aarch64-apple-darwin x86_64-apple-darwin; do
+            for python in 3.10 3.11 3.12 3.13 3.14; do
+              cell="$platform, Python $python"
+              # One file per cell: uv prefers the versions of an existing output file
+              pins="$out/$platform-$python.txt"
+              target=(--python-platform "$platform" --python-version "$python" pyproject.toml)
+              allowed=()
+              case "$platform-$python" in *-apple-darwin-3.14) allowed+=(pybwa) ;; esac
+              case "$platform" in x86_64-apple-darwin) allowed+=(biopython) ;; esac
+              wheels=(--only-binary :all: -c "$pins" "${target[@]}" -o "$pins.wheels")
+              if ! uv pip compile --quiet "${target[@]}" -o "$pins"; then
+                echo "FAILED  $cell: the dependencies do not resolve"
+                status=1
+              elif uv pip compile --quiet "${wheels[@]}" 2>/dev/null; then
+                echo "ok      $cell"
+              elif uv pip compile --quiet "${allowed[@]/#/--no-binary=}" "${wheels[@]}" 2>/dev/null; then
+                echo "::warning::$cell: pip install builds from source what has no wheel among: ${allowed[*]}"
+              else
+                echo "FAILED  $cell: no wheel for a version that pip install picks"
+                uv pip compile --quiet "${allowed[@]/#/--no-binary=}" "${wheels[@]}" 2>&1 \
+                  | awk '{ print "        " $0 }' || true
+                status=1
+              fi
+            done
+          done
+          rm -r "$out"
+          exit $status
+
   test:
     name: Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest

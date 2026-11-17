@@ -29,6 +29,7 @@ def hash_file(filename):
     return md5.hexdigest()
 
 
+@pytest.mark.needs("hicstuff")
 def test_distancelaw_cli() -> None:
     """Test the distance law CLI."""
     os.makedirs("test_out", exist_ok=True)
