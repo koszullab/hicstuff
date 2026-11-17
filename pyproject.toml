@@ -44,9 +44,9 @@ dependencies = [
     # 2.3 builds bwa indexes with methods off by one, which hicstuff works around.
     "pybwa>=2.3.2,<2.4",
     "pysam>=0.23",
-    "pyfastx",
     "cooler",
     "click>=8.0",
+    "python-dateutil",
 ]
 
 [project.optional-dependencies]

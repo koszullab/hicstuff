@@ -14,6 +14,7 @@ import subprocess as sp
 import sys
 import tempfile
 import zipfile
+import zlib
 from decimal import Decimal
 from os.path import exists, join
 from random import getrandbits
@@ -1786,14 +1787,16 @@ def check_fastq_entries(in_file, threads=1) -> int:
     """
     Check how many reads are in the input fastq.
 
+    Reads are counted as a quarter of the lines, counted as ``wc -l`` counts
+    them, without running any program: gzip-compressed files are
+    decompressed with Python's gzip module.
+
     Parameters
     ----------
     in_file : str
-        Path to the input file.
+        Path to the input file, plain or gzip-compressed.
     threads : int, optional
-        Number of decompression threads to use when the file is gzipped and
-        ``pigz`` is installed.  Values > 1 enable parallel decompression.
-        Default is 1, which falls back to ``zcat``.
+        Not used, kept so that calls passing it keep working.
 
     Returns
     -------
@@ -1803,22 +1806,18 @@ def check_fastq_entries(in_file, threads=1) -> int:
 
     with open(in_file, "rb") as f:
         is_gzip = f.read(2) == b"\x1f\x8b"
-    if is_gzip:
-        if threads > 1 and which("pigz") is not None:
-            decomp = sp.Popen(
-                ["pigz", "-dc", "-p", str(threads), in_file],
-                stdout=sp.PIPE,
-                stderr=sp.DEVNULL,
-            )
-        else:
-            decomp = sp.Popen(["zcat", in_file], stdout=sp.PIPE, stderr=sp.DEVNULL)
-        wc = sp.Popen(["wc", "-l"], stdin=decomp.stdout, stdout=sp.PIPE)
-        decomp.stdout.close()
-        n_lines = int(wc.communicate()[0].strip())
-    else:
-        n_lines = int(sp.check_output(["wc", "-l", in_file]).split()[0])
-    n_reads = int(n_lines) / 4
-    return int(n_reads)
+    n_lines = 0
+    with (gzip.open if is_gzip else open)(in_file, "rb") as handle:
+        try:
+            # read1 reads the file once per call, so that no block is lost
+            # when a later read fails
+            for block in iter(functools.partial(handle.read1, 1 << 20), b""):
+                n_lines += block.count(b"\n")
+        # Count the lines decompressed before the end of a truncated file, or
+        # the bad trailer of a complete one, as zcat | wc -l did
+        except (EOFError, gzip.BadGzipFile, zlib.error):
+            pass
+    return n_lines // 4
 
 
 def check_bam_entries(in_file):

@@ -31,6 +31,8 @@ ALIGNERS = ("bowtie2", "bwa", "minimap2")
 MAPPINGS = ("normal", "iterative", "cutsite")
 #: Programs that align reads, or build or read an aligner's index.
 ALIGNER_TOOLS = ("bowtie2", "bowtie2-build", "bowtie2-inspect", "bwa", "minimap2")
+#: Programs hicstuff ran to count reads and to compress a genome.
+GZIP_TOOLS = ("gzip", "zcat", "pigz", "wc")
 
 
 def _sorted_lines(path):
@@ -208,6 +210,47 @@ def _content(path):
         return cooler.Cooler(str(path)).pixels()[:].values.tolist()
     with hio.read_compressed(str(path)) as handle:
         return handle.read().splitlines()
+
+
+@pytest.mark.parametrize("mapping", MAPPINGS)
+def test_fastq_run_without_gzip_or_wc(mapping, fastq_run, run_pipeline, hide_tools):
+    """Reads are counted in Python: a run from gzip-compressed fastq files
+    runs none of gzip, zcat, pigz and wc, and writes what a run with them on
+    PATH writes, its read count included."""
+    ref = fastq_run("bowtie2", mapping)
+    # The genome is indexed already
+    hide_tools(*GZIP_TOOLS, "bowtie2-build")
+    run = run_pipeline(f"bowtie2_{mapping}_without_gzip", **ref.kwargs)
+    count = re.search(r"\d+ reads found in each fastq file", ref.log_text).group(0)
+    assert count in run.log_text
+    for name in ("fragments_list.txt", "info_contigs.txt"):
+        assert run.path(name).read_bytes() == ref.path(name).read_bytes()
+    for name in ("valid_idx_pcrfree.pairs.gz", "abs_fragments_contacts_weighted.cool"):
+        assert _content(run.path(name)) == _content(ref.path(name))
+
+
+def test_bowtie2_index_genome_without_gzip(run_pipeline, hide_tools, tmp_path):
+    """The genome sequence that bowtie2-inspect reads from a bowtie2 index is
+    compressed in Python, without gzip: the run writes what a run from the
+    genome's fasta file writes."""
+    pairs = {}
+    for genome in ("fasta", "index"):
+        # Each run gets its own copy of the input pairs
+        pairs[genome] = tmp_path / f"{genome}.pairs"
+        shutil.copy("test_data/valid.pairs", pairs[genome])
+    kwargs = dict(start_stage="pairs", enzyme="DpnII", mat_fmt="graal")
+    fasta = run_pipeline(
+        "pairs_from_fasta", genome="test_data/genome/seq.fa", input1=str(pairs["fasta"]), **kwargs
+    )
+    hide_tools(*GZIP_TOOLS, "bowtie2", "bowtie2-build", "bwa", "minimap2", "samtools")
+    index = run_pipeline(
+        "pairs_from_index_without_gzip",
+        genome="test_data/genome/seq",
+        input1=str(pairs["index"]),
+        **kwargs,
+    )
+    for name in ("fragments_list.txt", "info_contigs.txt", "abs_fragments_contacts_weighted.txt"):
+        assert index.path(name).read_bytes() == fasta.path(name).read_bytes()
 
 
 @pytest.mark.parametrize("mat_fmt", ["graal", "cool"])
@@ -621,6 +664,56 @@ def test_pipeline_without_external_tools(final_pairs, synthetic_lib, hide_tools,
 )
 def test_alignment_tools(aligner, index, tools):
     assert hio.alignment_tools(aligner, index) == tools
+
+
+def _fastq_text(n_reads):
+    """Text of a fastq file of n_reads random 100 bp reads."""
+    rng = random.Random(n_reads)
+    return "".join(
+        f"@read{i} 1:N:0:ACGT\n{''.join(rng.choices('ACGT', k=100))}\n+\n{'I' * 100}\n"
+        for i in range(n_reads)
+    )
+
+
+@pytest.mark.parametrize("compression", ["plain", "gzip", "bgzf"])
+def test_check_fastq_entries_without_programs(compression, tmp_path, hide_tools):
+    """Reads are counted without zcat, pigz or wc, in plain, gzip and BGZF
+    files, BGZF being gzip in many members."""
+    text = _fastq_text(10_000).encode()
+    path = tmp_path / "reads.fq"
+    if compression == "plain":
+        path.write_bytes(text)
+    elif compression == "gzip":
+        path.write_bytes(gzip.compress(text))
+    else:
+        with pysam.BGZFile(str(path), "wb") as handle:
+            handle.write(text)
+        assert len(_bgzf_blocks(path)) > 2
+    hide_tools(*GZIP_TOOLS)
+    assert hio.check_fastq_entries(str(path)) == 10_000
+    assert hio.check_fastq_entries(str(path), threads=4) == 10_000
+
+
+@pytest.mark.parametrize("damage", ["truncated", "bad_crc", "trailing_garbage"])
+def test_check_fastq_entries_counts_damaged_gzip_as_zcat(damage, tmp_path, hide_tools):
+    """The reads of a damaged gzip file are counted up to the damage, as
+    `zcat | wc -l` counted them."""
+    if shutil.which("zcat") is None or shutil.which("wc") is None:
+        pytest.skip("zcat and wc are needed to compare with")
+    data = gzip.compress(_fastq_text(10_000).encode(), mtime=0)
+    if damage == "truncated":
+        data = data[: len(data) * 2 // 3]
+    elif damage == "bad_crc":
+        data = data[:-8] + bytes(4) + data[-4:]
+    else:
+        data += b"trailing garbage"
+    path = tmp_path / "reads.fq.gz"
+    path.write_bytes(data)
+    zcat = sp.Popen(["zcat", str(path)], stdout=sp.PIPE, stderr=sp.DEVNULL)
+    n_lines = int(sp.run(["wc", "-l"], stdin=zcat.stdout, stdout=sp.PIPE, check=True).stdout)
+    zcat.wait()
+    hide_tools(*GZIP_TOOLS)
+    assert hio.check_fastq_entries(str(path)) == n_lines // 4 > 0
 
 
 def test_require_tools_names_every_missing_tool(hide_tools):
