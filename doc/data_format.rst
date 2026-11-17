@@ -42,6 +42,13 @@ and 9 columns afterwards:
 | readID | chr1 | pos1 | chr2 | pos2 | strand1 | strand2 | frag1 | frag2 |
 +--------+------+------+------+------+---------+---------+-------+-------+
 
+pos1 and pos2 are 1-based. In mapping mode 5spm (:code:`-m 5spm`), they are the
+aligned 5' end of each mate, the end of the sequenced molecule, as pairtools
+records them: the first base of the alignment of a mate on the forward strand,
+and the last base of that of a mate on the reverse strand. In the other mapping
+modes, they are the leftmost base of each mate's alignment: its 5' end on the
+forward strand, but its 3' end on the reverse strand.
+
 Those files can be loaded by cooler using :code:`cooler cload pairs -c1 2 -p1 3 -c2 4 -p2 5 -f bg2 <chrom.sizes>:<binsize> in.pairs2.gz out.cool` where chrom.sizes is a tab delimited file with chromosome names and length on each line, and binsize is the size of bins in the matrix.
 
 

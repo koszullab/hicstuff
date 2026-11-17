@@ -831,7 +831,8 @@ def view(
     metavar="STR",
     type=click.Choice(["normal", "iterative", "cutsite", "5spm"], case_sensitive=False),
     help="Mapping mode. 5spm aligns the mates with bwa mem -5SPM, which makes the "
-    "5'-most alignment of a read cut by a ligation junction its primary one.",
+    "5'-most alignment of a read cut by a ligation junction its primary one, and "
+    "records each mate at its aligned 5' end.",
 )
 @click.option(
     "-M",
