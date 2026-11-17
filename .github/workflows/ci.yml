@@ -32,6 +32,11 @@ jobs:
   pip-only:
     name: pip only (${{ matrix.os }}, Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
+    # GitHub cancels a job that waits 15 minutes for a runner, as macOS cells
+    # sometimes do. retry-jobs-without-runner.yml then re-runs them; if they
+    # get no runner again, its second re-run skips them here, so that CI does
+    # not fail for want of a runner. Re-runs started by hand always run.
+    if: github.triggering_actor != 'github-actions[bot]' || fromJSON(github.run_attempt) < 3
     strategy:
       fail-fast: false
       matrix:
