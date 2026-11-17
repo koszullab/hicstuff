@@ -417,6 +417,104 @@ def test_python_sort_orders_as_gnu_sort(keys, tmp_path, hide_tools):
         assert not list(tmp_dir.iterdir())
 
 
+#: Pairs data lines in the order that LC_ALL=C GNU sort gives them for keys of
+#: sort_pairs: numbers with signs, decimals, leading zeros or text; names that
+#: dictionary order ties; blanks around and in fields, and missing fields;
+#: strands that dictionary order ignores. Recorded with GNU sort 9.4, so that
+#: no sort program is needed to check them.
+GNU_ORDERS = {
+    "pos1": [
+        "r2\tchr1\t-1",
+        "r10\tchr1\t-.5",
+        "r11\tchr1\tNA",
+        "r12\tchr1\t",
+        "r14\tchr1\t+5",
+        "r18\tchr1\t-",
+        "r3\tchr1\t-0",
+        "r4\tchr1\t0",
+        "r9\tchr1\t.5",
+        "r13\tchr1\t1e5",
+        "r7\tchr1\t1.5",
+        "r8\tchr1\t1.50",
+        "r17\tchr1\t5.",
+        "r5\tchr1\t007",
+        "r6\tchr1\t7",
+        "r1\tchr1\t9",
+        "r0\tchr1\t10",
+        "r15\tchr1\t 12",
+        "r16\tchr1\t12abc",
+        "r19\tchr1\t99999999999999999999",
+    ],
+    "readID": [
+        "A1:1101:111:1000\tchr1\t5",
+        "A1:1101:11:11000\tchr1\t5",
+        "R1\tchr1\t5",
+        "r b\tchr1\t5",
+        "r.1\tchr1\t5",
+        "r1\tchr1\t5",
+        "r:1\tchr1\t5",
+        "r_1\tchr1\t5",
+        "r1/1\tchr1\t5",
+        "r-b\tchr1\t5",
+        "rb\tchr1\t5",
+    ],
+    "chr1-pos1": [
+        "r7",
+        "r2\t\tchr1\t4",
+        "r9\t chr1\t7",
+        "r4\tchr1\t2\t",
+        "\tr3\tchr1\t3",
+        "r1\tchr1\t5",
+        "r11\tchr1\t5",
+        "r8\tchr1 \t6",
+        "r10\tchr10\t8",
+        "r6\tchr2",
+        "r5 x\tchr1\t1",
+    ],
+    "strand1-strand2": [
+        "r4\tA\t1\tA\t2\t*\t*",
+        "r0\tA\t1\tA\t2\t+\t-",
+        "r5\tA\t1\tA\t2\t+-\t+",
+        "r1\tA\t1\tA\t2\t-\t+",
+        "r2\tA\t1\tA\t2\t.\t+",
+        "r7\tA\t1\tA\t2\t~\ta",
+        "r3\tA\t1\tA\t2\t\t-",
+        "r6\tA\t1\tA\t2\ta\t~",
+    ],
+}
+
+
+@pytest.mark.parametrize("keys", list(GNU_ORDERS))
+def test_python_sort_orders_lines_as_gnu_sort_did(keys, tmp_path, hide_tools):
+    """Without sort, the pairs are sorted in Python, in the order of GNU sort."""
+    expected = [line.encode() for line in GNU_ORDERS[keys]]
+    lines = list(expected)
+    random.Random(0).shuffle(lines)
+    unsorted, out = tmp_path / "unsorted.pairs", tmp_path / "sorted.pairs"
+    unsorted.write_bytes(b"## pairs format v1.0\n#sorted: readID\n" + b"\n".join(lines) + b"\n")
+    hide_tools("sort")
+    hio.sort_pairs(str(unsorted), str(out), keys=keys.split("-"))
+    assert out.read_bytes().split(b"\n")[2:-1] == expected
+
+
+def test_python_sort_merges_temporary_files(tmp_path, hide_tools):
+    """Pairs sorted in chunks of two lines, then merged from hundreds of
+    temporary files in two rounds, come in the order of one chunk, and no
+    temporary file is left. The last chunk holds one line, without newline."""
+    unsorted = tmp_path / "unsorted.pairs"
+    _write_shuffled_pairs(unsorted, n_copies=3)
+    unsorted.write_bytes(unsorted.read_bytes().rstrip(b"\n").rsplit(b"\n", 1)[0])
+    keys = ["chr1", "pos1", "chr2", "pos2", "strand1", "strand2"]
+    hide_tools("sort")
+    tmp_dir = tmp_path / "tmp"
+    tmp_dir.mkdir()
+    one, many = tmp_path / "one.pairs", tmp_path / "many.pairs"
+    hio.sort_pairs(str(unsorted), str(one), keys=keys, tmp_dir=str(tmp_dir))
+    hio.sort_pairs(str(unsorted), str(many), keys=keys, tmp_dir=str(tmp_dir), buffer="1K")
+    assert many.read_bytes() == one.read_bytes()
+    assert not list(tmp_dir.iterdir())
+
+
 def test_sort_env_sorts_in_python(tmp_path, monkeypatch, caplog):
     """HICSTUFF_SORT=python sorts in Python although a sort is on PATH."""
     caplog.set_level(logging.INFO)
