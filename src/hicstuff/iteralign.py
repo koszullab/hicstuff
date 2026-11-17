@@ -94,7 +94,7 @@ def iterative_align(
             raise
 
     # Bowtie only accepts uncompressed fastq: uncompress it into a temp file
-    if aligner == "bowtie2" and hio.is_compressed(fq_in):
+    if program == "bowtie2" and hio.is_compressed(fq_in):
         uncomp_path = join(tmp_dir, os.path.basename(fq_in) + ".tmp")
         with hio.read_compressed(fq_in) as inf:
             with open(uncomp_path, "w") as uncomp:
@@ -103,7 +103,7 @@ def iterative_align(
         uncomp_path = fq_in
 
     # throw error if index does not exist
-    index = hio.check_fasta_index(ref, mode=aligner)
+    index = hio.check_fasta_index(ref, mode=program)
     if index is None:
         logger.error(f"Reference index is missing, please build the {aligner} index first.")
         sys.exit(1)
@@ -188,9 +188,10 @@ def iterative_align(
         trunc_len=n,
         first_round=first_round,
     )
-    if aligner == "minimap2" or aligner == "Minimap2":
+    # The same aligner as the truncated rounds, whatever name it was given by
+    if program == "minimap2":
         cmd = f"minimap2 -x sr -a -t {n_cpu} {ref} {truncated_reads}"
-    elif aligner == "bwa" or aligner == "Bwa" or aligner == "BWA":
+    elif program == "bwa":
         cmd = f"bwa mem -v 1 -t {n_cpu} {index} {truncated_reads}"
     else:
         cmd = f"bowtie2 -x {index} -p {n_cpu} --quiet --very-sensitive {truncated_reads}"

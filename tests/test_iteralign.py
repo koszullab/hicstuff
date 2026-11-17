@@ -271,6 +271,18 @@ def _write_bam(path, records):
             bam.write(r)
 
 
+@pytest.mark.parametrize("alias", ["mm2", "minimap"])
+def test_iterative_align_alias_aligns_every_round(alias, chimeric_lib, hide_tools, tmp_path):
+    """An aligner named by an alias aligns the last round too: with the other
+    aligners hidden, it writes what minimap2 named so writes."""
+    expected, got = tmp_path / "minimap2.bam", tmp_path / f"{alias}.bam"
+    reads, genome = chimeric_lib["reads1"], chimeric_lib["genome"]
+    hci.iterative_align(reads, str(tmp_path), genome, 1, str(expected), aligner="minimap2")
+    hide_tools("bowtie2", "bwa")
+    hci.iterative_align(reads, str(tmp_path), genome, 1, str(got), aligner=alias)
+    assert [r.to_string() for r in _records(got)] == [r.to_string() for r in _records(expected)]
+
+
 def test_filter_bamfile_classifies_reads_by_primary_record(tmp_path):
     """Secondary (0x100) and supplementary (0x800) records neither keep a
     read nor send it to the next round, and are not written."""
