@@ -20,6 +20,7 @@ from os.path import join
 
 import pysam as ps
 
+import hicstuff.bwamem as hbm
 import hicstuff.io as hio
 from hicstuff.log import logger
 
@@ -34,6 +35,7 @@ def iterative_align(
     min_len=20,
     min_qual=30,
     read_len=None,
+    backend=None,
 ):
     """Iterative alignment
 
@@ -65,6 +67,11 @@ def iterative_align(
         Read length in the fasta file. If set to None, the length of the first read
         is used. Set this value to the longest read length in the file if you have
         different read lengths.
+    backend : str
+        How bwa runs: "binary" (the bwa program), "python" (in-process with
+        pybwa) or "auto", for which see hicstuff.bwamem.resolve_backend. None
+        reads the environment variable HICSTUFF_ALIGNER_BACKEND. In-process,
+        the rounds run in memory, without temporary files.
 
     Examples
     --------
@@ -75,6 +82,22 @@ def iterative_align(
     # The aligner program that maps the truncated reads: an unknown aligner
     # is refused when mapping.
     program = _aligner_program(aligner)
+    if program == "bwa" and hbm.resolve_backend(backend) == "python":
+        index = hio.check_fasta_index(ref, mode="bwa")
+        if index is None:
+            logger.error(f"Reference index is missing, please build the {aligner} index first.")
+            sys.exit(1)
+        with hbm.loaded_index(index, tmp_dir) as loaded:
+            hbm.iterative_align(
+                fq_in,
+                loaded,
+                bam_out,
+                threads=int(n_cpu),
+                min_len=min_len,
+                min_qual=min_qual,
+                read_len=read_len,
+            )
+        return 0
     if program is not None:
         hio.require_tools([program], "for iterative alignment")
 
@@ -94,7 +117,7 @@ def iterative_align(
             raise
 
     # Bowtie only accepts uncompressed fastq: uncompress it into a temp file
-    if aligner == "bowtie2" and hio.is_compressed(fq_in):
+    if program == "bowtie2" and hio.is_compressed(fq_in):
         uncomp_path = join(tmp_dir, os.path.basename(fq_in) + ".tmp")
         with hio.read_compressed(fq_in) as inf:
             with open(uncomp_path, "w") as uncomp:
@@ -103,7 +126,7 @@ def iterative_align(
         uncomp_path = fq_in
 
     # throw error if index does not exist
-    index = hio.check_fasta_index(ref, mode=aligner)
+    index = hio.check_fasta_index(ref, mode=program)
     if index is None:
         logger.error(f"Reference index is missing, please build the {aligner} index first.")
         sys.exit(1)
@@ -188,9 +211,10 @@ def iterative_align(
         trunc_len=n,
         first_round=first_round,
     )
-    if aligner == "minimap2" or aligner == "Minimap2":
+    # The same aligner as the truncated rounds, whatever name it was given by
+    if program == "minimap2":
         cmd = f"minimap2 -x sr -a -t {n_cpu} {ref} {truncated_reads}"
-    elif aligner == "bwa" or aligner == "Bwa" or aligner == "BWA":
+    elif program == "bwa":
         cmd = f"bwa mem -v 1 -t {n_cpu} {index} {truncated_reads}"
     else:
         cmd = f"bowtie2 -x {index} -p {n_cpu} --quiet --very-sensitive {truncated_reads}"

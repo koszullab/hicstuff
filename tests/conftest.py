@@ -81,6 +81,14 @@ def hide_tools(tmp_path_factory, monkeypatch):
     return _hide
 
 
+@pytest.fixture
+def no_pybwa(monkeypatch):
+    """Make hicstuff find pybwa not installed, for the rest of the test."""
+    import hicstuff.bwamem as hbm
+
+    monkeypatch.setattr(hbm, "pybwa_version", lambda: None)
+
+
 @pytest.fixture(scope="session")
 def indexed_genome(synthetic_lib, require_tools, tmp_path_factory):
     """Copy of the synthetic genome with bowtie2 and bwa indices next to it,

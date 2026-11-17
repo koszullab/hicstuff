@@ -42,7 +42,10 @@ dependencies = [
     "matplotlib>=3.4.0",
     "rich-click>=1.7",
     "biopython",
-    "pysam",
+    # pybwa links pysam's internals, and fails to import with pysam 0.22.
+    # 2.3 builds bwa indexes with methods off by one, which hicstuff works around.
+    "pybwa>=2.3.2,<2.4; python_version >= '3.10'",
+    "pysam>=0.23",
     "cooler",
     "click>=8.0",
     "python-dateutil",
