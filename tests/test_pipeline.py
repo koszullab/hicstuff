@@ -774,11 +774,12 @@ def _samtools_version():
 
 
 def _write_bam(path, reads, header_hd=None):
-    """Write reads, given as (name, ref_id, pos, reverse, mapq) in that order,
-    to a BAM file. ref_id -1 makes an unmapped read."""
+    """Write reads of 20 bases, given as (name, ref_id, pos, reverse, mapq)
+    in that order, to a BAM file. ref_id -1 makes an unmapped read. A sixth
+    element is the CIGAR string of the alignment, 20M by default."""
     header = {"HD": header_hd or {"VN": "1.6"}, "SQ": [{"SN": n, "LN": ln} for n, ln in BAM_REFS]}
     with pysam.AlignmentFile(str(path), "wb", header=header) as bam:
-        for name, ref_id, pos, reverse, mapq in reads:
+        for name, ref_id, pos, reverse, mapq, *cigar in reads:
             read = pysam.AlignedSegment(bam.header)
             read.query_name = name
             read.query_sequence = "A" * 20
@@ -789,7 +790,7 @@ def _write_bam(path, reads, header_hd=None):
                 read.reference_id = ref_id
                 read.reference_start = pos
                 read.mapping_quality = mapq
-                read.cigarstring = "20M"
+                read.cigarstring = cigar[0] if cigar else "20M"
             bam.write(read)
 
 
@@ -851,33 +852,54 @@ def _alignments(rng, names):
     }
 
 
-def _run_bam2pairs(tmp_path, mates, **kwargs):
-    """Run bam2pairs on tmp_path/for.bam and tmp_path/rev.bam, and check that
-    it writes the pairs of the reads of ``mates`` (the alignments of each end,
-    by read name) with MAPQ >= 30, flipped to the upper triangle."""
+def _write_info_contigs(tmp_path):
+    """Write tmp_path/info_contigs.txt, of the contigs of BAM_REFS."""
     info_contigs = tmp_path / "info_contigs.txt"
     info_contigs.write_text(
         "contig\tlength\tn_frags\tcumul_length\n"
         + "".join(f"{name}\t{length}\t1\t0\n" for name, length in BAM_REFS)
     )
+    return info_contigs
+
+
+def _bam2pairs_rows(tmp_path, **kwargs):
+    """Rows of the pairs bam2pairs writes from tmp_path/for.bam and
+    tmp_path/rev.bam."""
     out = tmp_path / "out.pairs"
     hpi.bam2pairs(
-        str(tmp_path / "for.bam"), str(tmp_path / "rev.bam"), str(out), str(info_contigs), **kwargs
+        str(tmp_path / "for.bam"),
+        str(tmp_path / "rev.bam"),
+        str(out),
+        str(_write_info_contigs(tmp_path)),
+        **kwargs,
     )
+    pairs = pd.read_csv(out, sep="\t", comment="#", header=None, dtype={0: str})
+    return pairs.values.tolist()
+
+
+def _run_bam2pairs(tmp_path, mates, **kwargs):
+    """Run bam2pairs on tmp_path/for.bam and tmp_path/rev.bam, and check that
+    it writes the pairs of the reads of ``mates`` (the alignments of each end,
+    by read name) with MAPQ >= 30, flipped to the upper triangle. Mates are at
+    their leftmost base or, with five_prime, at their 5' end: the last base of
+    the 20 of a reverse-strand alignment."""
+
+    def position(aln):
+        return aln[1] + (20 if kwargs.get("five_prime") and aln[2] else 1)
+
     expected = []
     for name in mates["for"].keys() & mates["rev"].keys():
         aln1, aln2 = mates["for"][name], mates["rev"][name]
         if min(aln1[3], aln2[3]) < 30:
             continue
-        if aln1[:2] > aln2[:2]:
+        if (aln1[0], position(aln1)) > (aln2[0], position(aln2)):
             aln1, aln2 = aln2, aln1
         expected.append(
             [name]
-            + [BAM_REFS[aln1[0]][0], aln1[1] + 1, BAM_REFS[aln2[0]][0], aln2[1] + 1]
+            + [BAM_REFS[aln1[0]][0], position(aln1), BAM_REFS[aln2[0]][0], position(aln2)]
             + ["-" if aln1[2] else "+", "-" if aln2[2] else "+"]
         )
-    pairs = pd.read_csv(out, sep="\t", comment="#", header=None, dtype={0: str})
-    assert sorted(pairs.values.tolist()) == sorted(expected)
+    assert sorted(_bam2pairs_rows(tmp_path, **kwargs)) == sorted(expected)
 
 
 @pytest.mark.parametrize("suffixes", [("", ""), ("/1", "/2")], ids=["plain", "suffixed"])
@@ -1044,3 +1066,42 @@ def test_bam2pairs_writes_nothing_if_sorting_does_not_help(
             tmp_dir=str(tmp_path),
         )
     assert sorted(path.name for path in tmp_path.iterdir()) == ["for.bam", "rev.bam"]
+
+
+def test_bam2pairs_records_aligned_5_prime_ends(tmp_path):
+    """With five_prime, each mate is at its aligned 5' end, the end of the
+    sequenced molecule: the first base of a forward-strand alignment and the
+    last of a reverse-strand one, soft-clipped bases left out. Pairs are
+    flipped to the upper triangle by these positions: the reverse mate of r1
+    starts left of its forward mate, but ends right of it. Otherwise, each
+    mate is at the leftmost base of its alignment."""
+    _write_bam(
+        tmp_path / "for.bam",
+        [("r1", 0, 100, False, 40), ("r2", 1, 500, True, 40), ("r3", 1, 1000, False, 40, "5S15M")],
+    )
+    _write_bam(
+        tmp_path / "rev.bam",
+        [("r1", 0, 90, True, 40), ("r2", 0, 700, False, 40), ("r3", 1, 2000, True, 40, "15M5S")],
+    )
+
+    assert _bam2pairs_rows(tmp_path) == [
+        ["r1", "chr1", 91, "chr1", 101, "-", "+"],
+        ["r2", "chr1", 701, "chr2", 501, "+", "-"],
+        ["r3", "chr2", 1001, "chr2", 2001, "+", "-"],
+    ]
+    assert _bam2pairs_rows(tmp_path, five_prime=True) == [
+        ["r1", "chr1", 101, "chr1", 110, "+", "-"],
+        ["r2", "chr1", 701, "chr2", 520, "+", "-"],
+        ["r3", "chr2", 1001, "chr2", 2015, "+", "-"],
+    ]
+
+
+@pytest.mark.parametrize("order", ["lexicographical", "unsorted"])
+def test_bam2pairs_records_5_prime_ends_of_bams_in_another_order(tmp_path, order):
+    """Mates are at their 5' ends in BAM files walked again in another order,
+    or sorted again."""
+    mates = _bams_in_order(tmp_path, order)
+    sort_dir = tmp_path / "sort"
+    sort_dir.mkdir()
+
+    _run_bam2pairs(tmp_path, mates, tmp_dir=str(sort_dir), five_prime=True)

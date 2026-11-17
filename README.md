@@ -224,7 +224,8 @@ hicstuff pipeline --help
 │    --force               -F             Overwrite existing output files.                         │
 │    --mapping             -m  STR        Mapping mode. 5spm aligns the mates with bwa mem -5SPM,  │
 │                                         which makes the 5'-most alignment of a read cut by a     │
-│                                         ligation junction its primary one. [default: normal]     │
+│                                         ligation junction its primary one, and records each mate │
+│                                         at its aligned 5' end. [default: normal]                 │
 │    --matfmt              -M  STR        Output matrix format. [default: cool]                    │
 │    --no-cleanup          -n             Keep intermediary files.                                 │
 │    --outdir              -o  DIR        Output directory (default: current directory).           │
@@ -259,8 +260,10 @@ equal score, of which they can make a different part primary.
 `HICSTUFF_ALIGNER_BACKEND` environment variable. Mapping mode `5spm` aligns
 both mates with `bwa mem -5SPM`, which makes the 5'-most alignment of a read
 cut by a ligation junction its primary one, as the 4DN, Juicer and Arima
-pipelines do. It always aligns with bwa, with pybwa unless
-`--aligner-backend binary` is given:
+pipelines do. It records each mate at its aligned 5' end, the end of the
+sequenced molecule, as pairtools does; the other modes record it at the
+leftmost base of its alignment, its 3' end on the reverse strand. Mode `5spm`
+always aligns with bwa, with pybwa unless `--aligner-backend binary` is given:
 
 ```sh
 hicstuff pipeline -t 8 -m 5spm -e DpnII,HinfI -o out/ -g genome.fa reads_for.fq reads_rev.fq

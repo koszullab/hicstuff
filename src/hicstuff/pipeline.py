@@ -251,7 +251,7 @@ class _NameSortedBam:
         return self.key
 
 
-def _write_pairs(bam1, bam2, out_pairs, info_contigs, name_key, min_qual):
+def _write_pairs(bam1, bam2, out_pairs, info_contigs, name_key, min_qual, five_prime=False):
     """Write the pairs of two BAM files sorted by read name in the order of
     ``name_key`` (see :func:`bam2pairs`), walking both files together.
 
@@ -294,20 +294,27 @@ def _write_pairs(bam1, bam2, out_pairs, info_contigs, name_key, min_qual):
             pairs.writelines([format_version, sorting, cols] + chroms.tolist())
             pairs_writer = csv.writer(pairs, delimiter="\t")
 
+            def position(end):
+                # 1-based: the aligned 5' end of a reverse-strand mate is the
+                # last base of its alignment, its leftmost base the first one
+                if five_prime and end.is_reverse:
+                    return end.reference_end
+                return end.reference_start + 1
+
             def write_pair(name, end1, end2):
+                pos1, pos2 = position(end1), position(end2)
                 # Flipping to get upper triangle
                 if (
-                    end1.reference_id == end2.reference_id
-                    and end1.reference_start > end2.reference_start
+                    end1.reference_id == end2.reference_id and pos1 > pos2
                 ) or end1.reference_id > end2.reference_id:
-                    end1, end2 = end2, end1
+                    end1, end2, pos1, pos2 = end2, end1, pos2, pos1
                 pairs_writer.writerow(
                     [
                         name,
                         end1.reference_name,
-                        end1.reference_start + 1,
+                        pos1,
                         end2.reference_name,
-                        end2.reference_start + 1,
+                        pos2,
                         "-" if end1.is_reverse else "+",
                         "-" if end2.is_reverse else "+",
                     ]
@@ -354,7 +361,9 @@ def _write_pairs(bam1, bam2, out_pairs, info_contigs, name_key, min_qual):
     return counts
 
 
-def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30, tmp_dir=None, threads=1):
+def bam2pairs(
+    bam1, bam2, out_pairs, info_contigs, min_qual=30, tmp_dir=None, threads=1, five_prime=False
+):
     """
     Make a .pairs file from two Hi-C bam files sorted by read names.
     The Hi-C mates are matched by read identifier, without /1 or /2 suffix,
@@ -388,6 +397,12 @@ def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30, tmp_dir=None, th
         order. Defaults to the directory of out_pairs.
     threads : int
         Number of threads to sort them with.
+    five_prime : bool
+        Whether each mate's position is its aligned 5' end, the first base of
+        the read that aligns, at the end of the sequenced molecule, as
+        pairtools records it. Otherwise it is the leftmost base of the
+        alignment: the 5' end of a forward-strand mate, but the 3' end of a
+        reverse-strand one.
     """
     with ps.AlignmentFile(bam1, "rb") as forward, ps.AlignmentFile(bam2, "rb") as reverse:
         orders = {_name_order_key(forward), _name_order_key(reverse)}
@@ -396,7 +411,9 @@ def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30, tmp_dir=None, th
     order_names = {_natural_key: "samtools sort -n", str: "samtools sort -N"}
     for name_key in (declared, str if declared is _natural_key else _natural_key):
         try:
-            counts = _write_pairs(bam1, bam2, out_pairs, info_contigs, name_key, min_qual)
+            counts = _write_pairs(
+                bam1, bam2, out_pairs, info_contigs, name_key, min_qual, five_prime
+            )
             break
         except _NameOrderError as err:
             # Pairs may have been missed: start again
@@ -417,7 +434,9 @@ def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30, tmp_dir=None, th
         try:
             for bam, sorted_bam in zip((bam1, bam2), sorted_bams):
                 ps.sort("-n", "-@", str(threads), "-o", sorted_bam, bam)
-            counts = _write_pairs(*sorted_bams, out_pairs, info_contigs, _natural_key, min_qual)
+            counts = _write_pairs(
+                *sorted_bams, out_pairs, info_contigs, _natural_key, min_qual, five_prime
+            )
         except _NameOrderError as still_unsorted:
             os.remove(out_pairs)
             bam = bam1 if str(still_unsorted) == sorted_bams[0] else bam2
@@ -1064,6 +1083,8 @@ def full_pipeline(
         mates with ``bwa mem -5SPM``, which makes the 5'-most alignment of a read
         its primary one, as the 4DN, Juicer and Arima pipelines do; it aligns
         with bwa, in-process with pybwa unless aligner_backend says otherwise.
+        The pairs of mode 5spm record each mate at its aligned 5' end, those of
+        the other modes at the leftmost base of its alignment.
     filter_events : bool
         Filter spurious or uninformative 3C events. Requires a restriction enzyme.
     force : bool
@@ -1478,9 +1499,17 @@ def full_pipeline(
         # Log fragment size distribution
         hcd.frag_len(frags_file_name=fragments_list, plot=plot, fig_path=frag_plot)
 
-        # Make pairs file (readID, chr1, chr2, pos1, pos2, strand1, strand2)
+        # Make pairs file (readID, chr1, chr2, pos1, pos2, strand1, strand2).
+        # Mode 5spm records the mates' aligned 5' ends.
         bam2pairs(
-            bam1, bam2, pairs, info_contigs, min_qual=min_qual, tmp_dir=tmp_dir, threads=threads
+            bam1,
+            bam2,
+            pairs,
+            info_contigs,
+            min_qual=min_qual,
+            tmp_dir=tmp_dir,
+            threads=threads,
+            five_prime=mapping == "5spm",
         )
 
     # Pairs with a mate on a contig shorter than min_size, which has no
