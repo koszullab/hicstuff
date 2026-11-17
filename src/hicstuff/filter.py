@@ -9,11 +9,9 @@ abundance of these events deviate significantly from the rest of the library.
 It is estimated automatically by default using the median absolute deviation of
 pairs at longer distances, but can also be entered manually.
 
-The program takes a 2D BED file as input with the following fields:
-chromA startA endA indiceA strandA chromB startB endB indiceB strandB
-Each line of the file represents a Hi-C pair with reads A and B. The indices
-are 0-based and represent the restriction fragment to which reads are
-attributed.
+The input is a pairs file whose mates have been assigned to restriction
+fragments, with 9 columns: readID, chr1, pos1, chr2, pos2, strand1, strand2,
+frag1, frag2. The fragment indices are 0-based, counted across the genome.
 
 @author: cmdoret (reimplementation of Axel KournaK's code)
 """

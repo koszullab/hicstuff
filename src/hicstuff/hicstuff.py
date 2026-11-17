@@ -466,13 +466,17 @@ def trim_sparse(M, n_mad=3, s_min=None, s_max=None, chrom_start=None):
     s_max : float
         Fixed maximum value above which the component vectors will
         be trimmed.
-    lines : bool
-        Either to return the offset of the chromosomes for lines plotting.
+    chrom_start : list of int or None
+        Indices of the first bin of each chromosome, to draw separator lines
+        on the trimmed matrix.
 
     Returns
     -------
-     scipy coo_matrix of floats :
+    scipy.sparse.coo_matrix
         The input sparse matrix, stripped of outlier component vectors.
+    list of int or None
+        The indices of ``chrom_start`` in the trimmed matrix, or None if
+        ``chrom_start`` is None.
     """
     r = M.tocoo()
     f = get_good_bins(M, n_mad, s_min, s_max)
@@ -714,7 +718,7 @@ def scalogram(M, circ=False, max_range=False):
 
     Parameters
     ----------
-    M1 : array_like
+    M : array_like
         The input contact map
     circ : bool
         Whether the contact map's reference genome is
@@ -862,13 +866,13 @@ def compartments_sparse(M, normalize=True):
         are assumed to be only the upper triangle of a symmetrix matrix.
     normalize : bool
         Whether to normalize the matrix beforehand.
-    mask : array of bool
-        An optional boolean mask indicating which bins should be used
 
     Returns
     -------
-    pr_comp : numpy.ndarray
-        An array containing the N first principal component
+    PC1 : numpy.ndarray
+        A vector representing the first component.
+    PC2 : numpy.ndarray
+        A vector representing the second component.
     """
     if normalize:
         N = normalize_sparse(M, norm="SCN")

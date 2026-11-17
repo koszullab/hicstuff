@@ -8,7 +8,7 @@ no program at all.
 
 pybwa writes the primary records of the bwa program, read by read, once read
 names are trimmed as bwa trims them. It aligns the reads of a file
-:data:`BATCH_SIZE` at a time, however, and bwa breaks ties between
+``BATCH_SIZE`` at a time, however, and bwa breaks ties between
 alignments of equal score with a hash of each read's position among the
 reads aligned together, which restarts with every batch. Of a read cut into
 two halves of equal score, the half that is primary can then differ from the
@@ -16,12 +16,13 @@ bwa program's choice: 0.02 to 0.25% of the pairs of real libraries. With -5
 (mapping mode 5spm), the 5'-most half is primary and no such tie arises.
 
 This module contains the following functions:
-    - resolve_backend
-    - load_index
-    - build_index
-    - align
-    - iterative_align
-    - align_pairs
+
+- resolve_backend
+- load_index
+- build_index
+- align
+- iterative_align
+- align_pairs
 """
 
 import contextlib

@@ -2,8 +2,8 @@
 
 """Hi-C visualization
 
-A lightweight library for quickly parsing, loading and
-viewing contact maps in instagraal or csv format.
+Functions to draw contact maps with matplotlib, and to look at the contigs
+of a genome assembly.
 """
 
 import numpy as np

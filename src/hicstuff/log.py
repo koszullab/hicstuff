@@ -2,7 +2,7 @@
 
 """Basic logging
 
-Basic logging setup with two handlers (stdout and log file). By default the
+Basic logging setup with two handlers (standard error and log file). By default the
 log file is disabled, but can be enabled or changed using set_file_handler.
 """
 
