@@ -762,6 +762,7 @@ def test_iterative_mapping_with_index_in_parent_dir(
     )
 
 
+@pytest.mark.needs("bowtie2", "bowtie2-build")
 def test_pipeline_rejects_bad_inputs(synthetic_lib, indexed_genome, tmp_path):
     common = dict(genome=indexed_genome, out_dir=str(tmp_path / "out"), enzyme="DpnII")
     reads = dict(input1=str(synthetic_lib.reads1), input2=str(synthetic_lib.reads2))

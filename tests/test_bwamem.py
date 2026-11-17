@@ -337,6 +337,7 @@ def test_iterative_align_needs_a_bwa_index(synthetic_lib, tmp_path):
 def test_fastq_run_with_pybwa(mapping, fastq_run, run_pipeline, hide_tools):
     """Without the bwa program, -a bwa aligns in-process with pybwa, and writes
     the alignments, pairs and matrix of the bwa program."""
+    _needs_bwa()
     ref = fastq_run("bwa", mapping)
     hide_tools("bwa")
     run = run_pipeline(f"bwa_{mapping}_pybwa", **ref.kwargs)
@@ -387,6 +388,7 @@ def _five_spm_kwargs(synthetic_lib, indexed_genome):
 def test_5spm_backends_write_the_same_pairs(synthetic_lib, indexed_genome, run_pipeline):
     """Mapping mode 5spm aligns with bwa, in-process first: the bwa program,
     which aligns both mates in one call, writes the same pairs and matrix."""
+    _needs_bwa()
     kwargs = _five_spm_kwargs(synthetic_lib, indexed_genome)
     binary = run_pipeline("5spm_binary", aligner_backend="binary", **kwargs)
     python = run_pipeline("5spm_python", **kwargs)
@@ -466,7 +468,7 @@ def test_5spm_bwa_fails_before_writing(synthetic_lib, tmp_path):
 
 
 def test_unknown_mapping_mode(synthetic_lib, indexed_genome, tmp_path, caplog):
-    kwargs = dict(_five_spm_kwargs(synthetic_lib, indexed_genome), mapping="5spn")
+    kwargs = dict(_five_spm_kwargs(synthetic_lib, indexed_genome), mapping="5spn", aligner="bwa")
     with pytest.raises(ValueError):
         hpi.full_pipeline(out_dir=str(tmp_path / "out"), **kwargs)
     assert "mapping must be either normal, iterative, cutsite or 5spm." in caplog.text
@@ -487,6 +489,7 @@ def test_5spm_command_line(synthetic_lib, indexed_genome, tmp_path):
 
 def test_iteralign_with_pybwa(synthetic_lib, indexed_genome, hide_tools, tmp_path):
     """iteralign aligns in-process the reads that the bwa program aligns."""
+    _needs_bwa()
     work = tmp_path / "work"
     work.mkdir()
     bams = {}
@@ -504,6 +507,7 @@ def test_iteralign_with_pybwa(synthetic_lib, indexed_genome, hide_tools, tmp_pat
 def test_missview_with_pybwa(synthetic_lib, hide_tools, tmp_path):
     """missview aligns its reads in-process without the bwa program, and
     writes the matrix that the bwa program gives."""
+    _needs_bwa()
     genome = tmp_path / "small.fa"
     genome.write_text(">chr3\n" + synthetic_lib.chroms["chr3"][:4000] + "\n")
     matrices = []

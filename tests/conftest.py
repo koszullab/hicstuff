@@ -20,6 +20,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import pytest  # noqa: E402
 
+import hicstuff.bwamem as hbm  # noqa: E402
+import hicstuff.io as hio  # noqa: E402
 import hicstuff.log as hcl  # noqa: E402
 import hicstuff.pipeline as hpi  # noqa: E402
 from tests import synthetic as syn  # noqa: E402
@@ -27,6 +29,45 @@ from tests import synthetic as syn  # noqa: E402
 ALIGNERS = ("bowtie2", "bwa", "minimap2")
 MAPPINGS = ("normal", "iterative", "cutsite")
 EXTERNAL_TOOLS = ("bowtie2", "bowtie2-build", "bwa", "minimap2")
+#: The programs that each aligner runs, its index builder included.
+ALIGNER_TOOLS = {
+    "bowtie2": ("bowtie2", "bowtie2-build"),
+    "bwa": ("bwa",),
+    "minimap2": ("minimap2",),
+}
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "needs(*programs): skip the test unless the programs are on PATH"
+    )
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item):
+    """Skip a test marked ``needs`` before its fixtures are set up, unless
+    the programs it names are on PATH."""
+    for marker in item.iter_markers("needs"):
+        missing = [tool for tool in marker.args if shutil.which(tool) is None]
+        if missing:
+            pytest.skip(f"not on PATH: {', '.join(missing)}")
+
+
+def can_align(aligner, genome=None):
+    """Whether reads can be aligned with an aligner on a genome: with the
+    programs a run needs, its index builder only if the genome has no index,
+    or for bwa in-process, with pybwa."""
+    index = None if genome is None else hio.check_fasta_index(genome, mode=aligner)
+    if all(shutil.which(tool) is not None for tool in hio.alignment_tools(aligner, index)):
+        return True
+    return aligner == "bwa" and hbm.pybwa_version() is not None
+
+
+def skip_unless_can_align(aligner, genome=None):
+    if not can_align(aligner, genome):
+        pytest.skip(
+            f"{aligner} cannot align reads: {', '.join(ALIGNER_TOOLS[aligner])} not on PATH"
+        )
 
 
 @pytest.fixture(autouse=True)
@@ -90,14 +131,20 @@ def no_pybwa(monkeypatch):
 
 
 @pytest.fixture(scope="session")
-def indexed_genome(synthetic_lib, require_tools, tmp_path_factory):
+def indexed_genome(synthetic_lib, tmp_path_factory):
     """Copy of the synthetic genome with bowtie2 and bwa indices next to it,
     named after it (genome.fa.1.bt2, genome.fa.bwt...), in its own directory.
+    Each index is built if its program is on PATH, and the bwa index with
+    pybwa otherwise.
     """
     genome = tmp_path_factory.mktemp("index") / "genome.fa"
     shutil.copy(synthetic_lib.genome, genome)
-    sp.run(["bowtie2-build", "-q", str(genome), str(genome)], check=True)
-    sp.run(["bwa", "index", str(genome)], check=True, stderr=sp.DEVNULL)
+    if shutil.which("bowtie2-build") is not None:
+        sp.run(["bowtie2-build", "-q", str(genome), str(genome)], check=True)
+    if shutil.which("bwa") is not None:
+        sp.run(["bwa", "index", str(genome)], check=True, stderr=sp.DEVNULL)
+    elif hbm.pybwa_version() is not None:
+        hbm.build_index(str(genome), str(genome))
     return str(genome)
 
 
@@ -124,11 +171,16 @@ class PipelineRun:
 
 
 @pytest.fixture(scope="session")
-def run_pipeline(tmp_path_factory, require_tools):
-    """Run the pipeline once per distinct ``name`` and cache the result."""
+def run_pipeline(tmp_path_factory):
+    """Run the pipeline once per distinct ``name`` and cache the result. A
+    run from fastq files is skipped if its aligner cannot align reads."""
     cache = {}
 
     def _run(name, **kwargs):
+        if kwargs.get("start_stage", "fastq") == "fastq":
+            mapping = kwargs.get("mapping", "normal")
+            aligner = kwargs.get("aligner") or ("bwa" if mapping == "5spm" else "bowtie2")
+            skip_unless_can_align(aligner, kwargs.get("genome"))
         if name not in cache:
             out_dir = tmp_path_factory.mktemp(name)
             kwargs = dict(kwargs, out_dir=str(out_dir))
