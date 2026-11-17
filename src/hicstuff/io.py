@@ -1486,7 +1486,7 @@ def alignment_tools(aligner, index):
     return tools
 
 
-def require_tools(tools, purpose):
+def require_tools(tools, purpose, alternative=None):
     """
     Check that programs are on PATH before running them.
 
@@ -1497,6 +1497,9 @@ def require_tools(tools, purpose):
     purpose : str
         What they are needed for, completing "needed ...", for the error
         message.
+    alternative : str or None
+        What can be done instead of installing them, completing "install
+        them, or ...", for the error message.
 
     Raises
     ------
@@ -1507,8 +1510,12 @@ def require_tools(tools, purpose):
     if missing:
         msg = (
             f"{' and '.join(missing)} {'is' if len(missing) == 1 else 'are'} not "
-            f"installed or not on PATH, and needed {purpose}."
+            f"installed or not on PATH, and needed {purpose}"
         )
+        if alternative is None:
+            msg += "."
+        else:
+            msg += f": install {'it' if len(missing) == 1 else 'them'}, or {alternative}."
         logger.error(msg)
         raise ImportError(msg)
 

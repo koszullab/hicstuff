@@ -20,6 +20,7 @@ from os.path import join
 
 import pysam as ps
 
+import hicstuff.bwamem as hbm
 import hicstuff.io as hio
 from hicstuff.log import logger
 
@@ -34,6 +35,7 @@ def iterative_align(
     min_len=20,
     min_qual=30,
     read_len=None,
+    backend=None,
 ):
     """Iterative alignment
 
@@ -65,6 +67,11 @@ def iterative_align(
         Read length in the fasta file. If set to None, the length of the first read
         is used. Set this value to the longest read length in the file if you have
         different read lengths.
+    backend : str
+        How bwa runs: "binary" (the bwa program), "python" (in-process with
+        pybwa) or "auto", for which see hicstuff.bwamem.resolve_backend. None
+        reads the environment variable HICSTUFF_ALIGNER_BACKEND. In-process,
+        the rounds run in memory, without temporary files.
 
     Examples
     --------
@@ -75,6 +82,21 @@ def iterative_align(
     # The aligner program that maps the truncated reads: an unknown aligner
     # is refused when mapping.
     program = _aligner_program(aligner)
+    if program == "bwa" and hbm.resolve_backend(backend) == "python":
+        index = hio.check_fasta_index(ref, mode="bwa")
+        if index is None:
+            logger.error(f"Reference index is missing, please build the {aligner} index first.")
+            sys.exit(1)
+        hbm.iterative_align(
+            fq_in,
+            hbm.load_index(index, tmp_dir),
+            bam_out,
+            threads=int(n_cpu),
+            min_len=min_len,
+            min_qual=min_qual,
+            read_len=read_len,
+        )
+        return 0
     if program is not None:
         hio.require_tools([program], "for iterative alignment")
 

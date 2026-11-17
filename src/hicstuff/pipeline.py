@@ -28,6 +28,7 @@ import pysam as ps
 from Bio import SeqIO
 from dateutil.relativedelta import relativedelta
 
+import hicstuff.bwamem as hbm
 import hicstuff.cutsite as hcc
 import hicstuff.digest as hcd
 import hicstuff.distance_law as hcdl
@@ -50,6 +51,7 @@ def align_reads(
     iterative=False,
     min_qual=30,
     read_len=None,
+    backend=None,
 ):
     """
     Select and call correct alignment method and generate logs accordingly.
@@ -60,9 +62,11 @@ def align_reads(
     ----------
     reads : str
         Path to the fastq file with Hi-C reads.
-    genome : str
+    genome : str or pybwa.BwaIndex
         Path to the genome bowtie2/bwa index prefix if using bowtie2 or bwa, or to the
-        fasta if using minimap2.
+        fasta if using minimap2. With bwa in-process, an index loaded by
+        hicstuff.bwamem.load_index also works, so that it is loaded once for
+        several files; a path is loaded, or indexed if it has no index.
     out_bam : str
         Path to the output BAM file containing mapped Hi-C reads.
     tmp_dir : str
@@ -81,9 +85,24 @@ def align_reads(
         Maximum read length to expect in the fastq file. Optionally used in iterative
         alignment mode. Estimated from the first read by default. Useful if input fastq
         is a composite of different read lengths.
+    backend : str
+        How bwa runs: "binary" (the bwa program), "python" (in-process with
+        pybwa) or "auto", for which see hicstuff.bwamem.resolve_backend. None
+        reads the environment variable HICSTUFF_ALIGNER_BACKEND.
     """
     if tmp_dir is None:
         tmp_dir = os.getcwd()
+    if aligner == "bwa" and hbm.resolve_backend(backend) == "python":
+        index = genome
+        if isinstance(genome, (str, os.PathLike)):
+            index = hbm.load_index(genome, tmp_dir)
+        if iterative:
+            hbm.iterative_align(
+                reads, index, out_bam, threads=threads, min_qual=min_qual, read_len=read_len
+            )
+        else:
+            hbm.align(reads, index, out_bam, threads=threads)
+        return
     tmp_bam = out_bam + ".tmp"
 
     if iterative:
@@ -418,7 +437,7 @@ def bam2pairs(bam1, bam2, out_pairs, info_contigs, min_qual=30, tmp_dir=None, th
     )
 
 
-def generate_log_header(log_path, input1, input2, genome, enzyme):
+def generate_log_header(log_path, input1, input2, genome, enzyme, aligner=None):
     hcl.set_file_handler(log_path, formatter=logging.Formatter(""))
     logger.info("## hicstuff: v%s log file", __version__)
     logger.info("## date: %s", time.strftime("%Y-%m-%d %H:%M:%S"))
@@ -426,6 +445,8 @@ def generate_log_header(log_path, input1, input2, genome, enzyme):
     logger.info("## input1: %s ", input1)
     logger.info("## input2: %s", input2)
     logger.info("## ref: %s", genome)
+    if aligner is not None:
+        logger.info("## aligner: %s", aligner)
     logger.info("---")
     hcl.set_file_handler(log_path, formatter=hcl.logfile_formatter)
 
@@ -965,7 +986,7 @@ def full_pipeline(
     genome,
     input1,
     input2=None,
-    aligner="bowtie2",
+    aligner=None,
     centromeres=None,
     exclude=None,
     circular=False,
@@ -991,6 +1012,7 @@ def full_pipeline(
     threads=1,
     tmp_dir=None,
     skip_count=False,
+    aligner_backend=None,
 ):
     """
     Run the whole hicstuff pipeline. Starting from fastq files and a genome to
@@ -1037,10 +1059,13 @@ def full_pipeline(
     no_cleanup : bool
         Whether temporary files should be deleted at the end of the pipeline.
     mapping : str
-        normal|iterative|cutsite. Use normal, iterative or cutsite mapping.
-        "normal": Normal alignement. "iterative": Truncates and extends reads
-        until unambiguous alignment. "cutsite": Digest reads at religation sites
-        and build new pairs from the fragments created.
+        normal|iterative|cutsite|5spm. Use normal, iterative, cutsite or 5spm
+        mapping. "normal": Normal alignement. "iterative": Truncates and extends
+        reads until unambiguous alignment. "cutsite": Digest reads at religation
+        sites and build new pairs from the fragments created. "5spm": Align the
+        mates with ``bwa mem -5SPM``, which makes the 5'-most alignment of a read
+        its primary one, as the 4DN, Juicer and Arima pipelines do; it aligns
+        with bwa, in-process with pybwa unless aligner_backend says otherwise.
     filter_events : bool
         Filter spurious or uninformative 3C events. Requires a restriction enzyme.
     force : bool
@@ -1059,7 +1084,9 @@ def full_pipeline(
         bedgraph2 format, "cool" for Mirnylab's cool format, or graal for a
         plain text COO format compatible with Koszullab's instagraal software.
     aligner : str
-        Read alignment software to use. Can be either "minimap2", "bwa" or "bowtie2".
+        Read alignment software to use. Can be either "minimap2", "bwa" or
+        "bowtie2". Defaults to bowtie2, and to bwa in mapping mode 5spm, which
+        only aligns with bwa.
     pcr_duplicates : bool
         If True, PCR duplicates will be filtered based on genomic positions.
         Pairs where both reads have exactly the same coordinates are considered
@@ -1084,7 +1111,28 @@ def full_pipeline(
     skip_count : bool
         If True, skip counting reads in the input FASTQ files. Useful for very
         large files where counting is slow.
+    aligner_backend : str
+        How bwa runs: "binary" (the bwa program), "python" (in-process with
+        pybwa) or "auto". None reads the environment variable
+        HICSTUFF_ALIGNER_BACKEND, and is auto if it is not set. auto runs the
+        bwa program if it is on PATH and pybwa otherwise, and in mapping mode
+        5spm pybwa first.
     """
+    if mapping == "5spm":
+        if aligner not in (None, "bwa"):
+            msg = (
+                f"Mapping mode 5spm aligns with bwa mem -5SPM, not with {aligner}: "
+                "leave out the aligner, or set it to bwa."
+            )
+            logger.error(msg)
+            raise ValueError(msg)
+        aligner = "bwa"
+    elif aligner is None:
+        aligner = "bowtie2"
+    if aligner_backend is not None and aligner != "bwa" and aligner_backend.lower() == "python":
+        msg = f"pybwa runs bwa only: --aligner-backend python cannot align with {aligner}."
+        logger.error(msg)
+        raise ValueError(msg)
     if aligner not in ("bowtie2", "minimap2", "bwa"):
         logger.error("Incompatible aligner software, choose bowtie2, minimap2 or bwa.")
         raise ValueError("aligner should be either bowtie2, minimap2 or bwa.")
@@ -1109,12 +1157,21 @@ def full_pipeline(
     idx = hio.check_fasta_index(genome, mode=aligner)
     is_fasta = hio.check_is_fasta(genome)
     # Check that the third parties the run uses can be run: the aligner only
-    # aligns reads from fastq files.
+    # aligns reads from fastq files. bwa runs as a program or in-process.
+    backend = None
     if start_stage == 0:
-        hio.require_tools(
-            hio.alignment_tools(aligner, idx),
-            f"to align the reads of start stage {stage_name}",
-        )
+        if aligner == "bwa":
+            backend = hbm.resolve_backend(aligner_backend, prefer_python=mapping == "5spm")
+        if backend != "python":
+            hio.require_tools(
+                hio.alignment_tools(aligner, idx),
+                f"to align the reads of start stage {stage_name}",
+                alternative=(
+                    "run with -a bwa, which aligns in-process with pybwa"
+                    if aligner != "bwa" and hbm.pybwa_version() is not None
+                    else None
+                ),
+            )
     if aligner == "bowtie2" and not is_fasta:
         hio.require_tools(
             ["bowtie2-inspect"], f"to extract the genome sequence from the bowtie2 index {genome}"
@@ -1196,7 +1253,20 @@ def full_pipeline(
 
     # Enable file logging
     hcl.set_file_handler(log_file)
-    generate_log_header(log_file, input1, input2, genome, enzyme)
+    # The logs of bwa in-process, or in mapping mode 5spm, name the aligner;
+    # other runs log what they did before these existed.
+    generate_log_header(
+        log_file,
+        input1,
+        input2,
+        genome,
+        enzyme,
+        aligner=(
+            hbm.describe(backend, five_spm=mapping == "5spm")
+            if backend == "python" or mapping == "5spm"
+            else None
+        ),
+    )
 
     # If defautl `mat_fmt` or set `mat_fmt=cool`, notify the user
     if mat_fmt == "cool":
@@ -1264,13 +1334,15 @@ def full_pipeline(
         # We only need the index if the user provided fastq input
         if start_stage == 0:
             # If no index present assume input is fasta, copy it in tmp and
-            # index it (to avoid conflict between instances)
+            # index it (to avoid conflict between instances). pybwa indexes it
+            # when it loads it.
             logger.info(
                 "%s index not found at %s, generating a local temporary index.",
                 aligner,
                 genome,
             )
-            sp.run(index_cmd, stderr=sp.PIPE)
+            if backend != "python":
+                sp.run(index_cmd, stderr=sp.PIPE)
 
     # Check for spaces in fasta headers and issue error if found
     for record in SeqIO.parse(hio.read_compressed(fasta), "fasta"):
@@ -1346,33 +1418,35 @@ def full_pipeline(
                     n_cpu=threads,
                 )
                 reads1, reads2 = digest_for, digest_rev
-        else:
-            logger.error("mapping must be either normal, iterative or cutsite.")
+        elif mapping != "5spm":
+            logger.error("mapping must be either normal, iterative, cutsite or 5spm.")
             raise ValueError
 
-        logger.info("Now separately mapping R1 and R2 reads...")
-        align_reads(
-            reads1,
-            genome,
-            bam1,
-            tmp_dir=tmp_dir,
-            threads=threads,
-            aligner=aligner,
-            iterative=iterative,
-            min_qual=min_qual,
-            read_len=read_len,
-        )
-        align_reads(
-            reads2,
-            genome,
-            bam2,
-            tmp_dir=tmp_dir,
-            threads=threads,
-            aligner=aligner,
-            iterative=iterative,
-            min_qual=min_qual,
-            read_len=read_len,
-        )
+        # bwa in-process loads the index once, for both mates
+        index = genome
+        if backend == "python":
+            logger.info("Aligning with %s.", hbm.describe(backend, five_spm=mapping == "5spm"))
+            index = hbm.load_index(genome, tmp_dir)
+        if mapping == "5spm":
+            logger.info("Now mapping R1 and R2 reads with bwa mem -5SPM...")
+            hbm.align_pairs(
+                reads1, reads2, index, bam1, bam2, threads=threads, backend=backend, tmp_dir=tmp_dir
+            )
+        else:
+            logger.info("Now separately mapping R1 and R2 reads...")
+            for reads, bam in ((reads1, bam1), (reads2, bam2)):
+                align_reads(
+                    reads,
+                    index,
+                    bam,
+                    tmp_dir=tmp_dir,
+                    threads=threads,
+                    aligner=aligner,
+                    iterative=iterative,
+                    min_qual=min_qual,
+                    read_len=read_len,
+                    backend=backend,
+                )
 
     # Detect if multiple enzymes are given
     if re.search(",", enzyme):
