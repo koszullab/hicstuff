@@ -2,15 +2,20 @@
 
 import bz2
 import collections
+import contextlib
 import functools
 import gzip
+import heapq
 import io
+import itertools
 import os
 import re
 import subprocess as sp
 import sys
+import tempfile
 import zipfile
 import zlib
+from decimal import Decimal
 from os.path import exists, join
 from random import getrandbits
 from shutil import which
@@ -1182,17 +1187,244 @@ def _sort_parallel_ok(version_text):
     elif name == "BSD":
         # BSD sort uses a single thread when it reads stdin, as here
         logger.warning("Using BSD sort instead of GNU sort, sorting on a single thread.")
-    else:
-        logger.warning(
-            "Unknown sort (sort --version printed %r): sorting without --parallel.",
+    return False
+
+
+#: Environment variable that makes sort_pairs sort in Python, whatever sort
+#: program is installed, when set to "python".
+SORT_ENV = "HICSTUFF_SORT"
+
+
+def _sort_version():
+    """What ``sort --version`` prints, if sort_pairs runs the sort program.
+
+    sort_pairs runs GNU, uutils and BSD sort. It sorts in Python when
+    HICSTUFF_SORT is "python", when there is no sort on PATH, and when the
+    sort on PATH is another one: busybox sort, which has none of the long
+    options sort_pairs passes and sorts in memory, or Windows' sort.exe.
+
+    Returns
+    -------
+    str or None
+        The standard output of ``sort --version``, or None to sort in Python.
+    """
+    if os.environ.get(SORT_ENV, "").strip().lower() == "python":
+        logger.info(f"Sorting pairs in Python ({SORT_ENV}=python).")
+        return None
+    if which("sort") is None:
+        logger.info("No sort program on PATH: sorting pairs in Python.")
+        return None
+    # stderr is dropped: a sort without --version (busybox) prints its usage.
+    try:
+        version_text = sp.run(["sort", "--version"], stdout=sp.PIPE, stderr=sp.DEVNULL).stdout
+    except OSError:
+        version_text = b""
+    version_text = version_text.decode(errors="replace")
+    if _sort_implementation(version_text)[0] == "unknown":
+        logger.info(
+            "Unknown sort (sort --version printed %r): sorting pairs in Python.",
             version_text.strip().split("\n", 1)[0],
         )
-    return False
+        return None
+    return version_text
+
+
+#: Bytes that dictionary order (sort -d) ignores in the C locale: all but
+#: ASCII letters, digits and blanks.
+_NOT_DICTIONARY = bytes(
+    c for c in range(256) if not (chr(c).isascii() and (chr(c).isalnum() or chr(c) in " \t"))
+)
+#: A field as sort without -t sees it: the blanks before it, then non-blanks.
+_SORT_FIELD = re.compile(rb"[ \t]*[^ \t]+")
+#: The number that sort -n reads at the start of a key in the C locale: after
+#: blanks, a minus sign, digits and a fraction, all optional. No plus sign,
+#: exponent or thousands separator.
+_SORT_NUMBER = re.compile(rb"[ \t]*(-?)([0-9]*)(?:\.([0-9]*))?")
+#: Memory that a line takes while Python sorts it, on top of its length: the
+#: line object, its key and their references. Measured on pairs lines: 180
+#: to 440 bytes, depending on the keys.
+_SORT_LINE_OVERHEAD = 450
+#: Most temporary files merged at once, under the limit of 256 open files
+#: that macOS sets by default.
+_SORT_MERGE_FILES = 100
+#: Bytes in each unit of sort -S, kibibytes by default.
+_SORT_UNITS = {"": 1 << 10, "b": 1, "k": 1 << 10, "m": 1 << 20, "g": 1 << 30, "t": 1 << 40}
+
+
+def _sort_buffer_bytes(buffer):
+    """The bytes in a sort -S size: a number and a unit (b, K, M, G or T,
+    kibibytes by default), or a percentage of the physical memory."""
+    match = re.fullmatch(r"\s*(\d+)([%bkmgt]?)", str(buffer), flags=re.IGNORECASE)
+    if match is None:
+        raise ValueError(f"Invalid sort buffer size {buffer!r}: give a number and a unit (2G).")
+    number, unit = int(match.group(1)), match.group(2).lower()
+    if unit == "%":
+        return number * os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") // 100
+    return number * _SORT_UNITS[unit]
+
+
+def _sort_number(text):
+    """The value that sort -n reads at the start of a key in the C locale, 0
+    when there is no number."""
+    sign, integer, fraction = _SORT_NUMBER.match(text).groups()
+    integer = int(integer or b"0")
+    fraction = (fraction or b"").rstrip(b"0")
+    value = Decimal(f"{integer}.{fraction.decode()}") if fraction else integer
+    return -value if sign else value
+
+
+def _sort_fields(content, n_fields):
+    """The first n_fields fields of a line as sort without -t sees them, each
+    with the blanks before it. A field after the last is the blanks that end
+    the line, and those after it are empty."""
+    ends = [match.end() for match in itertools.islice(_SORT_FIELD.finditer(content), n_fields)]
+    fields, start = [], 0
+    for i in range(n_fields):
+        end = ends[i] if i < len(ends) else len(content)
+        fields.append(content[start:end])
+        start = end
+    return fields
+
+
+def _sort_key(sort_keys):
+    """A key function that orders lines as ``LC_ALL=C sort`` with these
+    -kN,N options orders them: key by key, then byte by byte.
+
+    Without -t, sort splits a line at blanks, spaces and tabs, and a field
+    begins with the blanks before it: field 2 of "r1\tchr1\t5" is "\tchr1".
+    A dictionary key (d) keeps letters, digits and blanks only, and a
+    numeric key (n) is compared by value. The lines given to the key end
+    with their newline, which no key includes.
+    """
+    specs = []
+    for option in sort_keys:
+        field, kind = re.fullmatch(r"-k(\d+),\1([dn]?)", option).groups()
+        specs.append((int(field) - 1, kind))
+    n_fields = max(field for field, _ in specs) + 1
+
+    def any_line(content):
+        fields = _sort_fields(content, n_fields)
+        values = []
+        for field, kind in specs:
+            text = fields[field]
+            if kind == "n":
+                digits = text.lstrip(b" \t")
+                values.append(int(digits) if digits.isdigit() else _sort_number(text))
+            elif kind == "d":
+                values.append(text.translate(None, _NOT_DICTIONARY))
+            else:
+                values.append(text)
+        # sort's last resort: the whole lines, byte by byte
+        values.append(content)
+        return tuple(values)
+
+    # Most lines hold non-blank fields between single tabs: their key is
+    # built from the line split at tabs, in one expression, which is several
+    # times faster than the loop above
+    terms = []
+    for field, kind in specs:
+        text = f"p[{field}]" if field == 0 else f'(b"\\t" + p[{field}])'
+        if kind == "n":
+            terms.append(f"(int(p[{field}]) if p[{field}].isdigit() else _sort_number(p[{field}]))")
+        elif kind == "d":
+            terms.append(f"{text}.translate(None, _NOT_DICTIONARY)")
+        else:
+            terms.append(text)
+    source = (
+        "def key(line):\n"
+        "    content = line[:-1]\n"
+        f'    p = content.split(b"\\t", {n_fields})\n'
+        f"    if (len(p) < {n_fields} or b' ' in content or b'\\t\\t' in content\n"
+        "            or content[:1] == b'\\t' or content[-1:] == b'\\t'):\n"
+        "        return any_line(content)\n"
+        f"    return ({', '.join(terms)}, content)\n"
+    )
+    namespace = {
+        "any_line": any_line,
+        "_sort_number": _sort_number,
+        "_NOT_DICTIONARY": _NOT_DICTIONARY,
+    }
+    exec(source, namespace)
+    return namespace["key"]
+
+
+def _write_sorted(paths, key, output):
+    """Write the lines of sorted files to an open binary output, merged."""
+    with contextlib.ExitStack() as stack:
+        runs = [stack.enter_context(open(path, "rb", buffering=1 << 18)) for path in paths]
+        output.writelines(heapq.merge(*runs, key=key))
+
+
+def _sort_pairs_python(in_file, out_file, sort_keys, tmp_dir=None, buffer="2G"):
+    """Append the pairs of in_file to out_file in the order that
+    ``LC_ALL=C sort`` with sort_keys gives them, sorting in Python.
+
+    The pairs are sorted in chunks that fit in buffer, written to temporary
+    files in tmp_dir unless they all fit in one, and merged. The temporary
+    files are removed, also on error.
+    """
+    key = _sort_key(sort_keys)
+    budget = _sort_buffer_bytes(buffer)
+    chunk, size, runs, created = [], 0, [], []
+
+    def new_run():
+        """A new temporary file, opened for writing, and its path."""
+        fd, path = tempfile.mkstemp(prefix="hicstuff_sort_", suffix=".pairs", dir=tmp_dir)
+        created.append(path)
+        return os.fdopen(fd, "wb"), path
+
+    try:
+        with read_compressed(in_file, "rb") as pairs:
+            for line in pairs:
+                # Skip the header, and any other comment line
+                if line.startswith(b"#"):
+                    continue
+                if not line.endswith(b"\n"):
+                    line += b"\n"
+                chunk.append(line)
+                size += len(line) + _SORT_LINE_OVERHEAD
+                if size >= budget:
+                    chunk.sort(key=key)
+                    run, path = new_run()
+                    with run:
+                        run.writelines(chunk)
+                    runs.append(path)
+                    chunk, size = [], 0
+        chunk.sort(key=key)
+        if runs and chunk:
+            run, path = new_run()
+            with run:
+                run.writelines(chunk)
+            runs.append(path)
+            chunk = []
+        # Merge just enough files first that the rest can be merged at once
+        while len(runs) > _SORT_MERGE_FILES:
+            first = min(_SORT_MERGE_FILES, len(runs) - _SORT_MERGE_FILES + 1)
+            group, runs = runs[:first], runs[first:]
+            run, path = new_run()
+            with run:
+                _write_sorted(group, key, run)
+            runs.append(path)
+            for done in group:
+                os.remove(done)
+        with open(out_file, "ab") as output:
+            if runs:
+                _write_sorted(runs, key, output)
+            else:
+                output.writelines(chunk)
+    finally:
+        for path in created:
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(path)
 
 
 def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
     """
-    Sort a pairs file in batches using UNIX sort.
+    Sort a pairs file in batches using UNIX sort, or in Python.
+
+    The pairs are sorted by GNU, uutils or BSD sort when one is on PATH, and
+    in Python otherwise, or when the environment variable HICSTUFF_SORT is
+    "python": both write the same file. The Python sort is single-threaded.
 
     Parameters
     ----------
@@ -1211,7 +1443,8 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
         ordered byte by byte, so that each one forms one block.
     tmp_dir : str
         Path to the directory where temporary files will be created. Defaults
-        to sort's own: $TMPDIR, else /tmp (/var/tmp for BSD sort).
+        to sort's own: $TMPDIR, else /tmp (/var/tmp for BSD sort), and to
+        Python's for the Python sort.
     threads : int
         Number of parallel sorting threads, given with --parallel to GNU sort
         8.23 or later and to uutils sort. Other sorts choose their own.
@@ -1221,17 +1454,11 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
     Raises
     ------
     ValueError
-        If a key is not one of the columns above. Nothing is written then.
+        If a key is not one of the columns above, or, for the Python sort, the
+        buffer size is not one sort accepts. Nothing is written then.
     RuntimeError
         If sort fails.
     """
-    # TODO: Write a pure python implementation to drop GNU coreutils depencency,
-    # could be inspired from: https://stackoverflow.com/q/14465154/8440675
-
-    # Pass the number of threads only to a sort known to accept --parallel.
-    # stderr is dropped: a sort without --version (busybox) prints its usage.
-    sort_ver = sp.run(["sort", "--version"], stdout=sp.PIPE, stderr=sp.DEVNULL).stdout
-    parallel_ok = _sort_parallel_ok(sort_ver.decode(errors="replace"))
 
     # sort runs in the C locale, where a plain key compares byte by byte and
     # finds two values equal only if they are identical: each chromosome
@@ -1261,6 +1488,10 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
             f"Unknown sort key(s) {', '.join(unknown)}: choose among {', '.join(key_map)}."
         )
     sort_keys = [opt for k in keys for opt in key_map[k]]
+    sort_version = _sort_version()
+    if sort_version is None:
+        # Before anything is written
+        _sort_buffer_bytes(buffer)
     # Rewrite header with new sorting order
     header = get_pairs_header(in_file)
     with open(out_file, "w") as output:
@@ -1270,8 +1501,14 @@ def sort_pairs(in_file, out_file, keys, tmp_dir=None, threads=1, buffer="2G"):
             else:
                 output.write(line + "\n")
 
+    if sort_version is None:
+        _sort_pairs_python(in_file, out_file, sort_keys, tmp_dir=tmp_dir, buffer=buffer)
+        return
+
     # Sort pairs and append to file. The pairs are streamed to sort from
     # Python, through a decompressing reader if the input is compressed.
+    # Pass the number of threads only to a sort known to accept --parallel.
+    parallel_ok = _sort_parallel_ok(sort_version)
     sort_cmd = ["sort", f"-S {buffer}"] + sort_keys
     if tmp_dir is not None:
         sort_cmd.append(f"--temporary-directory={tmp_dir}")
