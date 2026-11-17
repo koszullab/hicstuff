@@ -25,7 +25,8 @@ installed, and in Python on one thread otherwise (busybox ``sort`` lacks the
 options hicstuff needs); set ``HICSTUFF_SORT=python`` to always sort them in
 Python.
 
-You can then install hicstuff latest stable version using pip:
+hicstuff needs Python 3.10 or later. You can then install hicstuff latest
+stable version using pip:
 
 .. code-block:: bash
 
