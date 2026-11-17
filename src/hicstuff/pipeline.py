@@ -1240,7 +1240,9 @@ def full_pipeline(
             stdout=sp.PIPE,
             stderr=sp.PIPE,
         )
-        _ = sp.run(["gzip", "-c"], stdin=bt2fa.stdout, stdout=open(tmp_genome, "w"))
+        # At gzip's default level, as `gzip -c` compressed it
+        with gzip.open(tmp_genome, "wb", compresslevel=6) as dst:
+            st.copyfileobj(bt2fa.stdout, dst, 1 << 20)
         _, bt2err = bt2fa.communicate()
         # bowtie2-inspect still has return code 0 when crashing, need to
         # actively look for error in stderr
