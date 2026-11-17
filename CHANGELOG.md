@@ -20,6 +20,9 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
   5'-most alignment of a read cut by a ligation junction is its primary one,
   as in the 4DN, Juicer and Arima pipelines (#125). It aligns with bwa only,
   through pybwa unless `--aligner-backend binary`, and is not the default.
+  Its pairs record each mate at its aligned 5' end, the end of the sequenced
+  molecule, as pairtools does; the other modes record the leftmost base of
+  each mate's alignment (#129).
 - Pairs are sorted in Python when no usable `sort` program is installed (none
   on PATH, or busybox's) (#124). `HICSTUFF_SORT=python` always sorts them in
   Python.
