@@ -52,8 +52,11 @@ uv sync --extra dev
 
 If `hicstuff` is installed via pip, the aligner that maps the reads is not
 installed with it: `bowtie2`, `bwa` or `minimap2`, whichever `--aligner`
-names (`bowtie2` by default). `hicstuff iteralign` and `hicstuff missview`
-always run it, and `hicstuff pipeline` only to start from FASTQ files:
+names (`bowtie2` by default). bwa is the exception: without the `bwa`
+program, it runs in-process through [pybwa](https://github.com/fulcrumgenomics/pybwa),
+which is installed with hicstuff.
+`hicstuff iteralign` and `hicstuff missview`
+always run the aligner, and `hicstuff pipeline` only to start from FASTQ files:
 `hicstuff pipeline --start-stage bam`, `pairs` or `pairs_idx` needs no aligner,
 except `bowtie2-inspect` (part of bowtie2) when the genome is given as a
 bowtie2 index. `samtools` is not needed: hicstuff filters and sorts
@@ -152,7 +155,13 @@ hicstuff pipeline --help
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ╭─ Options ────────────────────────────────────────────────────────────────────────────────────────╮
 │ *  --genome              -g  FILE       Reference genome or aligner index. [required]            │
-│    --aligner             -a  STR        Aligner: bowtie2, minimap2 or bwa. [default: bowtie2]    │
+│    --aligner             -a  STR        Aligner: bowtie2 (default), minimap2 or bwa. Mapping     │
+│                                         mode 5spm aligns with bwa.                               │
+│    --aligner-backend         [auto|binary|python]  How bwa runs: the bwa program (binary), or    │
+│                                         in-process with pybwa (python). auto runs the bwa        │
+│                                         program if it is on PATH and pybwa otherwise, and pybwa  │
+│                                         first with -m 5spm. Default: $HICSTUFF_ALIGNER_BACKEND,  │
+│                                         else auto.                                               │
 │    --balancing-args      -B  STR        Extra arguments passed to `cooler balance`.              │
 │    --binning             -b  INT        Bin the cool matrix to this resolution (bp). 0 means no  │
 │                                         binning. [default: 0]                                    │
@@ -165,7 +174,9 @@ hicstuff pipeline --help
 │    --exclude             -E  STR        Comma-separated chromosomes to exclude (e.g. chrM,2u).   │
 │    --filter              -f             Filter spurious 3C events (loops and uncuts).            │
 │    --force               -F             Overwrite existing output files.                         │
-│    --mapping             -m  STR        Mapping mode. [default: normal]                          │
+│    --mapping             -m  STR        Mapping mode. 5spm aligns the mates with bwa mem -5SPM,  │
+│                                         which makes the 5'-most alignment of a read cut by a     │
+│                                         ligation junction its primary one. [default: normal]     │
 │    --matfmt              -M  STR        Output matrix format. [default: cool]                    │
 │    --no-cleanup          -n             Keep intermediary files.                                 │
 │    --outdir              -o  DIR        Output directory (default: current directory).           │
@@ -191,6 +202,20 @@ files to the directory `out`:
 
 ```sh
 hicstuff pipeline -t 8 -a minimap2 -e DpnII -o out/ -g genome.fa reads_for.fq reads_rev.fq
+```
+
+With `-a bwa`, the `bwa` program aligns the reads when it is on PATH, and pybwa
+otherwise: both give the same alignments, but for reads cut into two parts of
+equal score, of which they can make a different part primary.
+`--aligner-backend binary` or `python` chooses one of them, as does the
+`HICSTUFF_ALIGNER_BACKEND` environment variable. Mapping mode `5spm` aligns
+both mates with `bwa mem -5SPM`, which makes the 5'-most alignment of a read
+cut by a ligation junction its primary one, as the 4DN, Juicer and Arima
+pipelines do. It always aligns with bwa, with pybwa unless
+`--aligner-backend binary` is given:
+
+```sh
+hicstuff pipeline -t 8 -m 5spm -e DpnII,HinfI -o out/ -g genome.fa reads_for.fq reads_rev.fq
 ```
 
 If you have already aligned your reads, hicstuff pipeline can also take bam files as input. For example,
@@ -260,6 +285,9 @@ hicstuff iteralign --help
 │    --aligner   -a  STR   Aligner: bowtie2, minimap2 or bwa. [default: bowtie2]                   │
 │    --min-len   -l  INT   Minimum truncated read length. [default: 20]                            │
 │    --read-len  -R  INT   Maximum read length (estimated from first read if omitted).             │
+│    --aligner-backend  [auto|binary|python]  How bwa runs: the bwa program (binary), or           │
+│                          in-process with pybwa (python). auto runs the bwa program if it is on   │
+│                          PATH and pybwa otherwise. Default: $HICSTUFF_ALIGNER_BACKEND, else auto.│
 │    --help      -h        Show this message and exit.                                             │
 ╰──────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```

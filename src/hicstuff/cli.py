@@ -16,6 +16,7 @@ import rich_click as click
 from Bio import SeqIO
 from matplotlib import pyplot as plt
 
+import hicstuff.bwamem as hbm
 import hicstuff.cutsite as hcc
 import hicstuff.digest as hcd
 import hicstuff.distance_law as hcdl
@@ -248,7 +249,17 @@ def cli():
     metavar="INT",
     help="Maximum read length (estimated from first read if omitted).",
 )
-def iteralign(reads_fq, genome, out_bam, threads, tempdir, aligner, min_len, read_len):
+@click.option(
+    "--aligner-backend",
+    default=None,
+    type=click.Choice(["auto", "binary", "python"], case_sensitive=False),
+    help="How bwa runs: the bwa program (binary), or in-process with pybwa "
+    "(python). auto runs the bwa program if it is on PATH and pybwa otherwise. "
+    "Default: $HICSTUFF_ALIGNER_BACKEND, else auto.",
+)
+def iteralign(
+    reads_fq, genome, out_bam, threads, tempdir, aligner, min_len, read_len, aligner_backend
+):
     """Iteratively align reads to a reference genome.
 
     Truncates reads to 20 bp then iteratively extends and re-aligns unmapped
@@ -267,6 +278,7 @@ def iteralign(reads_fq, genome, out_bam, threads, tempdir, aligner, min_len, rea
             aligner=aligner,
             min_len=min_len,
             read_len=read_len,
+            backend=aligner_backend,
         )
     finally:
         shutil.rmtree(temp_directory)
@@ -752,10 +764,17 @@ def view(
 @click.option(
     "-a",
     "--aligner",
-    default="bowtie2",
-    show_default=True,
+    default=None,
     metavar="STR",
-    help="Aligner: bowtie2, minimap2 or bwa.",
+    help="Aligner: bowtie2 (default), minimap2 or bwa. Mapping mode 5spm aligns with bwa.",
+)
+@click.option(
+    "--aligner-backend",
+    default=None,
+    type=click.Choice(["auto", "binary", "python"], case_sensitive=False),
+    help="How bwa runs: the bwa program (binary), or in-process with pybwa "
+    "(python). auto runs the bwa program if it is on PATH and pybwa otherwise, "
+    "and pybwa first with -m 5spm. Default: $HICSTUFF_ALIGNER_BACKEND, else auto.",
 )
 @click.option(
     "-B",
@@ -810,8 +829,9 @@ def view(
     default="normal",
     show_default=True,
     metavar="STR",
-    type=click.Choice(["normal", "iterative", "cutsite"]),
-    help="Mapping mode.",
+    type=click.Choice(["normal", "iterative", "cutsite", "5spm"], case_sensitive=False),
+    help="Mapping mode. 5spm aligns the mates with bwa mem -5SPM, which makes the "
+    "5'-most alignment of a read cut by a ligation junction its primary one.",
 )
 @click.option(
     "-M",
@@ -931,6 +951,7 @@ def pipeline(
     tmpdir,
     zoomify,
     skip_count,
+    aligner_backend,
 ):
     """Run the full Hi-C pipeline from FASTQ to contact matrix.
 
@@ -977,6 +998,7 @@ def pipeline(
         threads=threads,
         tmp_dir=tmpdir,
         skip_count=skip_count,
+        aligner_backend=aligner_backend,
     )
 
 
@@ -1496,7 +1518,15 @@ def distancelaw(
     help="Number of parallel threads.",
 )
 @click.option("-T", "--tmpdir", default=None, metavar="DIR", help="Temporary directory.")
-def missview(genome, output, read_len, aligner, binning, force, threads, tmpdir):
+@click.option(
+    "--aligner-backend",
+    default=None,
+    type=click.Choice(["auto", "binary", "python"], case_sensitive=False),
+    help="How bwa runs: the bwa program (binary), or in-process with pybwa "
+    "(python). auto runs the bwa program if it is on PATH and pybwa otherwise. "
+    "Default: $HICSTUFF_ALIGNER_BACKEND, else auto.",
+)
+def missview(genome, output, read_len, aligner, binning, force, threads, tmpdir, aligner_backend):
     """Preview unmappable Hi-C bins for a given read length.
 
     Simulates short reads across the genome and identifies genomic bins that
@@ -1505,20 +1535,29 @@ def missview(genome, output, read_len, aligner, binning, force, threads, tmpdir)
     resolution = _parse_bin_str(str(binning))
     if tmpdir is None:
         with tempfile.TemporaryDirectory() as tmp:
-            _missview(genome, output, read_len, aligner, resolution, force, threads, tmp)
+            _missview(
+                genome, output, read_len, aligner, resolution, force, threads, tmp, aligner_backend
+            )
     else:
         os.makedirs(tmpdir, exist_ok=True)
-        _missview(genome, output, read_len, aligner, resolution, force, threads, tmpdir)
+        _missview(
+            genome, output, read_len, aligner, resolution, force, threads, tmpdir, aligner_backend
+        )
 
 
-def _missview(genome, output, read_len, aligner, resolution, force, threads, tmpdir):
+def _missview(
+    genome, output, read_len, aligner, resolution, force, threads, tmpdir, aligner_backend=None
+):
     phred = "F" * read_len
     tmp_fq = join(tmpdir, "simulated_reads.fq")
     tmp_bam = join(tmpdir, "simulated_reads.bam")
     _check_output_path(tmp_fq, force=force)
-    # bowtie2 and bwa need an index: use the genome's own or build one.
+    # bowtie2 and bwa need an index: use the genome's own or build one. bwa
+    # in-process builds its own.
     index = hio.check_fasta_index(genome, mode=aligner)
-    hio.require_tools(hio.alignment_tools(aligner, index), "to align the simulated reads")
+    backend = hbm.resolve_backend(aligner_backend) if aligner == "bwa" else None
+    if backend != "python":
+        hio.require_tools(hio.alignment_tools(aligner, index), "to align the simulated reads")
 
     logger.info("Simulating reads by splitting the genome into %i bp chunks", read_len)
     with open(tmp_fq, "w") as fq_handle, hio.read_compressed(genome) as fasta:
@@ -1528,7 +1567,9 @@ def _missview(genome, output, read_len, aligner, resolution, force, threads, tmp
                     f"@NS_SIM_{rec.id}_{i}\n{str(rec.seq[i : i + read_len])}\n+\n{phred}\n"
                 )
 
-    if index is None:
+    if backend == "python":
+        index = hbm.load_index(genome, tmpdir)
+    elif index is None:
         index = join(tmpdir, "genome")
         logger.info("%s index not found, building one in %s.", aligner, tmpdir)
         if aligner == "bowtie2":
@@ -1536,7 +1577,9 @@ def _missview(genome, output, read_len, aligner, resolution, force, threads, tmp
         else:
             build = ["bwa", "index", "-p", index, genome]
         sp.run(build, check=True, stdout=sp.DEVNULL, stderr=sp.DEVNULL)
-    hpi.align_reads(tmp_fq, index, tmp_bam, tmp_dir=tmpdir, threads=threads, aligner=aligner)
+    hpi.align_reads(
+        tmp_fq, index, tmp_bam, tmp_dir=tmpdir, threads=threads, aligner=aligner, backend=backend
+    )
     ps.sort("-@", str(threads), "-n", "-O", "BAM", "-o", tmp_bam + ".sorted", tmp_bam)
     shutil.move(tmp_bam + ".sorted", tmp_bam)
 

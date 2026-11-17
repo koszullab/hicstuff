@@ -20,6 +20,7 @@ import pysam
 import pytest
 from click.testing import CliRunner
 
+import hicstuff.bwamem as hbm
 import hicstuff.io as hio
 import hicstuff.iteralign as hci
 import hicstuff.pipeline as hpi
@@ -39,11 +40,29 @@ def _sorted_lines(path):
         return sorted(line for line in handle if not line.startswith("#"))
 
 
-def _missing(tools, purpose):
+def _missing(tools, purpose, alternative=None):
     """Regex matching the whole message of require_tools for these tools."""
     verb = "is" if len(tools) == 1 else "are"
-    msg = f"{' and '.join(tools)} {verb} not installed or not on PATH, and needed {purpose}."
+    msg = f"{' and '.join(tools)} {verb} not installed or not on PATH, and needed {purpose}"
+    if alternative is None:
+        msg += "."
+    else:
+        msg += f": install {'it' if len(tools) == 1 else 'them'}, or {alternative}."
     return f"^{re.escape(msg)}$"
+
+
+#: How a run can align reads when the aligner it was given is missing.
+WITH_PYBWA = "run with -a bwa, which aligns in-process with pybwa"
+#: The error of a run that aligns with bwa, with neither the bwa program nor pybwa.
+NO_BWA = (
+    "^Neither the bwa program nor pybwa is installed, and one of them is needed to align "
+    "reads with bwa: install pybwa"
+)
+
+
+def _alternative():
+    """The alternative that missing aligners' errors name: none without pybwa."""
+    return WITH_PYBWA if hbm.pybwa_version() is not None else None
 
 
 # ---------------------------------------------------------------------------
@@ -86,15 +105,20 @@ def test_start_stage_runs_without_aligner(
 @pytest.mark.parametrize("mapping", MAPPINGS)
 @pytest.mark.parametrize("aligner", ALIGNERS)
 def test_fastq_start_needs_the_aligner(
-    aligner, mapping, synthetic_lib, indexed_genome, hide_tools, tmp_path
+    aligner, mapping, synthetic_lib, indexed_genome, hide_tools, tmp_path, monkeypatch
 ):
     """Without its aligner, a run from fastq files stops before writing
-    anything, naming the aligner and the start stage that needs it."""
+    anything, naming the aligner and the start stage that needs it, and
+    running with bwa in-process if pybwa is installed. bwa needs either."""
     hide_tools(aligner)
+    if aligner == "bwa":
+        # bwa runs in-process when pybwa is installed
+        monkeypatch.setattr(hbm, "pybwa_version", lambda: None)
+        message = NO_BWA
+    else:
+        message = _missing([aligner], "to align the reads of start stage fastq", _alternative())
     out_dir = tmp_path / "out"
-    with pytest.raises(
-        ImportError, match=_missing([aligner], "to align the reads of start stage fastq")
-    ):
+    with pytest.raises(ImportError, match=message):
         hpi.full_pipeline(
             genome=indexed_genome,
             input1=str(synthetic_lib.reads1),
@@ -114,7 +138,10 @@ def test_fastq_start_needs_bowtie2_build_without_index(synthetic_lib, hide_tools
     hide_tools("bowtie2-build", "bwa", "minimap2")
     out_dir = tmp_path / "out"
     with pytest.raises(
-        ImportError, match=_missing(["bowtie2-build"], "to align the reads of start stage fastq")
+        ImportError,
+        match=_missing(
+            ["bowtie2-build"], "to align the reads of start stage fastq", _alternative()
+        ),
     ):
         hpi.full_pipeline(
             genome=str(genome),
@@ -262,10 +289,11 @@ def _bytes(path):
 
 @pytest.mark.parametrize("aligner", ALIGNERS)
 def test_align_reads_needs_the_aligner(
-    aligner, synthetic_lib, indexed_genome, hide_tools, tmp_path
+    aligner, synthetic_lib, indexed_genome, hide_tools, no_pybwa, tmp_path
 ):
     hide_tools(aligner)
-    with pytest.raises(ImportError, match=_missing([aligner], "to align reads")):
+    message = NO_BWA if aligner == "bwa" else _missing([aligner], "to align reads")
+    with pytest.raises(ImportError, match=message):
         hpi.align_reads(
             str(synthetic_lib.reads1), indexed_genome, str(tmp_path / "out.bam"), aligner=aligner
         )
@@ -278,10 +306,11 @@ def test_align_reads_needs_the_aligner(
 
 @pytest.mark.parametrize("aligner", ALIGNERS)
 def test_iterative_align_needs_the_aligner(
-    aligner, synthetic_lib, indexed_genome, hide_tools, tmp_path
+    aligner, synthetic_lib, indexed_genome, hide_tools, no_pybwa, tmp_path
 ):
     hide_tools(aligner)
-    with pytest.raises(ImportError, match=_missing([aligner], "for iterative alignment")):
+    message = NO_BWA if aligner == "bwa" else _missing([aligner], "for iterative alignment")
+    with pytest.raises(ImportError, match=message):
         hci.iterative_align(
             str(synthetic_lib.reads1),
             str(tmp_path),
@@ -315,9 +344,10 @@ def test_iteralign_command_needs_the_aligner(synthetic_lib, hide_tools, tmp_path
         ("minimap2", "minimap2"),
     ],
 )
-def test_missview_needs_the_aligner(aligner, hidden, synthetic_lib, hide_tools, tmp_path):
+def test_missview_needs_the_aligner(aligner, hidden, synthetic_lib, hide_tools, no_pybwa, tmp_path):
     """missview aligns reads it simulates, with the aligner, after building
-    an index for a genome that has none: it checks for both first."""
+    an index for a genome that has none: it checks for both first. bwa needs
+    the bwa program or pybwa."""
     genome = tmp_path / "small.fa"
     genome.write_text(">chr3\n" + synthetic_lib.chroms["chr3"][:4000] + "\n")
     work = tmp_path / "work"
@@ -325,7 +355,8 @@ def test_missview_needs_the_aligner(aligner, hidden, synthetic_lib, hide_tools, 
     args = ["missview", "-R", "60", "-a", aligner, "-T", str(work), str(genome)]
     result = CliRunner().invoke(cli, args + [str(tmp_path / "m.png")])
     assert isinstance(result.exception, ImportError)
-    assert re.match(_missing([hidden], "to align the simulated reads"), str(result.exception))
+    message = NO_BWA if aligner == "bwa" else _missing([hidden], "to align the simulated reads")
+    assert re.match(message, str(result.exception))
     assert not (work / "simulated_reads.fq").exists()
 
 
