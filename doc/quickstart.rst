@@ -22,7 +22,8 @@ the final pairs file is compressed in the BGZF format, which pairix can index,
 by bgzip on several threads when it is installed, and by pysam on one thread
 otherwise.
 
-You can then install hicstuff latest stable version using pip:
+hicstuff needs Python 3.10 or later. You can then install hicstuff latest
+stable version using pip:
 
 .. code-block:: bash
 
