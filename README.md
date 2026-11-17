@@ -18,8 +18,11 @@ The goal is to make generation and manipulation of Hi-C matrices as simple as po
 1. [Table of contents](#table-of-contents)
 2. [Installation](#installation)
    1. [pip](#pip)
-   2. [Conda](#conda)
-   3. [Docker](#docker)
+   2. [Aligners and other programs](#aligners-and-other-programs)
+   3. [Platforms that need a compiler](#platforms-that-need-a-compiler)
+   4. [Conda](#conda)
+   5. [Docker](#docker)
+   6. [Licence](#licence)
 3. [Usage](#usage)
    1. [Full pipeline](#full-pipeline)
    2. [Individual components](#individual-components)
@@ -37,12 +40,20 @@ The goal is to make generation and manipulation of Hi-C matrices as simple as po
 
 ### pip
 
-hicstuff needs Python 3.10 or later. To install a stable version:
+hicstuff needs Python 3.10 or later, on Linux or macOS. On Windows, use WSL2:
+pysam, a dependency, publishes no Windows wheels.
+
 ```sh
 pip install hicstuff
 ```
 
-or, for the latest development version:
+That alone runs the whole pipeline, from FASTQ files to matrices, with bwa:
+`hicstuff pipeline -a bwa -e DpnII -g genome.fa R1.fq.gz R2.fq.gz` needs no
+other program. bwa then runs in-process through
+[pybwa](https://github.com/fulcrumgenomics/pybwa), which pip installs with
+hicstuff.
+
+For the latest development version:
 
 ```sh
 git clone https://github.com/koszullab/hicstuff.git
@@ -50,47 +61,84 @@ cd hicstuff
 uv sync --extra dev
 ```
 
-If `hicstuff` is installed via pip, the aligner that maps the reads is not
-installed with it: `bowtie2`, `bwa` or `minimap2`, whichever `--aligner`
-names (`bowtie2` by default). bwa is the exception: without the `bwa`
-program, it runs in-process through [pybwa](https://github.com/fulcrumgenomics/pybwa),
-which is installed with hicstuff.
-`hicstuff iteralign` and `hicstuff missview`
-always run the aligner, and `hicstuff pipeline` only to start from FASTQ files:
-`hicstuff pipeline --start-stage bam`, `pairs` or `pairs_idx` needs no aligner,
-except `bowtie2-inspect` (part of bowtie2) when the genome is given as a
-bowtie2 index. `samtools` is not needed: hicstuff filters and sorts
-alignments with the samtools that pysam bundles. `bgzip` (from htslib) is
-optional: the final pairs file is compressed in the BGZF format, which pairix
-can index, by bgzip on several threads when it is installed, and by pysam on
-one thread otherwise. Pairs are sorted by GNU, BSD or uutils `sort` when one
-is installed, and in Python on one thread otherwise (busybox `sort` lacks the
-options hicstuff needs); set `HICSTUFF_SORT=python` to always sort them in
-Python. You can install them as follows on Debian/Ubuntu (the `tabix` package
-provides bgzip):
+### Aligners and other programs
+
+`--aligner` chooses the aligner that maps the reads:
+
+| Aligner | How hicstuff runs it | To install |
+| --- | --- | --- |
+| `bowtie2` (the default) | The `bowtie2` program | Not on PyPI: `apt-get install bowtie2`, `conda install -c bioconda bowtie2` or `brew install bowtie2` |
+| `bwa` | The `bwa` program if it is on PATH, otherwise in-process through pybwa. `--aligner-backend` (or `HICSTUFF_ALIGNER_BACKEND`) chooses | Nothing: pybwa comes with hicstuff |
+| `minimap2` | The `minimap2` program | Not on PyPI: `apt-get install minimap2`, conda or brew |
+
+Mapping mode `5spm` aligns with bwa only, through pybwa unless
+`--aligner-backend binary`.
+
+`hicstuff iteralign` and `hicstuff missview` always run the aligner, and
+`hicstuff pipeline` only to start from FASTQ files: `--start-stage bam`,
+`pairs` or `pairs_idx` needs no aligner, except `bowtie2-inspect` (part of
+bowtie2) when the genome is given as a bowtie2 index.
+
+No other program is needed. Two are used when they are installed:
+
+- `bgzip` (from htslib) compresses the final pairs file on several threads,
+  in the BGZF format, which pairix can index. Without it, pysam compresses it
+  on one thread.
+- GNU, BSD or uutils `sort` sorts the pairs. Without one, they are sorted in
+  Python on one thread (busybox `sort` lacks the options hicstuff needs). Set
+  `HICSTUFF_SORT=python` to always sort them in Python.
+
+`samtools` is not needed: hicstuff runs the samtools that pysam bundles. On
+Debian or Ubuntu (the `tabix` package provides bgzip):
 
 ```bash
-apt-get install bowtie2 bwa minimap2 tabix libbz2-dev liblzma-dev
+apt-get install bowtie2 bwa minimap2 tabix
 ```
+
+### Platforms that need a compiler
+
+pip installs wheels where they exist, and builds the other dependencies from
+source, which needs a C compiler, make and the zlib headers. As of November
+2026:
+
+- **macOS with Python 3.14:** pybwa publishes no wheel for it yet. Install
+  Xcode's command-line tools (`xcode-select --install`), or use Python 3.13.
+- **macOS on Intel:** biopython has published no Intel wheel since 1.87.
+  `pip install --prefer-binary hicstuff` installs the last version that has
+  one.
+- **Linux with an older glibc**, such as RHEL or CentOS 7: several
+  dependencies, pybwa and pysam among them, publish no wheel for it. Building
+  pysam also needs the bzip2 and xz (lzma) headers. Conda is easier there.
+- **Alpine and other musl-based Linux:** biopython, and matplotlib on
+  aarch64, publish no musl wheels.
 
 ### Conda
 
-hicstuff is also available on bioconda, which will automatically handle all
-dependencies:
+hicstuff is also on bioconda. To install it with the aligners and bgzip:
 
 ```bash
-conda install bioconda::hicstuff
+conda install -c conda-forge -c bioconda hicstuff bowtie2 bwa minimap2 htslib
 ```
 
 ### Docker
 
-Docker images are automatically built and published to GitHub Container
-Registry (GHCR) when releases are tagged:
+Docker images, with hicstuff, bowtie2, bwa, minimap2 and htslib, are built
+and published to the GitHub Container Registry (GHCR) when releases are
+tagged:
 
 ```bash
-docker pull ghcr.io/baudrly/hicstuff:latest
-docker pull ghcr.io/baudrly/hicstuff:<version>
+docker pull ghcr.io/koszullab/hicstuff:latest
+docker pull ghcr.io/koszullab/hicstuff:<version>
 ```
+
+### Licence
+
+hicstuff is distributed under the BSD-3-Clause licence. pybwa's metadata says
+MIT, but every pybwa wheel compiles in bwa, which is distributed under the
+GPLv3: an installation of hicstuff therefore contains GPLv3 code. This
+matters only to whoever redistributes it, in a Docker image or a packed
+environment for instance, who must then meet the GPLv3's terms for bwa. The
+Docker image also ships the bowtie2 and bwa programs, both under the GPLv3.
 
 ## Usage
 
