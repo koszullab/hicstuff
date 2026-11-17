@@ -292,7 +292,11 @@ SORT_VERSIONS = {
     "uutils": ("sort (uutils coreutils) 0.10.0\n", ("uutils", (0, 10)), None),
     "FreeBSD": ("2.3-FreeBSD\n", ("BSD", None), "Using BSD sort"),
     "macOS": ("2.3-Apple (199)\n", ("BSD", None), "Using BSD sort"),
-    "busybox": ("", ("unknown", None), "Unknown sort (sort --version printed '')"),
+    "busybox": (
+        "",
+        ("unknown", None),
+        "Unknown sort (sort --version printed ''): sorting pairs in Python",
+    ),
 }
 
 
@@ -311,7 +315,8 @@ def test_sort_pairs_parallel(tmp_path, monkeypatch, caplog, capfd, text, warning
     """--parallel goes to GNU sort from 8.23 and to uutils sort, as Ubuntu 26.04's.
 
     A sort that prints text for --version stands first on PATH, and runs the
-    real sort.
+    real sort. An unknown sort, as busybox's, is not run: the pairs are
+    sorted in Python.
     """
     fake = tmp_path / "bin" / "sort"
     fake.parent.mkdir()
@@ -331,7 +336,9 @@ def test_sort_pairs_parallel(tmp_path, monkeypatch, caplog, capfd, text, warning
     out = tmp_path / "sorted.pairs"
     hio.sort_pairs(PAIRS_FILE, str(out), keys=PAIRS_SORT_KEYS, threads=2)
 
-    args = fake.with_suffix(".args").read_text().split()
+    unknown = hio._sort_implementation(text)[0] == "unknown"
+    args = [] if unknown else fake.with_suffix(".args").read_text().split()
+    assert fake.with_suffix(".args").exists() is not unknown
     assert ("--parallel=2" in args) is (warning is None)
     if warning is None:
         assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
@@ -343,6 +350,151 @@ def test_sort_pairs_parallel(tmp_path, monkeypatch, caplog, capfd, text, warning
     rows = [line for line in out.read_text().splitlines() if not line.startswith("#")]
     pairs = Path(PAIRS_FILE).read_text().splitlines()
     assert sorted(rows) == sorted(line for line in pairs if not line.startswith("#"))
+
+
+#: Pairs data lines that sort orders with care: blanks inside, before,
+#: between and after fields, missing and extra fields, signs, decimals,
+#: leading zeros and other text where numbers go, punctuation, both cases,
+#: bytes above 127, a carriage return, and duplicates.
+_NAMES = ["r.1", "r1", "r:1", "A1:1101:111:1000", "A1:1101:11:11000", "r1/1", "R1", "r 1", ""]
+_CHROMS = TIED_CONTIGS + ["chr1", "chr10", "chr2", "A", "chré", "chrX ", "c-1", "c.1", "c1", ""]
+_NUMBERS = ["0", "1", "10", "2", "007", "7", "-1", "-0", "-", "1.5", "1.50", ".5", "5.", "NA"]
+_NUMBERS += ["1e5", "+5", " 12", "12abc", "", "99999999999999999999999", "-.5", "3\r"]
+_STRANDS = ["+", "-", ".", "", "*", "+-", "- "]
+
+
+def _tricky_pairs_lines(n_lines, seed):
+    rng = random.Random(seed)
+    lines = []
+    for _ in range(n_lines):
+        fields = [rng.choice(_NAMES), rng.choice(_CHROMS), rng.choice(_NUMBERS)]
+        fields += [rng.choice(_CHROMS), rng.choice(_NUMBERS), rng.choice(_STRANDS)]
+        fields += [rng.choice(_STRANDS), rng.choice(_NUMBERS), rng.choice(_NUMBERS), "extra"]
+        fields = fields[: rng.choice([9] * 8 + [3, 5, 7, 10])]
+        line = fields[0]
+        for field in fields[1:]:
+            line += rng.choice(["\t"] * 20 + ["\t\t", " ", "\t "]) + field
+        line = rng.choice([""] * 18 + ["\t"]) + line + rng.choice([""] * 18 + ["\t", "\r"])
+        lines.append(line)
+    return lines + lines[: n_lines // 10]
+
+
+def _gnu_sort():
+    """Whether the sort on PATH is GNU sort."""
+    if shutil.which("sort") is None:
+        return False
+    version = subprocess.run(["sort", "--version"], capture_output=True, text=True).stdout
+    return hio._sort_implementation(version)[0] == "GNU"
+
+
+@pytest.mark.parametrize(
+    "keys",
+    [[column] for column in ("readID", "chr1", "pos1", "chr2", "pos2", "strand1", "strand2")]
+    + [[column] for column in ("frag1", "frag2")]
+    + [PAIRS_SORT_KEYS, ["frag1", "frag2"], ["chr1", "pos1", "chr2", "pos2", "strand1", "strand2"]]
+    + [["readID", "pos1", "strand2", "frag2"]],
+    ids="-".join,
+)
+def test_python_sort_orders_as_gnu_sort(keys, tmp_path, hide_tools):
+    """Without sort, the pairs are sorted in Python, in the order of GNU sort,
+    in one chunk or merging many temporary files, which are removed."""
+    if not _gnu_sort():
+        pytest.skip("GNU sort is needed to compare with")
+    unsorted = tmp_path / "unsorted.pairs"
+    header = "## pairs format v1.0\n#sorted: readID\n#columns: readID chr1 pos1 chr2 pos2\n"
+    unsorted.write_text(header + "\n".join(_tricky_pairs_lines(500, seed=len(keys))))
+    expected = tmp_path / "gnu.pairs"
+    hio.sort_pairs(str(unsorted), str(expected), keys=keys)
+    assert expected.read_bytes().endswith(b"\n")
+    hide_tools("sort")
+    tmp_dir = tmp_path / "tmp"
+    tmp_dir.mkdir()
+    # 2 lines in each temporary file with 1K, merged in two rounds
+    for buffer in ("2G", "1K"):
+        out = tmp_path / f"python_{buffer}.pairs"
+        hio.sort_pairs(str(unsorted), str(out), keys=keys, tmp_dir=str(tmp_dir), buffer=buffer)
+        assert out.read_bytes() == expected.read_bytes()
+        assert not list(tmp_dir.iterdir())
+
+
+def test_sort_env_sorts_in_python(tmp_path, monkeypatch, caplog):
+    """HICSTUFF_SORT=python sorts in Python although a sort is on PATH."""
+    caplog.set_level(logging.INFO)
+    unsorted = tmp_path / "unsorted.pairs"
+    _write_shuffled_pairs(unsorted)
+    expected = tmp_path / "expected.pairs"
+    hio.sort_pairs(str(unsorted), str(expected), keys=PAIRS_SORT_KEYS)
+    # A sort that fails, first on PATH
+    fake = tmp_path / "bin" / "sort"
+    fake.parent.mkdir()
+    fake.write_text("#!/bin/sh\nexit 2\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{fake.parent}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setenv("HICSTUFF_SORT", "python")
+    out = tmp_path / "sorted.pairs"
+    hio.sort_pairs(str(unsorted), str(out), keys=PAIRS_SORT_KEYS)
+    assert out.read_bytes() == expected.read_bytes()
+    assert "Sorting pairs in Python (HICSTUFF_SORT=python)." in caplog.text
+
+
+def test_sort_that_does_not_run_sorts_in_python(tmp_path, monkeypatch, caplog):
+    """A sort on PATH that cannot be run is not used: the pairs are sorted in Python."""
+    caplog.set_level(logging.INFO)
+    unsorted = tmp_path / "unsorted.pairs"
+    _write_shuffled_pairs(unsorted)
+    expected = tmp_path / "expected.pairs"
+    hio.sort_pairs(str(unsorted), str(expected), keys=PAIRS_SORT_KEYS)
+    # Its interpreter does not exist, and it is the only sort on PATH: a run
+    # looks for another one further on PATH when it cannot run the first
+    fake = tmp_path / "bin" / "sort"
+    fake.parent.mkdir()
+    fake.write_text("#!/nonexistent/interpreter\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", str(fake.parent))
+    out = tmp_path / "sorted.pairs"
+    hio.sort_pairs(str(unsorted), str(out), keys=PAIRS_SORT_KEYS)
+    assert out.read_bytes() == expected.read_bytes()
+    assert "Unknown sort (sort --version printed ''): sorting pairs in Python." in caplog.text
+
+
+def test_python_sort_removes_temporary_files_on_error(tmp_path, hide_tools):
+    """A truncated input raises, and leaves no temporary file behind."""
+    plain = tmp_path / "unsorted.pairs"
+    _write_shuffled_pairs(plain, n_copies=20)
+    raw = _compress(plain, "gzip").read_bytes()
+    truncated = tmp_path / "truncated.pairs.gz"
+    truncated.write_bytes(raw[: len(raw) // 2])
+    tmp_dir = tmp_path / "tmp"
+    tmp_dir.mkdir()
+    hide_tools("sort")
+    with pytest.raises(EOFError):
+        hio.sort_pairs(
+            str(truncated),
+            str(tmp_path / "out.pairs"),
+            keys=PAIRS_SORT_KEYS,
+            tmp_dir=str(tmp_dir),
+            buffer="10K",
+        )
+    assert not list(tmp_dir.iterdir())
+
+
+@pytest.mark.parametrize(
+    ("buffer", "size"),
+    [("2G", 2 << 30), ("500M", 500 << 20), ("64k", 64 << 10), ("1024", 1 << 20), ("300b", 300)],
+)
+def test_sort_buffer_bytes(buffer, size):
+    """Sizes are read as sort -S reads them, in kibibytes by default."""
+    assert hio._sort_buffer_bytes(buffer) == size
+    assert 0 < hio._sort_buffer_bytes("1%") < hio._sort_buffer_bytes("2%")
+
+
+def test_python_sort_refuses_invalid_buffer(tmp_path, hide_tools):
+    """An invalid buffer size is refused before the output is created."""
+    hide_tools("sort")
+    out = tmp_path / "sorted.pairs"
+    with pytest.raises(ValueError, match="Invalid sort buffer size 'not_a_size'"):
+        hio.sort_pairs(PAIRS_FILE, str(out), keys=PAIRS_SORT_KEYS, buffer="not_a_size")
+    assert not out.exists()
 
 
 def test_sort_compressed_pairs_header_only(tmp_path):
