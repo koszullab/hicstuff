@@ -93,15 +93,13 @@ def align_reads(
     if tmp_dir is None:
         tmp_dir = os.getcwd()
     if aligner == "bwa" and hbm.resolve_backend(backend) == "python":
-        index = genome
-        if isinstance(genome, (str, os.PathLike)):
-            index = hbm.load_index(genome, tmp_dir)
-        if iterative:
-            hbm.iterative_align(
-                reads, index, out_bam, threads=threads, min_qual=min_qual, read_len=read_len
-            )
-        else:
-            hbm.align(reads, index, out_bam, threads=threads)
+        with hbm.loaded_index(genome, tmp_dir) as index:
+            if iterative:
+                hbm.iterative_align(
+                    reads, index, out_bam, threads=threads, min_qual=min_qual, read_len=read_len
+                )
+            else:
+                hbm.align(reads, index, out_bam, threads=threads)
         return
     tmp_bam = out_bam + ".tmp"
 

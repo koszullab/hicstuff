@@ -216,6 +216,25 @@ def load_index(genome, tmp_dir):
     return BwaIndex(prefix)
 
 
+@contextlib.contextmanager
+def loaded_index(genome, tmp_dir):
+    """An index loaded by :func:`load_index` for the block, whose files are
+    removed when the block ends, or an index already loaded.
+
+    Parameters
+    ----------
+    genome : str or pybwa.BwaIndex
+        Path to the reference or the prefix of its index, or an index.
+    tmp_dir : str
+        Directory in which a temporary directory holds the index files.
+    """
+    if not isinstance(genome, (str, os.PathLike)):
+        yield genome
+        return
+    with tempfile.TemporaryDirectory(dir=tmp_dir) as directory:
+        yield load_index(genome, directory)
+
+
 def _bwa_name(name):
     """A read name as bwa writes it: without a final "/" and digit, which bwa
     takes for a mate number."""
@@ -450,11 +469,9 @@ def align_pairs(reads1, reads2, genome, bam1, bam2, threads=1, backend="python",
         Nothing is left of its output.
     """
     if backend == "python":
-        index = (
-            genome if not isinstance(genome, (str, os.PathLike)) else load_index(genome, tmp_dir)
-        )
-        align(reads1, index, bam1, threads=threads, five_spm=True)
-        align(reads2, index, bam2, threads=threads, five_spm=True)
+        with loaded_index(genome, tmp_dir) as index:
+            align(reads1, index, bam1, threads=threads, five_spm=True)
+            align(reads2, index, bam2, threads=threads, five_spm=True)
         return
 
     command = ["bwa", "mem", "-v", "1", FIVE_SPM, "-t", str(threads), genome, reads1, reads2]

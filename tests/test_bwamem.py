@@ -232,22 +232,40 @@ def test_five_spm_makes_the_5_end_primary(tmp_path):
     assert primaries == {False: ["chr2"], True: ["chr1"]}
 
 
-def test_align_reads_loads_the_index(indexed_genome, synthetic_lib, tmp_path):
-    """align_reads given the reference with pybwa loads its index, and
-    writes the alignments of the bwa program."""
+@pytest.mark.parametrize("iterative", [False, True])
+def test_align_reads_loads_the_index(
+    iterative, indexed_genome, synthetic_lib, tmp_path, monkeypatch
+):
+    """align_reads given the reference with pybwa loads its index, writes the
+    alignments of the bwa program, and leaves nothing in its temporary
+    directory, the working directory by default."""
     _needs_bwa()
-    bams = {}
+    monkeypatch.chdir(tmp_path)
     for backend in ("binary", "python"):
-        bams[backend] = tmp_path / f"{backend}.bam"
         hpi.align_reads(
             str(synthetic_lib.reads1),
             indexed_genome,
-            str(bams[backend]),
-            tmp_dir=str(tmp_path),
+            f"{backend}.bam",
             aligner="bwa",
+            iterative=iterative,
             backend=backend,
         )
-    assert _records(bams["python"]) == _records(bams["binary"])
+    assert sorted(os.listdir(tmp_path)) == ["binary.bam", "python.bam"]
+    assert _records(tmp_path / "python.bam") == _records(tmp_path / "binary.bam")
+
+
+def test_iteralign_and_align_pairs_remove_the_index(indexed_genome, synthetic_lib, tmp_path):
+    """The index that pybwa loads for iterative_align and align_pairs is
+    removed from their temporary directory."""
+    work = tmp_path / "work"
+    work.mkdir()
+    reads = str(synthetic_lib.reads1), str(synthetic_lib.reads2)
+    bam1, bam2 = str(tmp_path / "for.bam"), str(tmp_path / "rev.bam")
+    hci.iterative_align(
+        reads[0], str(work), indexed_genome, 1, bam1, aligner="bwa", backend="python"
+    )
+    hbm.align_pairs(*reads, indexed_genome, bam1, bam2, backend="python", tmp_dir=str(work))
+    assert list(work.iterdir()) == []
 
 
 @pytest.mark.parametrize("iterative", [False, True])

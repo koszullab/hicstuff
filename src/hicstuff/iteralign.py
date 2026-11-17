@@ -87,15 +87,16 @@ def iterative_align(
         if index is None:
             logger.error(f"Reference index is missing, please build the {aligner} index first.")
             sys.exit(1)
-        hbm.iterative_align(
-            fq_in,
-            hbm.load_index(index, tmp_dir),
-            bam_out,
-            threads=int(n_cpu),
-            min_len=min_len,
-            min_qual=min_qual,
-            read_len=read_len,
-        )
+        with hbm.loaded_index(index, tmp_dir) as loaded:
+            hbm.iterative_align(
+                fq_in,
+                loaded,
+                bam_out,
+                threads=int(n_cpu),
+                min_len=min_len,
+                min_qual=min_qual,
+                read_len=read_len,
+            )
         return 0
     if program is not None:
         hio.require_tools([program], "for iterative alignment")
