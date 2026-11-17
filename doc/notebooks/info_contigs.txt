@@ -1,3 +1,0 @@
-contig	length	n_frags	cumul_length
-seq1	60000	409	0
-seq2	20000	155	409

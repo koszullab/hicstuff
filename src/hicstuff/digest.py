@@ -64,9 +64,9 @@ def write_frag_info(
         The name of the file with contig info. Default is info_contigs.txt
     output_frags : str, optional
         The name of the file with fragment info. Default is fragments_list.txt
-    output_dir : [type], optional
-        The path to the output directory, which will be created if not already
-        existing. Default is the current directory.
+    output_dir : str, optional
+        The directory, which must exist, in which output_contigs and
+        output_frags are written. By default, they are paths of their own.
     """
 
     records = SeqIO.parse(hio.read_compressed(fasta), "fasta")

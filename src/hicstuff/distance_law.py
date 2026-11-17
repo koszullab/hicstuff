@@ -877,7 +877,7 @@ def plot_ps_slope(xs, ps, labels, fig_path=None, inf=3000, sup=None):
         The list of the logbins of each ps.
     ps : list of numpy.ndarray
         The list of ps.
-    labels_file : list of strings
+    labels : list of strings
         Names of the different curves in the order in which they are given.
     fig_path : str
         Path where the figure will be created. If None (default), the plot is

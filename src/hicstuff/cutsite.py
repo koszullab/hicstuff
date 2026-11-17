@@ -7,19 +7,19 @@ original fastq (gzipped or not) files create new gzipped fastq files with
 combinations of the fragments of reads obtains by cutting at the ligation sites
 of the reads.
 
-There are three choices to how combine the fragments. 1. "for_vs_rev": All the
-combinations are made between one forward fragment and one reverse fragment.
-It's the most releveant one for usual workflow. 2. "all": All 2-combinations are
-made. 3. "pile": Only combinations between adjacent fragments in the initial
-reads are made.
+There are three choices to how combine the fragments:
+
+1. "for_vs_rev": All the combinations are made between one forward fragment
+   and one reverse fragment. It's the most releveant one for usual workflow.
+2. "all": All 2-combinations are made.
+3. "pile": Only combinations between adjacent fragments in the initial reads
+   are made.
 
 This module contains the following functions:
-    - cut_ligation_sites
-    - cutsite_read
-    - write_pair
-    - _cut_pairs
-    - _read_fastq
-    - _writer
+
+- cut_ligation_sites
+- cutsite_read
+- write_pair
 """
 
 import gzip

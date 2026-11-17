@@ -1,0 +1,248 @@
+# Running the pipeline
+
+`hicstuff pipeline` takes a Hi-C library from its reads, or from aligned reads
+or pairs, to a contact map. This page lists its inputs, the files it writes,
+and the options of each step. The [CLI reference](../cli.md#pipeline) lists
+every option in one table, and [Concepts](../concepts.md#the-pipeline) draws
+the steps.
+
+```bash
+hicstuff pipeline --mapping 5spm --enzyme DpnII --genome genome.fa --outdir out/ \
+    R1.fq.gz R2.fq.gz
+```
+
+`--mapping 5spm` is the recommended mapping mode: see [Alignment](#alignment).
+
+## Inputs
+
+`--start-stage` (`-S`) says what the positional inputs are:
+
+| `--start-stage` | Inputs | What the run does |
+|---|---|---|
+| `fastq` (default) | The R1 and R2 reads, in two FASTQ files, gzipped or not | Every step |
+| `bam` | Two BAM files, one per mate, each aligned as single-end reads | From pairing the mates on |
+| `pairs` | One [pairs file](../formats.md#pairs) of 7 columns, uncompressed | From assigning fragments on |
+| `pairs_idx` | One pairs file of 9 columns, with `frag1` and `frag2`, uncompressed | From filtering on |
+
+The BAM files may be in any order: files sorted by read name (with
+`samtools sort -n` or `-N`) are read as they are, others are sorted by name
+first, in the temporary directory.
+
+!!! warning "`--start-stage pairs_idx` sorts its input in place"
+
+    The pairs file given with `-S pairs_idx` is sorted where it is, and must
+    be uncompressed: given a gzipped file, such as the `.pairs.gz` a run
+    writes, the run fails after replacing it with uncompressed text. Give it a
+    decompressed copy:
+
+    ```bash
+    zcat out/valid_idx.pairs.gz > valid_idx.pairs
+    hicstuff pipeline -S pairs_idx -e DpnII -g genome.fa -o out2/ valid_idx.pairs
+    ```
+
+`--genome` (`-g`) is the reference, needed at every stage, since the
+fragments are cut from it:
+
+- A FASTA file, gzipped or not. bowtie2 and bwa need an index: one named after
+  the FASTA (`genome.fa.1.bt2`, as `bowtie2-build genome.fa genome.fa` writes
+  it, or `genome.fa.bwt`, as `bwa index genome.fa` does) is used; otherwise the
+  pipeline builds one in the temporary directory, at every run.
+- For bowtie2 only, the prefix of a bowtie2 index (`genome` for
+  `genome.1.bt2`, …). The sequence is then read from the index with
+  `bowtie2-inspect`.
+
+`--enzyme` (`-e`) is the enzyme the library was digested with, several
+enzymes separated by commas, or a fragment size in base pairs (5000 by
+default); see [Digesting a genome](digest.md). `--circular` (`-C`) treats every
+chromosome as circular, and `--size` (`-s`) leaves out the contigs shorter
+than that many base pairs, with the pairs that have a mate on them.
+
+## Outputs
+
+The pipeline writes into `--outdir` (`-o`, the current directory by
+default). `--prefix` (`-P`) names the files after a sample instead of using
+instaGRAAL's file names:
+
+| File | Without `--prefix` | With `--prefix sample` | Written |
+|---|---|---|---|
+| Log | `hicstuff_<date>.log` | `sample.hicstuff_<date>.log` | always |
+| Fragments | `fragments_list.txt` | `sample.frags.tsv` | always |
+| Contigs | `info_contigs.txt` | `sample.chr.tsv` | always |
+| Contact map, cool | `abs_fragments_contacts_weighted.cool` | `sample.cool` | by default |
+| Contact map, binned | `abs_fragments_contacts_weighted.mcool` | `sample.mcool` | with `--binning` |
+| Contact map, graal | `abs_fragments_contacts_weighted.txt` | `sample.mat.tsv` | with `--matfmt graal` |
+| Contact map, 2D bedgraph | `abs_fragments_contacts_weighted.bg2` | `sample.bg2` | with `--matfmt bg2` |
+| Pairs | `valid_idx.pairs.gz` | `sample.valid_idx.pairs.gz` | always |
+| Distance law | `distance_law.txt` | `sample.distance_law.txt` | with `--distance-law` |
+| Plots | `plots/*.pdf` | `plots/sample_*.pdf` | with `--plot` |
+
+`<date>` is the time the run started, as `YYYYmmddHHMMSS`, so a log never
+replaces another. The pairs file holds the pairs the map was built from: it is
+`valid_idx_filtered.pairs.gz` after `--filter`, and
+`valid_idx_pcrfree.pairs.gz` after `--duplicates`. It is sorted by `chr1`,
+`chr2`, `pos1`, `pos2` and compressed in the BGZF format, which pairix can
+index.
+
+A run refuses to replace an output that exists, or a temporary file left by an
+earlier run, unless given `--force` (`-F`).
+
+### Temporary files
+
+The intermediate files go to `--tmpdir` (`-T`), by default `tmp/` in the
+output directory: the alignments (`for.bam`, `rev.bam`), the pairs before and
+after each step (`valid.pairs`, `valid_idx.pairs`, …) and a compressed copy of
+the genome. They are deleted at the end of the run, unless `--no-cleanup`
+(`-n`) keeps them. The `tmp/` directory stays, with what the cleanup leaves
+in it: the index built for the run, when the genome had none, and in mapping
+mode `cutsite` the cut reads (`digest_for.fq.gz`, `digest_rev.fq.gz`). To run
+several samples in one output directory, give each its `--prefix`: the
+temporary files take it too.
+
+### Plots
+
+`--plot` (`-p`) saves a PDF of each step that has one, in `plots/`:
+
+| Plot | Shows | Written |
+|---|---|---|
+| `frags_hist.pdf` | The distribution of fragment lengths | from FASTQ or BAM files |
+| `event_distance.pdf` | The 3C events by distance, with the filter's thresholds | with `--filter` |
+| `event_distribution.pdf` | The proportion of each kind of event | with `--filter` |
+| `distance_law.pdf` | The distance law and its slope | with `--distance-law` |
+
+## Alignment
+
+`--mapping` (`-m`) chooses how the reads are aligned. **`5spm` is the
+recommended mode**: it aligns the mates with `bwa mem -5SPM`, as the 4DN,
+Juicer and Arima pipelines do, in-process unless `--aligner-backend binary`
+asks for the `bwa` program, and records each mate at its aligned 5' end. It is
+not the default, `normal`. The other modes, `normal`, `iterative` and
+`cutsite`, align with `--aligner` (`-a`): `bowtie2` (the default), `bwa` or
+`minimap2`. `--threads` (`-t`) sets the threads of the aligner and of the other
+steps. Each mate is aligned on its own; supplementary alignments are dropped,
+and a pair is kept when both mates aligned with a mapping quality of at least
+`--quality-min` (`-q`, 30 by default). [Aligning reads](alignment.md) explains
+the aligners and the modes.
+
+Before aligning, the pipeline counts the reads of both FASTQ files, and logs an
+error if their numbers differ. `--skip-count` skips the count, which takes a
+while on large files; the statistics of the run then count the read pairs as
+half the reads aligned.
+
+## Filtering
+
+| Option | Removes |
+|---|---|
+| `--quality-min N` (`-q`) | Pairs with a mate aligned with a mapping quality below N (30 by default) |
+| `--size N` (`-s`) | Contigs shorter than N bp, and the pairs with a mate on them |
+| `--filter` (`-f`) | Uncuts, loops and impossible pairs, with thresholds estimated from the library |
+| `--duplicates` (`-D`) | PCR duplicates: one pair is kept among those with the same coordinates |
+| `--exclude chrM,2u` (`-E`) | These chromosomes, from the cool file only |
+
+`--filter` needs a restriction enzyme: with a fragment size, no fragment is a
+restriction fragment, and the run refuses it (though not `mnase` or `dnase`,
+which it then filters as 100 bp fragments). [Filtering 3C events](filter.md)
+explains how the thresholds are chosen, and how to check them.
+
+## The contact map
+
+`--matfmt` (`-M`) chooses its format:
+
+- **`cool`** (the default): a [cooler](https://github.com/open2c/cooler) with
+  one bin per fragment, made by `cooler cload pairs`.
+- **`graal`**: instaGRAAL's sparse matrix, one row and column per fragment;
+  with `fragments_list.txt` and `info_contigs.txt`, it is what instaGRAAL
+  reads.
+- **`bg2`**: a 2D bedgraph, one line per pair of fragments with contacts.
+
+### Binned, multi-resolution and balanced maps
+
+`--binning N` (`-b`) counts the contacts in bins of N base pairs instead of
+fragments, and applies to cool files only:
+
+1. The pairs are binned at N bp.
+2. The map is zoomified into a `.mcool` file holding N, 2N, 5N, 10N, 20N, 50N
+   and 100N, and the single-resolution `.cool` is deleted (kept with
+   `--no-cleanup`). `--zoomify false` (`-z false`) keeps the `.cool` alone.
+3. Every resolution is balanced with `cooler balance`, which stores its
+   `weight` column. It runs on `--threads` processes. `--balancing-args`
+   (`-B`) passes more options, checked before the run starts:
+   `-B "--max-iters 500 --ignore-diags 2"`. A resolution that fails to
+   balance is logged as a warning, and the run goes on.
+
+A resolution is read by its URI, `out/sample.mcool::/resolutions/5000`, with
+hicstuff's commands as with cooler's.
+
+```bash
+# An Arima library at 1 kb and up, filtered, balanced
+hicstuff pipeline --mapping 5spm --enzyme DpnII,HinfI --binning 1000 --threads 8 \
+    --filter --duplicates --prefix sample --genome genome.fa --outdir out/ \
+    R1.fq.gz R2.fq.gz
+```
+
+## The distance law
+
+`--distance-law` (`-d`) writes `distance_law.txt`: the frequency of contacts
+against the distance between the mates, for each chromosome, from the pairs
+assigned to fragments, before `--filter` and `--duplicates`. With
+`--centromeres FILE` (`-c`), it is computed for each chromosome arm, and
+`--remove-centromeres N` (`-r`) leaves out N bp on each side of the
+centromeres. The table is neither normalised nor averaged: `hicstuff
+distancelaw` does both, and plots it. See [The distance law](distance-law.md).
+
+## Starting again from intermediate files
+
+```bash
+# Reads aligned elsewhere with bwa mem -5SPM, one BAM file per mate
+hicstuff pipeline -S bam -m 5spm -e DpnII -g genome.fa -o out/ R1.bam R2.bam
+
+# A pairs file from another tool, uncompressed
+hicstuff pipeline -S pairs -e DpnII -g genome.fa -o out/ sample.pairs
+
+# The pairs of an earlier run, to bin them otherwise
+zcat out/valid_idx.pairs.gz > valid_idx.pairs
+hicstuff pipeline -S pairs_idx -e DpnII -g genome.fa -b 5000 -o out_5kb/ \
+    valid_idx.pairs
+```
+
+The enzyme and genome must be those of the first run: they define the
+fragments the pairs are assigned to. From BAM files, `-m 5spm` records each
+mate at its aligned 5' end, as when the pipeline aligns the reads in that mode;
+the other modes record the leftmost base of each alignment. Starting from pairs, the log holds no
+alignment statistics, and `hicstuff stats` cannot read it.
+
+## Reading the log
+
+The log starts with the version, the date, the enzyme, the inputs and the
+reference, then records every step: the number of reads, the proportion
+aligned, the pairs removed by each filter, and how long the run took.
+`hicstuff stats` summarises it:
+
+```bash
+hicstuff stats out/hicstuff_20261117221914.log
+```
+
+```console
+Sample:             hicstuff_20261117221914.log
+Total read pairs:   10,000
+Mapped reads:       17,876 (89.38%  of all reads)
+Unmapped reads:     2,124 (10.62%  of all reads)
+Recovered contacts: 7,891 (78.91%  of all read pairs)
+Removed contacts:   0 (0.0% of all contacts)
+  Small contigs:    0 (0.0% of all contacts)
+  Filtered out:     0 (0.0% of all contacts)
+    Loops:          0 (0.0% of all contacts)
+    Uncuts:         0 (0.0% of all contacts)
+    Weirds:         0 (0.0% of all contacts)
+  PCR duplicates:   0 (0.0% of all contacts)
+Final contacts:     7,891 (100.0% of all contacts)
+```
+
+| Line | Counts |
+|---|---|
+| Total read pairs | The read pairs of the FASTQ files |
+| Mapped reads, Unmapped reads | The mates aligned with a mapping quality of at least `--quality-min`, and the others: twice the read pairs in all, or more in `cutsite` mode |
+| Recovered contacts | The pairs with both mates aligned |
+| Small contigs | The pairs left out by `--size` |
+| Filtered out | The pairs removed by `--filter`: loops, uncuts and weirds |
+| PCR duplicates | The pairs removed by `--duplicates` |
+| Final contacts | The pairs in the contact map |
