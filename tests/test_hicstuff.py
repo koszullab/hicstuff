@@ -5,7 +5,6 @@
 Basic tests for functions in the hicstuff library.
 """
 
-import random
 from inspect import getmembers, isfunction, signature
 
 import numpy as np
@@ -17,7 +16,7 @@ import hicstuff.hicstuff as hcs
 SIZE_PARAMETERS = ("matrix_size", [5, 10, 20, 50, 100])
 
 
-def _gen_matrices(size, full_dense=False):
+def _gen_matrices(size, full_dense=False, rng=None):
     """
     Make random dense and sparse matrices of given size.
     Parameters
@@ -27,6 +26,9 @@ def _gen_matrices(size, full_dense=False):
     full_dense : bool
         If True, the full dense matrix is returned. Otherwise,
         only the upper triangle is returned.
+    rng : numpy.random.Generator
+        The generator to draw from. By default, one seeded with size: every
+        run, and every test of a size, draws the same matrices.
     Returns
     -------
     m_d : numpy.array
@@ -34,12 +36,21 @@ def _gen_matrices(size, full_dense=False):
     m_s : scipy.sparse.coo_matrix
         Random sparse matrix of size X size.
     """
-    # pylint: disable=no-member
-    m_d = np.array(np.triu(np.random.random((size, size))))
+    if rng is None:
+        rng = np.random.default_rng(size)
+    m_d = np.array(np.triu(rng.random((size, size))))
     m_s = coo_matrix(m_d)
     if full_dense:
         m_d += m_d.T - np.diag(np.diag(m_d))
     return m_d, m_s
+
+
+def test_random_matrices_are_reproducible():
+    """The random matrices are seeded: every run draws the same ones, so that
+    a failing test fails again when rerun."""
+    first, _ = _gen_matrices(10)
+    second, _ = _gen_matrices(10)
+    assert np.array_equal(first, second)
 
 
 @pytest.mark.filterwarnings("ignore::PendingDeprecationWarning")
@@ -49,9 +60,10 @@ def test_bin(matrix_size):
     Note: Normal behaviour is to create small bin at the end of chromosome with
     remaining fragments.
     """
-    M_d, M_s = _gen_matrices(matrix_size)
+    rng = np.random.default_rng(matrix_size)
+    M_d, M_s = _gen_matrices(matrix_size, rng=rng)
     n = M_d.shape[0]
-    subsample = max(1, np.random.randint(n // 2))
+    subsample = max(1, rng.integers(n // 2))
     remain = 0 if n % subsample == 0 else 1
     exp_n = (n // subsample) + remain
     B_d = hcs.bin_dense(M_d, subsample)
@@ -72,11 +84,12 @@ def test_bin_bp(matrix_size):
     Note: Normal behaviour is to create small bin at the end of chromosome with
     remaining fragments.
     """
-    M_d, M_s = _gen_matrices(matrix_size)
+    rng = np.random.default_rng(matrix_size)
+    M_d, M_s = _gen_matrices(matrix_size, rng=rng)
     n = M_d.shape[0]
     binsize = 3
     # Split into 2 Chromosomes and simulate genomic positions
-    size_ratio = np.random.random_sample()
+    size_ratio = rng.random()
     size1, size2 = int(n * size_ratio), int(n * (1 - size_ratio))
     if size1 + size2 < n:
         size2 += 1
@@ -115,7 +128,8 @@ def test_trim(matrix_size):
     Generate a random matrix and introduce outlier bins. Check if the correct
     number of bins are trimmed.
     """
-    M_d, _ = _gen_matrices(matrix_size)
+    rng = np.random.default_rng(matrix_size)
+    M_d, _ = _gen_matrices(matrix_size, rng=rng)
 
     # Compute thresholds
     sums = M_d.sum(axis=1)
@@ -123,12 +137,12 @@ def test_trim(matrix_size):
     min_val = np.median(sums) + 3 * mad_sums
     max_val = np.median(sums) + 3 * mad_sums
     # Choose random bins
-    trim_bins = np.random.randint(0, M_d.shape[0], 2)
+    trim_bins = rng.integers(0, M_d.shape[0], 2)
     # Add potential pre-existing outlier bins
     trim_bins = np.append(trim_bins, np.where((sums <= min_val) | (sums >= max_val))[0])
     trim_bins = np.unique(trim_bins)
     # Set bins to outlier values
-    M_d[:, trim_bins] = M_d[trim_bins, :] = random.choice([min_val, max_val])
+    M_d[:, trim_bins] = M_d[trim_bins, :] = [min_val, max_val][rng.integers(2)]
     # Compute trimming thresholds again
     sums = M_d.sum(axis=1)
     mad_sums = hcs.mad(M_d, axis=1)
