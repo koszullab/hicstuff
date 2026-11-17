@@ -415,6 +415,33 @@ def test_5spm_backends_write_the_same_pairs(synthetic_lib, indexed_genome, run_p
         assert len(alignments[0]) > 4000
 
 
+def test_5spm_records_the_aligned_5_ends(synthetic_lib, indexed_genome, run_pipeline):
+    """Mapping mode 5spm records each mate at its aligned 5' end, the end of
+    the sequenced molecule: a reverse-strand mate at the last base of its
+    alignment, not the first."""
+    run = run_pipeline("5spm_python", **_five_spm_kwargs(synthetic_lib, indexed_genome))
+    mates = {}
+    for bam in ("for.bam", "rev.bam"):
+        with pysam.AlignmentFile(str(run.tmp(bam))) as handle:
+            for r in handle:
+                if r.mapping_quality >= 30:
+                    five_end = r.reference_end if r.is_reverse else r.reference_start + 1
+                    strand = "-" if r.is_reverse else "+"
+                    mates.setdefault(r.query_name, []).append(
+                        (r.reference_id, five_end, r.reference_name, strand)
+                    )
+    expected = []
+    for name, ends in mates.items():
+        if len(ends) == 2:
+            # In the upper triangle
+            (_, pos1, chr1, strand1), (_, pos2, chr2, strand2) = sorted(ends, key=lambda e: e[:2])
+            expected.append([name, chr1, str(pos1), chr2, str(pos2), strand1, strand2])
+    with open(run.tmp("valid.pairs")) as handle:
+        pairs = [line.rstrip("\n").split("\t") for line in handle if not line.startswith("#")]
+    assert sorted(pairs) == sorted(expected)
+    assert sum("-" in pair[5:] for pair in pairs) > 2000
+
+
 def test_5spm_only_aligns_with_bwa(synthetic_lib, indexed_genome, tmp_path):
     kwargs = _five_spm_kwargs(synthetic_lib, indexed_genome)
     out_dir = tmp_path / "out"
