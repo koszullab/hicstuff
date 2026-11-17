@@ -39,14 +39,18 @@ hicstuff pipeline [OPTIONS] INPUT1 [INPUT2]
 `INPUT1` and `INPUT2` are the R1 and R2 FASTQ files, or the two BAM files of
 `--start-stage bam`. `--start-stage pairs` and `pairs_idx` take one pairs file.
 
+**Recommended:** `--mapping 5spm`, which aligns the mates with
+`bwa mem -5SPM`, in-process, and records each mate at its aligned 5' end. See
+[Mapping modes](guides/alignment.md#mapping-modes).
+
 | Option | Default | Description |
 |---|---|---|
 | `-g, --genome` | *required* | The reference: a FASTA file, or for bowtie2 the prefix of its index. |
 | `-S, --start-stage` | `fastq` | What the inputs are: `fastq`, `bam`, `pairs` (7 columns, uncompressed) or `pairs_idx` (9 columns, with fragments, uncompressed). |
 | `-e, --enzyme` | `5000` | Restriction enzyme, or several separated by commas (`DpnII,HinfI`); a fragment size in bp; or `mnase` or `dnase`, for 100 bp fragments. |
-| `-a, --aligner` | `bowtie2` | `bowtie2`, `bwa` or `minimap2`. Mapping mode `5spm` aligns with `bwa`. |
+| `-a, --aligner` | `bowtie2` | `bowtie2`, `bwa` or `minimap2`, for the mapping modes other than `5spm`, which aligns with `bwa`. |
 | `--aligner-backend` | `auto` | How bwa runs: `binary` (the bwa program), `python` (in-process, through pybwa) or `auto` (the program if it is on `PATH`, pybwa otherwise, and pybwa first in mode `5spm`). Default: `$HICSTUFF_ALIGNER_BACKEND`, else `auto`. |
-| `-m, --mapping` | `normal` | Mapping mode: `normal`, `iterative`, `cutsite` or `5spm`. See [Mapping modes](guides/alignment.md#mapping-modes). |
+| `-m, --mapping` | `normal` | Mapping mode: `5spm`, the recommended one, `normal`, `iterative` or `cutsite`. See [Mapping modes](guides/alignment.md#mapping-modes). |
 | `-q, --quality-min` | `30` | Minimum mapping quality of both mates of a pair. |
 | `-R, --read-len` | the first read's | Length of the longest reads, for mapping mode `iterative`. |
 | `--skip-count` | off | Do not count the reads of the FASTQ files before aligning them. |
@@ -71,18 +75,15 @@ hicstuff pipeline [OPTIONS] INPUT1 [INPUT2]
 | `-F, --force` | off | Replace the outputs and temporary files that exist. |
 
 ```bash
-# Reads to a fragment-level cool, with bwa in-process
-hicstuff pipeline -a bwa -e DpnII -g genome.fa -o out/ R1.fq.gz R2.fq.gz
+# Reads to a fragment-level cool, in the recommended mapping mode
+hicstuff pipeline -m 5spm -e DpnII -g genome.fa -o out/ R1.fq.gz R2.fq.gz
 
 # An Arima library, filtered, binned at 1 kb and up, balanced
-hicstuff pipeline -e DpnII,HinfI -b 1000 -t 8 -f -D -P sample -g genome.fa -o out/ \
-    R1.fq.gz R2.fq.gz
+hicstuff pipeline -m 5spm -e DpnII,HinfI -b 1000 -t 8 -f -D -P sample -g genome.fa \
+    -o out/ R1.fq.gz R2.fq.gz
 
-# bwa mem -5SPM, as the 4DN pipeline aligns
-hicstuff pipeline -m 5spm -e DpnII -t 8 -g genome.fa -o out/ R1.fq.gz R2.fq.gz
-
-# Reads aligned elsewhere
-hicstuff pipeline -S bam -e DpnII -g genome.fa -o out/ R1.bam R2.bam
+# Reads aligned elsewhere with bwa mem -5SPM, one BAM file per mate
+hicstuff pipeline -S bam -m 5spm -e DpnII -g genome.fa -o out/ R1.bam R2.bam
 ```
 
 ## Processing
@@ -163,7 +164,7 @@ hicstuff iteralign [OPTIONS] READS_FQ
 | `-T, --tempdir` | the current directory | Directory of the temporary files. |
 
 ```bash
-hicstuff iteralign -a bwa -g genome.fa -o R1.bam -t 8 R1.fq.gz
+hicstuff iteralign -g genome.fa -o R1.bam -t 8 R1.fq.gz
 ```
 
 ### `cutsite` { #cutsite }
@@ -366,7 +367,7 @@ hicstuff missview [OPTIONS] GENOME OUTPUT
 |---|---|---|
 | `-R, --read-len` | *required* | Length of the simulated reads, in bp. |
 | `-b, --binning` | `5000` | Resolution of the map, in bp (`5000` or `5kb`). |
-| `-a, --aligner` | `bowtie2` | `bowtie2`, `bwa` or `minimap2`, for reads of 100 bp or more only. |
+| `-a, --aligner` | `bowtie2` | `bowtie2`, `bwa` (as mapping mode `5spm` aligns) or `minimap2`, for reads of 100 bp or more only. |
 | `--aligner-backend` | `auto` | How bwa runs, as in [`pipeline`](#pipeline). |
 | `-t, --threads` | `1` | Threads. |
 | `-T, --tmpdir` | a new temporary directory | Directory of the temporary files, kept after the run. |

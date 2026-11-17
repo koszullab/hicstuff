@@ -18,15 +18,16 @@ pysam, one of its dependencies, publishes no Windows wheels.
     uv add hicstuff            # or as a dependency of your project
     ```
 
-That alone runs the whole pipeline, from FASTQ files to matrices, with bwa:
+That alone runs the whole pipeline, from FASTQ files to matrices, in mapping
+mode `5spm`, the recommended one:
 
 ```bash
-hicstuff pipeline --aligner bwa --enzyme DpnII --genome genome.fa R1.fq.gz R2.fq.gz
+hicstuff pipeline --mapping 5spm --enzyme DpnII --genome genome.fa R1.fq.gz R2.fq.gz
 ```
 
-needs no other program. bwa then runs in-process through
-[pybwa](https://github.com/fulcrumgenomics/pybwa), which pip installs with
-hicstuff.
+needs no other program: it aligns the mates with `bwa mem -5SPM`, in-process,
+through [pybwa](https://github.com/fulcrumgenomics/pybwa), which pip installs
+with hicstuff.
 
 !!! tip "Check it worked"
 
@@ -36,16 +37,16 @@ hicstuff.
 
 ## Aligners and other programs
 
-`--aligner` chooses the aligner that maps the reads:
+Mapping mode `5spm`, the recommended one, aligns with bwa, through pybwa
+unless `--aligner-backend binary` asks for the `bwa` program: it needs no
+program. See [Aligning reads](guides/alignment.md#mapping-modes). In the other
+mapping modes, `--aligner` chooses the aligner that maps the reads:
 
 | Aligner | How hicstuff runs it | To install |
 |---|---|---|
 | `bowtie2` (the default) | The `bowtie2` program | Not on PyPI: `apt-get install bowtie2`, `conda install -c bioconda bowtie2` or `brew install bowtie2` |
 | `bwa` | The `bwa` program if it is on `PATH`, otherwise in-process through pybwa. `--aligner-backend` (or `HICSTUFF_ALIGNER_BACKEND`) chooses | Nothing: pybwa comes with hicstuff |
 | `minimap2` | The `minimap2` program | Not on PyPI: `apt-get install minimap2`, conda or brew |
-
-Mapping mode `5spm` aligns with bwa only, through pybwa unless
-`--aligner-backend binary`. See [Aligning reads](guides/alignment.md).
 
 `hicstuff iteralign` and `hicstuff missview` always run the aligner, and
 `hicstuff pipeline` only to start from FASTQ files: `--start-stage bam`,

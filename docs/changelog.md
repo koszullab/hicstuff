@@ -45,9 +45,10 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
   with Zensical: guides to the pipeline, the aligners, digestion, the 3C event
   filter, the distance law and the commands on matrices, a reference of every
   command and option, the file formats, and the Python API from the
-  docstrings. The Sphinx sources (`doc/`) and the demo notebooks are gone, the
-  README is shorter, and the `docs` extra (`uv sync --extra docs`) installs
-  what builds the site instead of the `dev` extra's Sphinx.
+  docstrings. It recommends mapping mode `5spm`, which its examples use. The
+  Sphinx sources (`doc/`) and the demo notebooks are gone, the README is
+  shorter, and the `docs` extra (`uv sync --extra docs`) installs what builds
+  the site instead of the `dev` extra's Sphinx.
 
 ### Fixed
 

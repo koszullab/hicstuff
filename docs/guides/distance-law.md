@@ -10,8 +10,8 @@ with the distance.
 ## In the pipeline
 
 ```bash
-hicstuff pipeline --distance-law --plot --enzyme DpnII --genome genome.fa \
-    --outdir out/ R1.fq.gz R2.fq.gz
+hicstuff pipeline --mapping 5spm --distance-law --plot --enzyme DpnII \
+    --genome genome.fa --outdir out/ R1.fq.gz R2.fq.gz
 ```
 
 `--distance-law` (`-d`) writes `distance_law.txt`, from the pairs assigned to

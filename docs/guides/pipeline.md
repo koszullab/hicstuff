@@ -7,9 +7,11 @@ every option in one table, and [Concepts](../concepts.md#the-pipeline) draws
 the steps.
 
 ```bash
-hicstuff pipeline --enzyme DpnII --genome genome.fa --outdir out/ \
+hicstuff pipeline --mapping 5spm --enzyme DpnII --genome genome.fa --outdir out/ \
     R1.fq.gz R2.fq.gz
 ```
+
+`--mapping 5spm` is the recommended mapping mode: see [Alignment](#alignment).
 
 ## Inputs
 
@@ -109,9 +111,13 @@ temporary files take it too.
 
 ## Alignment
 
-`--aligner` (`-a`) is `bowtie2` (the default), `bwa` or `minimap2`, and
-`--mapping` (`-m`) one of four mapping modes: `normal`, `iterative`, `cutsite`
-or `5spm`. `--threads` (`-t`) sets the threads of the aligner and of the other
+`--mapping` (`-m`) chooses how the reads are aligned. **`5spm` is the
+recommended mode**: it aligns the mates with `bwa mem -5SPM`, as the 4DN,
+Juicer and Arima pipelines do, in-process unless `--aligner-backend binary`
+asks for the `bwa` program, and records each mate at its aligned 5' end. It is
+not the default, `normal`. The other modes, `normal`, `iterative` and
+`cutsite`, align with `--aligner` (`-a`): `bowtie2` (the default), `bwa` or
+`minimap2`. `--threads` (`-t`) sets the threads of the aligner and of the other
 steps. Each mate is aligned on its own; supplementary alignments are dropped,
 and a pair is kept when both mates aligned with a mapping quality of at least
 `--quality-min` (`-q`, 30 by default). [Aligning reads](alignment.md) explains
@@ -168,7 +174,7 @@ hicstuff's commands as with cooler's.
 
 ```bash
 # An Arima library at 1 kb and up, filtered, balanced
-hicstuff pipeline --aligner bwa --enzyme DpnII,HinfI --binning 1000 --threads 8 \
+hicstuff pipeline --mapping 5spm --enzyme DpnII,HinfI --binning 1000 --threads 8 \
     --filter --duplicates --prefix sample --genome genome.fa --outdir out/ \
     R1.fq.gz R2.fq.gz
 ```
@@ -186,8 +192,8 @@ distancelaw` does both, and plots it. See [The distance law](distance-law.md).
 ## Starting again from intermediate files
 
 ```bash
-# Reads aligned elsewhere, one BAM file per mate
-hicstuff pipeline -S bam -e DpnII -g genome.fa -o out/ R1.bam R2.bam
+# Reads aligned elsewhere with bwa mem -5SPM, one BAM file per mate
+hicstuff pipeline -S bam -m 5spm -e DpnII -g genome.fa -o out/ R1.bam R2.bam
 
 # A pairs file from another tool, uncompressed
 hicstuff pipeline -S pairs -e DpnII -g genome.fa -o out/ sample.pairs
@@ -199,7 +205,9 @@ hicstuff pipeline -S pairs_idx -e DpnII -g genome.fa -b 5000 -o out_5kb/ \
 ```
 
 The enzyme and genome must be those of the first run: they define the
-fragments the pairs are assigned to. Starting from pairs, the log holds no
+fragments the pairs are assigned to. From BAM files, `-m 5spm` records each
+mate at its aligned 5' end, as when the pipeline aligns the reads in that mode;
+the other modes record the leftmost base of each alignment. Starting from pairs, the log holds no
 alignment statistics, and `hicstuff stats` cannot read it.
 
 ## Reading the log

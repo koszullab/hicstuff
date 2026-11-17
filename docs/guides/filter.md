@@ -10,7 +10,7 @@ explains how hicstuff finds and removes them.
 ## In the pipeline
 
 ```bash
-hicstuff pipeline --filter --plot --enzyme DpnII --genome genome.fa \
+hicstuff pipeline --mapping 5spm --filter --plot --enzyme DpnII --genome genome.fa \
     --outdir out/ R1.fq.gz R2.fq.gz
 ```
 

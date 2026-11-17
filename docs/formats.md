@@ -169,15 +169,15 @@ line per message, with its time and level.
 
 ```text
 ## hicstuff: v3.3.0 log file
-## date: 2026-11-17 22:19:22
+## date: 2026-11-17 23:22:37
 ## enzyme: DpnII
 ## input1: R1.fq.gz
 ## input2: R2.fq.gz
 ## ref: genome.fa
-## aligner: bwa mem in-process, pybwa 2.3.2 (bwa 0.7.18)
+## aligner: bwa mem -5SPM in-process, pybwa 2.3.2 (bwa 0.7.18)
 ---
-2026-11-17,22:19:22 :: INFO :: Checking content of fastq files.
-2026-11-17,22:19:22 :: INFO :: 10000 reads found in each fastq file.
+2026-11-17,23:22:37 :: INFO :: Checking content of fastq files.
+2026-11-17,23:22:37 :: INFO :: 10000 reads found in each fastq file.
 ```
 
 The `aligner` line is written when bwa runs in-process, or in mapping mode

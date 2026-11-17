@@ -16,7 +16,9 @@ hide:
 them, filters out the uninformative 3C events and builds the contact map, in
 one command, for any genome. It also views, rebins, subsamples and converts
 contact maps, computes the distance law, and exposes every step as a Python
-library.
+library. Its recommended mapping mode, `5spm`, aligns the reads as the 4DN
+pipeline does, with bwa running in-process: `pip install hicstuff` is all it
+needs.
 { .cx-lede }
 
 <div class="cx-install" markdown>

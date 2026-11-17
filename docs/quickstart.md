@@ -27,30 +27,33 @@ them.
 ## Step 1: run the pipeline
 
 ```bash
-hicstuff pipeline --aligner bwa --enzyme DpnII --genome seq.fa --outdir out \
+hicstuff pipeline --mapping 5spm --enzyme DpnII --genome seq.fa --outdir out \
     sample.reads_for.fastq.gz sample.reads_rev.fastq.gz
 ```
 
-`--aligner bwa` aligns the reads with bwa, in-process: no aligner needs to be
-installed. The run takes a few seconds, and logs each step (excerpt):
+`--mapping 5spm` is the recommended mapping mode. It aligns the mates with
+`bwa mem -5SPM`, as the 4DN, Juicer and Arima pipelines do, and records each
+mate at its aligned 5' end. bwa runs in-process: no aligner needs to be
+installed. [Aligning reads](guides/alignment.md#5spm) explains the mode. The
+run takes a few seconds, and logs each step (excerpt):
 
 ```console
 INFO :: Checking content of fastq files.
 INFO :: 10000 reads found in each fastq file.
-INFO :: Aligning with bwa mem in-process, pybwa 2.3.2 (bwa 0.7.18).
-INFO :: Now separately mapping R1 and R2 reads...
+INFO :: Aligning with bwa mem -5SPM in-process, pybwa 2.3.2 (bwa 0.7.18).
+INFO :: Now mapping R1 and R2 reads with bwa mem -5SPM...
 INFO :: Genome digested into 564 fragments with a median length of 87.5
 INFO :: 89.00% reads (single ends) mapped with Q >= 30 (17876/20000)
 INFO :: 7891 pairs successfully mapped (78.91%)
 INFO :: Generating matrix from pairs file out/tmp/valid_idx.pairs (7891 pairs in the file)
-INFO :: Contact map generated after 0h 0m 1s
+INFO :: Contact map generated after 0h 0m 2s
 ```
 
 ## Step 2: look at what it wrote
 
 ```console
 $ ls out
-abs_fragments_contacts_weighted.cool  hicstuff_20261117221914.log  tmp
+abs_fragments_contacts_weighted.cool  hicstuff_20261117232237.log  tmp
 fragments_list.txt                    info_contigs.txt             valid_idx.pairs.gz
 ```
 
@@ -77,7 +80,7 @@ hicstuff stats out/hicstuff_*.log
 ```
 
 ```console
-Sample:             hicstuff_20261117221914.log
+Sample:             hicstuff_20261117232237.log
 Total read pairs:   10,000
 Mapped reads:       17,876 (89.38%  of all reads)
 Unmapped reads:     2,124 (10.62%  of all reads)
@@ -103,14 +106,14 @@ Most analyses want bins of a fixed size rather than restriction fragments.
 after the sample.
 
 ```bash
-hicstuff pipeline --aligner bwa --enzyme DpnII --genome seq.fa --outdir out \
+hicstuff pipeline --mapping 5spm --enzyme DpnII --genome seq.fa --outdir out \
     --binning 1000 --filter --duplicates --prefix sample \
     sample.reads_for.fastq.gz sample.reads_rev.fastq.gz
 ```
 
 ```console
 $ ls out/sample.*
-out/sample.chr.tsv    out/sample.hicstuff_20261117221922.log  out/sample.valid_idx_pcrfree.pairs.gz
+out/sample.chr.tsv    out/sample.hicstuff_20261117232252.log  out/sample.valid_idx_pcrfree.pairs.gz
 out/sample.frags.tsv  out/sample.mcool
 ```
 
@@ -153,7 +156,7 @@ hpi.full_pipeline(
     genome="seq.fa",
     input1="sample.reads_for.fastq.gz",
     input2="sample.reads_rev.fastq.gz",
-    aligner="bwa",
+    mapping="5spm",
     enzyme="DpnII",
     out_dir="out",
     force=True,
@@ -172,6 +175,6 @@ hcv.plot_matrix(hcv.sparse_to_dense(mat), filename="map.png")
 
 - [Concepts](concepts.md): fragments, bins, pairs and 3C events.
 - [Running the pipeline](guides/pipeline.md): every input, output and option.
-- [Aligning reads](guides/alignment.md): bowtie2, minimap2 or bwa, and the four
-  mapping modes.
+- [Aligning reads](guides/alignment.md): the four mapping modes, `5spm` first,
+  and the aligners.
 - [CLI reference](cli.md): every command.

@@ -20,9 +20,9 @@ library, the [3C tutorial](https://github.com/axelcournac/3C_tutorial) and the
   balanced, multi-resolution `.mcool`. It can also start from BAM or pairs
   files.
 - **Nothing to install but hicstuff.** `pip install hicstuff` runs the whole
-  pipeline: with `--aligner bwa`, bwa runs in-process through
-  [pybwa](https://github.com/fulcrumgenomics/pybwa). bowtie2 and minimap2 are
-  there too, when they are installed.
+  pipeline in mapping mode `5spm`, the recommended one: bwa runs in-process,
+  through [pybwa](https://github.com/fulcrumgenomics/pybwa). bowtie2 and
+  minimap2 are there too, for the other modes, when they are installed.
 - **Any genome, any protocol.** Restriction enzymes by name, several at once
   (`DpnII,HinfI` for Arima kits), fixed-size chunks for MNase or DNase
   libraries, circular chromosomes, and a minimum contig size for draft
@@ -34,9 +34,10 @@ library, the [3C tutorial](https://github.com/axelcournac/3C_tutorial) and the
 - **A look at the library itself.** The 3C events each pair comes from
   (loops, uncuts, abnormal pairs), PCR duplicates, the distance law P(s) and a
   summary of the run's mapping and filtering statistics.
-- **Four ways to align.** Plain alignment, iterative alignment of truncated
-  reads, reads cut at their ligation sites, and `bwa mem -5SPM` as the 4DN,
-  Juicer and Arima pipelines run it.
+- **Four ways to align.** `bwa mem -5SPM`, as the 4DN, Juicer and Arima
+  pipelines run it: mapping mode `5spm`, the recommended one. Then plain
+  alignment, iterative alignment of truncated reads, and reads cut at their
+  ligation sites.
 - **Tools for the maps it writes.** `view`, `rebin`, `subsample`, `convert`
   and `scalogram` take cool, 2D bedgraph or graal matrices; `distancelaw`
   works from the pairs, and `missview` from a genome alone.
@@ -48,7 +49,7 @@ library, the [3C tutorial](https://github.com/axelcournac/3C_tutorial) and the
 
 ```bash
 # Reads to a balanced multi-resolution .mcool, at 1 kb and up, for an Arima library
-hicstuff pipeline --aligner bwa --enzyme DpnII,HinfI --binning 1000 --threads 8 \
+hicstuff pipeline --mapping 5spm --enzyme DpnII,HinfI --binning 1000 --threads 8 \
     --filter --duplicates --genome genome.fa --outdir out/ R1.fq.gz R2.fq.gz
 
 # What happened to the reads

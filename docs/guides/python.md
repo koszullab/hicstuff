@@ -33,7 +33,7 @@ hpi.full_pipeline(
     genome="genome.fa",
     input1="R1.fq.gz",
     input2="R2.fq.gz",
-    aligner="bwa",
+    mapping="5spm",
     enzyme="DpnII,HinfI",
     filter_events=True,
     pcr_duplicates=True,

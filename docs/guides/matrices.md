@@ -142,5 +142,7 @@ than the reads of the whole genome did. The image draws the missing bins'
 rows and columns white, and its title gives their proportion.
 
 `--aligner` (`-a`) is `bowtie2` (default), `bwa` or `minimap2`; use minimap2
-only for reads of 100 bp or more. `--threads` (`-t`), `--tmpdir` (`-T`) and
+only for reads of 100 bp or more. Simulate with the aligner of the runs to
+come: `bwa` for mapping mode `5spm`, the recommended one, as above, which runs
+in-process like the pipeline's. `--threads` (`-t`), `--tmpdir` (`-T`) and
 `--aligner-backend` work as in the pipeline.

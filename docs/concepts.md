@@ -13,7 +13,9 @@ which come from either side of a ligation junction. The more often two loci are
 found in the same pair, the closer they tended to lie in the nucleus.
 
 hicstuff aligns the two mates separately, as single-end reads, then pairs them
-again by read name. A pair whose two mates aligned with a mapping quality of at
+again by read name. The recommended way, mapping mode `5spm`, aligns them with
+`bwa mem -5SPM`, as the 4DN, Juicer and Arima pipelines do (see
+[Aligning reads](guides/alignment.md#5spm)). A pair whose two mates aligned with a mapping quality of at
 least `--quality-min` (30 by default) is a **contact**. The contacts are
 counted between genomic intervals to make the **contact map**.
 

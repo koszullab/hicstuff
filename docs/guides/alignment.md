@@ -1,13 +1,65 @@
 # Aligning reads
 
 hicstuff aligns the two mates of each read pair separately, as single-end
-reads, then pairs them again by read name. This page covers the aligners, the
-four mapping modes of `hicstuff pipeline`, and the two commands that run an
-alignment step on its own: `iteralign` and `cutsite`.
+reads, then pairs them again by read name. This page covers the four mapping
+modes of `hicstuff pipeline`, starting with `5spm`, the recommended one; the
+aligners; and the two commands that run an alignment step on its own:
+`iteralign` and `cutsite`.
+
+## Mapping modes
+
+`--mapping` (`-m`) chooses how the pipeline aligns the reads. **`5spm` is the
+recommended mode** to process a library. It is not the default, `normal`:
+give it on the command line.
+
+### `5spm`
+
+The mates are aligned with `bwa mem -5SPM`, as the 4DN, Juicer and Arima
+pipelines align them: of a read cut into two parts by a ligation junction,
+the 5'-most part is the primary alignment. Each mate is then recorded at its
+aligned 5' end, the end of the sequenced molecule, as pairtools records it;
+the other modes record the leftmost base of the alignment, which is the 3' end
+of a mate on the reverse strand.
+
+`5spm` aligns with bwa only: `--aligner` may be left out, or set to `bwa`. bwa
+runs in-process, through [pybwa](https://github.com/fulcrumgenomics/pybwa),
+which pip installs with hicstuff, so the mode needs no other program.
+`--aligner-backend binary` runs the `bwa` program instead; in this mode, both
+give the same alignments (see [bwa in-process](#bwa-in-process)).
+
+```bash
+hicstuff pipeline --mapping 5spm --enzyme DpnII,HinfI --threads 8 \
+    --genome genome.fa --outdir out/ R1.fq.gz R2.fq.gz
+```
+
+### `normal`
+
+Each mate is aligned in full, with the aligner `--aligner` chooses. This is the
+default.
+
+### `iterative`
+
+A mate that spans a ligation junction is made of two loci, and may align to
+neither. In iterative mode, each mate is first truncated to its first 20
+bases and aligned; those that do not align with a mapping quality of at least
+`--quality-min` are extended by 20 bases and aligned again, and so on up to
+their full length. The length of the reads is that of the first read, unless
+`--read-len` (`-R`) gives it, for files of reads of several lengths.
+
+### `cutsite`
+
+Each read is cut at the ligation sites of the enzyme (`GATCGATC` for DpnII:
+the site, filled in and ligated to itself), and the pieces of the two mates are
+paired again, each piece of R1 with each piece of R2. A read is only cut at a
+site where the piece before it is longer than 20 bases, and a shorter last
+piece is dropped. The new pairs are then aligned in `normal` mode.
+`cutsite` needs a restriction enzyme: with a fragment size, the pipeline
+warns and aligns in `iterative` mode instead.
 
 ## The aligners
 
-`--aligner` (`-a`) chooses one of three:
+Mode `5spm` aligns with bwa. The other modes align with the aligner
+`--aligner` (`-a`) chooses:
 
 | Aligner | Command run | Genome |
 |---|---|---|
@@ -32,10 +84,8 @@ minimap2 indexes the genome as it aligns.
 
 ## bwa in-process
 
-With `--aligner bwa`, bwa runs either as the `bwa` program or in-process,
-through [pybwa](https://github.com/fulcrumgenomics/pybwa), which pip installs
-with hicstuff. `--aligner-backend` chooses, on `pipeline`, `iteralign` and
-`missview`:
+bwa runs either as the `bwa` program or in-process, through pybwa.
+`--aligner-backend` chooses, on `pipeline`, `iteralign` and `missview`:
 
 | `--aligner-backend` | bwa runs |
 |---|---|
@@ -47,59 +97,16 @@ Without the option, the `HICSTUFF_ALIGNER_BACKEND` environment variable
 chooses, and `auto` applies when it is not set either. The log says which ran:
 
 ```console
-## aligner: bwa mem in-process, pybwa 2.3.2 (bwa 0.7.18)
+## aligner: bwa mem -5SPM in-process, pybwa 2.3.2 (bwa 0.7.18)
 ```
 
-Both give the same alignments, but for reads with several alignments of equal
-score, of which they can make a different one primary: pybwa aligns the reads
-of a file in batches, and bwa breaks ties with a hash of each read's position
-in its batch. Beyond the first 10,000 reads of a file, the choice can differ
-from the bwa program's. In our tests this moved 0.17% of the alignments, none
-with a mapping quality of 30 or more. In mapping mode `5spm`, the 5'-most part
-of a read is primary, and no such tie arises.
-
-## Mapping modes
-
-`--mapping` (`-m`) chooses how the pipeline aligns the reads:
-
-### `normal`
-
-Each mate is aligned in full. This is the default.
-
-### `iterative`
-
-A mate that spans a ligation junction is made of two loci, and may align to
-neither. In iterative mode, each mate is first truncated to its first 20
-bases and aligned; those that do not align with a mapping quality of at least
-`--quality-min` are extended by 20 bases and aligned again, and so on up to
-their full length. The length of the reads is that of the first read, unless
-`--read-len` (`-R`) gives it, for files of reads of several lengths.
-
-### `cutsite`
-
-Each read is cut at the ligation sites of the enzyme (`GATCGATC` for DpnII:
-the site, filled in and ligated to itself), and the pieces of the two mates are
-paired again, each piece of R1 with each piece of R2. A read is only cut at a
-site where the piece before it is longer than 20 bases, and a shorter last
-piece is dropped. The new pairs are then aligned in `normal` mode.
-`cutsite` needs a restriction enzyme: with a fragment size, the pipeline
-warns and aligns in `iterative` mode instead.
-
-### `5spm`
-
-The mates are aligned with `bwa mem -5SPM`, as the 4DN, Juicer and Arima
-pipelines align them: of a read cut into two parts by a ligation junction,
-the 5'-most part is the primary alignment. Each mate is then recorded at its
-aligned 5' end, the end of the sequenced molecule, as pairtools records it;
-the other modes record the leftmost base of the alignment, which is the 3' end
-of a mate on the reverse strand.
-
-`5spm` aligns with bwa only: `--aligner` may be left out, or set to `bwa`. It
-runs through pybwa unless `--aligner-backend binary` is given.
-
-```bash
-hicstuff pipeline -m 5spm -e DpnII,HinfI -t 8 -o out/ -g genome.fa R1.fq.gz R2.fq.gz
-```
+In mapping mode `5spm`, the two give the same alignments: the 5'-most part of
+a read is primary, and no tie between alignments of equal score arises. In the
+other modes, a read with several alignments of equal score can get a different
+primary one: pybwa aligns the reads of a file in batches, and bwa breaks ties
+with a hash of each read's position in its batch. Beyond the first 10,000 reads
+of a file, the choice can differ from the bwa program's. In our tests this
+moved 0.17% of the alignments, none with a mapping quality of 30 or more.
 
 ## `hicstuff iteralign`
 
@@ -107,15 +114,14 @@ Runs the iterative alignment on one FASTQ file, and writes a BAM file of the
 reads it aligned:
 
 ```bash
-hicstuff iteralign --genome genome.fa --out-bam R1.bam --aligner bwa --threads 8 \
-    R1.fq.gz
+hicstuff iteralign --genome genome.fa --out-bam R1.bam --threads 8 R1.fq.gz
 ```
 
 Unlike the pipeline, `iteralign` builds no index: for bowtie2 and bwa,
 `--genome` must name an index built beforehand, as above (`genome.fa` once
-`bwa index genome.fa` has run). `--min-len` (`-l`) sets the length reads are
-first truncated to (20 bases), and `--tempdir` (`-T`) where the truncated
-reads are written.
+`bowtie2-build genome.fa genome.fa` has run). `--min-len` (`-l`) sets the
+length reads are first truncated to (20 bases), and `--tempdir` (`-T`) where
+the truncated reads are written.
 
 ## `hicstuff cutsite`
 

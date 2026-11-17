@@ -24,9 +24,10 @@ pip install hicstuff
 ```
 
 hicstuff needs Python 3.10 or later, on Linux or macOS. That alone runs the
-whole pipeline with `--aligner bwa`, which aligns in-process through
-[pybwa](https://github.com/fulcrumgenomics/pybwa). bowtie2 (the default
-aligner) and minimap2 are separate programs. hicstuff is also on
+whole pipeline in mapping mode `5spm`, the recommended one, which aligns with
+bwa in-process, through [pybwa](https://github.com/fulcrumgenomics/pybwa).
+bowtie2 and minimap2, which the other mapping modes can use, are separate
+programs. hicstuff is also on
 [bioconda](https://bioconda.github.io/recipes/hicstuff/README.html), and in a
 Docker image, `ghcr.io/koszullab/hicstuff`. See
 [Installation](https://koszullab.github.io/hicstuff/installation/) for the
@@ -34,8 +35,13 @@ aligners, the platforms that need a compiler, and the licence.
 
 ## Quick start
 
+Mapping mode `5spm` is the recommended way to process a library. It aligns the
+mates with `bwa mem -5SPM`, as the 4DN, Juicer and Arima pipelines do, and
+records each mate at its aligned 5' end, the end of the sequenced molecule:
+
 ```sh
-hicstuff pipeline --aligner bwa --enzyme DpnII --genome genome.fa --outdir out/ R1.fq.gz R2.fq.gz
+hicstuff pipeline --mapping 5spm --enzyme DpnII --genome genome.fa --outdir out/ \
+    R1.fq.gz R2.fq.gz
 ```
 
 writes the contact map at restriction-fragment resolution,
@@ -46,7 +52,8 @@ uncuts, loops and PCR duplicates.
 
 ```sh
 hicstuff stats out/hicstuff_*.log
-hicstuff view --binning 10kb --normalize --output map.png out/abs_fragments_contacts_weighted.cool
+hicstuff view --binning 10kb --normalize --output map.png \
+    out/abs_fragments_contacts_weighted.cool
 ```
 
 The [Quickstart](https://koszullab.github.io/hicstuff/quickstart/) runs these
