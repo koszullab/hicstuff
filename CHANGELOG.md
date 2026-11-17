@@ -33,10 +33,10 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
 - When the aligner is missing, the error also suggests `-a bwa`, which needs
   no program (#125).
 - An installation of hicstuff now contains GPLv3 code: every pybwa wheel
-  compiles in bwa. See the licence section of the README.
+  compiles in bwa (#125). See the licence section of the README.
 - The Docker image no longer ships samtools, which hicstuff has not needed
-  since it runs the samtools that pysam bundles.
-- The package declares its licence as an SPDX expression (PEP 639).
+  since it runs the samtools that pysam bundles (#127).
+- The package declares its licence as an SPDX expression (PEP 639) (#127).
 
 ### Fixed
 
