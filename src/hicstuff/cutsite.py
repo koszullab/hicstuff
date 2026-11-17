@@ -18,6 +18,7 @@ This module contains the following functions:
     - cutsite_read
     - write_pair
     - _cut_pairs
+    - _read_fastq
     - _writer
 """
 
@@ -26,7 +27,7 @@ import queue as queues
 import sys
 import threading
 
-import pyfastx
+import pysam
 
 import hicstuff.digest as hcd
 from hicstuff.log import logger
@@ -117,10 +118,7 @@ def _cut_pairs(fq_for, fq_rev, ligation_sites, mode, seed_size, queue, max_stack
     current_stack = 0
 
     # Iterate on all pairs
-    for read_for, read_rev in zip(
-        pyfastx.Fastq(fq_for, build_index=False),
-        pyfastx.Fastq(fq_rev, build_index=False),
-    ):
+    for read_for, read_rev in zip(_read_fastq(fq_for), _read_fastq(fq_rev)):
         # Count the numbers of original reads processed.
         original_number_of_pairs += 1
 
@@ -177,6 +175,26 @@ def _cut_pairs(fq_for, fq_rev, ligation_sites, mode, seed_size, queue, max_stack
     # The last, incomplete stack
     queue.put((new_reads_for.encode(), new_reads_rev.encode()))
     return original_number_of_pairs, final_number_of_pairs
+
+
+def _read_fastq(path):
+    """Yield the name, sequence and quality of each read of a fastq file,
+    plain or gzip-compressed.
+
+    Raises
+    ------
+    ValueError
+        If a read has a sequence but no quality: the file is not fastq, or
+        is truncated.
+    """
+    # The strings are copied out of each record before the next is read, so
+    # pysam need not copy the records themselves (persist=False)
+    with pysam.FastxFile(path, persist=False) as handle:
+        for read in handle:
+            if read.quality is None and read.sequence:
+                raise ValueError(f"{path} is not a fastq file: read {read.name} has no quality.")
+            # An empty read has no quality for pysam, an empty one for the cutter
+            yield read.name, read.sequence, read.quality or ""
 
 
 def cutsite_read(ligation_sites, seq, qual, seed_size=0):
