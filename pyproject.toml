@@ -43,9 +43,9 @@ dependencies = [
     "rich-click>=1.7",
     "biopython",
     "pysam",
-    "pyfastx",
     "cooler",
     "click>=8.0",
+    "python-dateutil",
 ]
 
 [project.optional-dependencies]
