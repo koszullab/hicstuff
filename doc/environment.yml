@@ -1,8 +1,0 @@
-name: hicstuff
-dependencies:
-  - notebook
-  - sphinx
-  - nbsphinx
-  - recommonmark
-  - hicstuff
-  - docutils < 0.18

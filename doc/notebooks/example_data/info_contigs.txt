@@ -1,2 +1,0 @@
-contig	length	n_frags	cumul_length
-chr	1222199	1222	0
