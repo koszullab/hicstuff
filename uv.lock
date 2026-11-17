@@ -1360,7 +1360,7 @@ requires-dist = [
     { name = "numpy" },
     { name = "pandas", specifier = ">=1.5.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.0" },
-    { name = "pybwa", marker = "python_full_version >= '3.10'", specifier = ">=2.3.2,<2.4" },
+    { name = "pybwa", specifier = ">=2.3.2,<2.4" },
     { name = "pysam", specifier = ">=0.23" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0" },

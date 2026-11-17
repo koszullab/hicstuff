@@ -116,7 +116,7 @@ def resolve_backend(requested=None, prefer_python=False):
                 return backend
         msg = (
             "Neither the bwa program nor pybwa is installed, and one of them is needed to "
-            "align reads with bwa: install pybwa (pip install pybwa, Python 3.10 or later), "
+            "align reads with bwa: install pybwa (pip install pybwa), "
             "or the bwa program."
         )
     elif found[requested]:
@@ -130,7 +130,7 @@ def resolve_backend(requested=None, prefer_python=False):
     else:
         msg = (
             "pybwa is not installed, and needed to align reads with --aligner-backend python: "
-            "install it (pip install pybwa, Python 3.10 or later), or use --aligner-backend "
+            "install it (pip install pybwa), or use --aligner-backend "
             "binary, which runs the bwa program."
         )
     logger.error(msg)

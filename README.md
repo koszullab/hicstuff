@@ -54,7 +54,7 @@ If `hicstuff` is installed via pip, the aligner that maps the reads is not
 installed with it: `bowtie2`, `bwa` or `minimap2`, whichever `--aligner`
 names (`bowtie2` by default). bwa is the exception: without the `bwa`
 program, it runs in-process through [pybwa](https://github.com/fulcrumgenomics/pybwa),
-which is installed with hicstuff on Python 3.10 or later.
+which is installed with hicstuff.
 `hicstuff iteralign` and `hicstuff missview`
 always run the aligner, and `hicstuff pipeline` only to start from FASTQ files:
 `hicstuff pipeline --start-stage bam`, `pairs` or `pairs_idx` needs no aligner,
