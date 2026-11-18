@@ -147,6 +147,34 @@ def test_load_index_builds_bwa_index(synthetic_lib, tmp_path):
         assert built == (expected / f"genome{suffix}").read_bytes(), suffix
 
 
+def test_write_fasta_reads_the_sequence_of_a_bwa_index(tmp_path):
+    """The sequences of a bwa index are those of its fasta file, in
+    uppercase: N and the other IUPAC codes in runs at any position, and
+    sequences of any length."""
+    rng = random.Random(1)
+
+    def bases(n):
+        return "".join(rng.choice("ACGT") for _ in range(n))
+
+    sequences = {
+        "chr1": "NNNN" + bases(1001) + "acgtnnnRYK" + bases(123) + "NNN",
+        "chr2": bases(1),
+        "chrN": "N" * 7,
+        "chr3": bases(240) + "N" + bases(7),
+    }
+    fasta = tmp_path / "genome.fa"
+    fasta.write_text("".join(f">{name} comment\n{seq}\n" for name, seq in sequences.items()))
+    hbm.build_index(str(fasta), str(tmp_path / "index"))
+    out = tmp_path / "out.fa"
+    with open(out, "wb") as handle:
+        hbm.write_fasta(str(tmp_path / "index"), handle, line_length=60)
+    with pysam.FastxFile(str(out)) as records:
+        assert {record.name: record.sequence for record in records} == {
+            name: seq.upper() for name, seq in sequences.items()
+        }
+    assert max(len(line) for line in out.read_text().splitlines()) == 60
+
+
 @pytest.mark.parametrize(("min_length", "method"), [(100, "RB2"), (1000, "BWTSW")])
 def test_build_index_runs_the_algorithm_of_bwa_index(min_length, method, tmp_path, monkeypatch):
     """bwtsw above 50 Mb, is below: pybwa 2.3 runs them for RB2 and BWTSW."""
@@ -440,6 +468,52 @@ def test_5spm_records_the_aligned_5_ends(synthetic_lib, indexed_genome, run_pipe
         pairs = [line.rstrip("\n").split("\t") for line in handle if not line.startswith("#")]
     assert sorted(pairs) == sorted(expected)
     assert sum("-" in pair[5:] for pair in pairs) > 2000
+
+
+def _index_only(genome, prefix):
+    """Copy the bwa index of genome to prefix, without the fasta file."""
+    prefix.parent.mkdir()
+    for suffix in hbm.INDEX_SUFFIXES:
+        shutil.copy(genome + suffix, str(prefix) + suffix)
+    return str(prefix)
+
+
+def test_bwa_index_genome(run_pipeline, hide_tools, tmp_path):
+    """The genome sequence is read from a bwa index without fasta file, by
+    hicstuff: the run writes what a run from the fasta file writes."""
+    hbm.build_index("test_data/genome/seq.fa", str(tmp_path / "seq"))
+    index = _index_only(str(tmp_path / "seq"), tmp_path / "index" / "seq")
+    runs = {}
+    for name, genome in (("fasta", "test_data/genome/seq.fa"), ("index", index)):
+        # Each run gets its own copy of the input pairs
+        pairs = tmp_path / f"{name}.pairs"
+        shutil.copy("test_data/valid.pairs", pairs)
+        if name == "index":
+            hide_tools("bowtie2", "bowtie2-build", "bowtie2-inspect", "bwa", "minimap2")
+        runs[name] = run_pipeline(
+            f"bwa_{name}_genome",
+            genome=genome,
+            aligner="bwa",
+            input1=str(pairs),
+            start_stage="pairs",
+            enzyme="DpnII",
+            mat_fmt="graal",
+        )
+    for name in ("fragments_list.txt", "info_contigs.txt", "abs_fragments_contacts_weighted.txt"):
+        assert runs["index"].path(name).read_bytes() == runs["fasta"].path(name).read_bytes()
+
+
+def test_5spm_from_a_bwa_index_without_fasta(synthetic_lib, indexed_genome, run_pipeline, tmp_path):
+    """Reads are aligned to a bwa index without fasta file as to the index of
+    the fasta file."""
+    kwargs = _five_spm_kwargs(synthetic_lib, indexed_genome)
+    fasta = run_pipeline("5spm_python", **kwargs)
+    kwargs["genome"] = _index_only(indexed_genome, tmp_path / "index" / "genome")
+    index = run_pipeline("5spm_python_index_only", **kwargs)
+    for name in ("fragments_list.txt", "info_contigs.txt"):
+        assert index.path(name).read_bytes() == fasta.path(name).read_bytes()
+    for name in ("valid_idx_pcrfree.pairs.gz", "abs_fragments_contacts_weighted.cool"):
+        assert _content(index.path(name)) == _content(fasta.path(name))
 
 
 def test_5spm_only_aligns_with_bwa(synthetic_lib, indexed_genome, tmp_path):

@@ -28,6 +28,9 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
   Python.
 - The log of `hicstuff pipeline` records the command that ran it, quoted to
   paste in a shell, on a `## cmd:` line after the date.
+- The `--genome` of `hicstuff pipeline` can be the prefix of a bwa index
+  without its FASTA, as it could be of a bowtie2 index: hicstuff reads the
+  sequence from the index's `.pac` and `.amb` files, with no program.
 
 ### Changed
 
@@ -58,6 +61,12 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
 
 - Iterative mapping with `-a mm2`, `-a minimap` or `-a bt2` aligned with
   bowtie2 in its final round (#125).
+- The pipeline copies and indexes a FASTA without index in a directory of its
+  own in the temporary directory, which the cleanup removes: the index files
+  it built were left in the temporary directory.
+- A `--genome` that is neither a FASTA file nor the prefix of an index the
+  aligner reads stops the pipeline before it writes anything. The error was
+  logged, and the run went on until a later step failed.
 
 ### Outputs
 

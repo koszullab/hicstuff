@@ -1181,6 +1181,16 @@ def full_pipeline(
     # Check if the genome is an index or fasta file
     idx = hio.check_fasta_index(genome, mode=aligner)
     is_fasta = hio.check_is_fasta(genome)
+    # The genome is a fasta file, or the prefix of a bowtie2 or bwa index from
+    # which its sequence is read, for the digestion and the fragments.
+    # minimap2 reads a fasta file only.
+    if not (is_fasta or (idx is not None and aligner != "minimap2")):
+        logger.error(
+            "The genome must be a fasta file, or the prefix of a %s index: %s",
+            "bowtie2 or bwa" if aligner == "minimap2" else aligner,
+            genome,
+        )
+        sys.exit(1)
     # Check that the third parties the run uses can be run: the aligner only
     # aligns reads from fastq files. bwa runs as a program or in-process.
     backend = None
@@ -1268,7 +1278,6 @@ def full_pipeline(
 
     # Define temporary file names
     log_file = _out_file("hicstuff_" + now + ".log")
-    tmp_genome = _tmp_file("genome.fa.gz")
     bam1 = _tmp_file("for.bam")
     bam2 = _tmp_file("rev.bam")
     pairs = _tmp_file("valid.pairs")
@@ -1308,29 +1317,27 @@ def full_pipeline(
         except:
             raise
 
-    # Different aligners accept different files. Make sure the input format is good.
-    # Note bowtie2 can extract fasta from the index, but bwa cannot
-    sane_input = {"bowtie2": is_fasta or idx, "minimap2": is_fasta, "bwa": is_fasta}
-
-    if not sane_input[aligner]:
-        logger.error("You must provide either a fasta or bowtie2 index prefix as genome")
-
-    # Just use the input genome if it is indexed
+    # What this run writes from the genome goes to a directory of its own,
+    # which cleanup removes: the copy of a fasta file without index and the
+    # index built from it, or the sequence read from an index without fasta.
+    genome_dir = hio.generate_temp_dir(tmp_dir)
+    tmp_genome = join(genome_dir, "genome.fa.gz")
     if is_fasta and idx:
+        # Indexed, or for minimap2, which needs no index file
         fasta = genome
-    # Otherwise copy it in tmpdir (in compressed format) for indexing, unless the input is a
-    # bt2 index, in which case fasta will be extracted later from it.
-    else:
-        if is_fasta:
-            with hio.read_compressed(genome, "rb") as src, gzip.open(tmp_genome, "wb") as dst:
-                dst.writelines(src)
-            genome = tmp_genome
+    elif is_fasta:
+        # Copied, compressed, to be indexed below
+        with hio.read_compressed(genome, "rb") as src, gzip.open(tmp_genome, "wb") as dst:
+            dst.writelines(src)
         fasta = tmp_genome
-
-    # Bowtie2-specific feature: extract fasta from the index, for later steps
-    # of the pipeline (digestion / frag attribution)
-    if aligner == "bowtie2" and not is_fasta:
-        # Index is present, extract fasta file from it and compress it
+    elif aligner == "bwa":
+        # A bwa index without fasta: its .pac file holds the sequence
+        fasta = tmp_genome
+        with gzip.open(tmp_genome, "wb", compresslevel=6) as dst:
+            hbm.write_fasta(genome, dst)
+    else:
+        # A bowtie2 index without fasta: bowtie2-inspect reads the sequence
+        fasta = tmp_genome
         bt2fa = sp.Popen(
             ["bowtie2-inspect", genome],
             stdout=sp.PIPE,
@@ -1350,27 +1357,20 @@ def full_pipeline(
             )
             sys.exit(1)
 
-    # Build index with bowtie2 / bwa if required
-    if idx is None and aligner in ["bowtie2", "bwa"]:
+    # A fasta file without bowtie2 or bwa index is indexed in genome_dir, from
+    # its copy, when reads are aligned. pybwa indexes it when it loads it.
+    if idx is None and start_stage == 0:
+        logger.info(
+            "%s index not found at %s, building a temporary one in %s.",
+            aligner,
+            genome,
+            genome_dir,
+        )
         if aligner == "bowtie2":
-            index_cmd = ["bowtie2-build", "-q", fasta, fasta]
-        elif aligner == "bwa":
-            index_cmd = ["bwa", "index", fasta]
-        else:
-            logger.error("Incompatible aligner software, choose bowtie2 or bwa.")
-            raise ValueError("aligner should be either bowtie2 or bwa.")
-        # We only need the index if the user provided fastq input
-        if start_stage == 0:
-            # If no index present assume input is fasta, copy it in tmp and
-            # index it (to avoid conflict between instances). pybwa indexes it
-            # when it loads it.
-            logger.info(
-                "%s index not found at %s, generating a local temporary index.",
-                aligner,
-                genome,
-            )
-            if backend != "python":
-                sp.run(index_cmd, stderr=sp.PIPE)
+            sp.run(["bowtie2-build", "-q", fasta, fasta], stderr=sp.PIPE)
+        elif backend != "python":
+            sp.run(["bwa", "index", fasta], stderr=sp.PIPE)
+        genome = fasta
 
     # Check for spaces in fasta headers and issue error if found
     for record in SeqIO.parse(hio.read_compressed(fasta), "fasta"):
@@ -1454,7 +1454,7 @@ def full_pipeline(
         index = genome
         if backend == "python":
             logger.info("Aligning with %s.", hbm.describe(backend, five_spm=mapping == "5spm"))
-            index = hbm.load_index(genome, tmp_dir)
+            index = hbm.load_index(genome, genome_dir)
         if mapping == "5spm":
             logger.info("Now mapping R1 and R2 reads with bwa mem -5SPM...")
             hbm.align_pairs(
@@ -1712,8 +1712,9 @@ def full_pipeline(
             pairs_pcr,
             bam1,
             bam2,
-            tmp_genome,
         ]
+        # The genome copy or sequence, and the indexes this run built
+        st.rmtree(genome_dir)
         # Do not delete files that were given as input
         try:
             tempfiles.remove(input1)

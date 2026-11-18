@@ -51,7 +51,8 @@ mapping modes, `--aligner` chooses the aligner that maps the reads:
 `hicstuff iteralign` and `hicstuff missview` always run the aligner, and
 `hicstuff pipeline` only to start from FASTQ files: `--start-stage bam`,
 `pairs` or `pairs_idx` needs no aligner, except `bowtie2-inspect` (part of
-bowtie2) when the genome is given as a bowtie2 index.
+bowtie2) when the genome is given as a bowtie2 index. hicstuff reads the
+sequence of a bwa index itself.
 
 No other program is needed. Two are used when they are installed:
 

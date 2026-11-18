@@ -64,7 +64,7 @@ Mode `5spm` aligns with bwa. The other modes align with the aligner
 | Aligner | Command run | Genome |
 |---|---|---|
 | `bowtie2` (default) | `bowtie2 --very-sensitive-local -p <threads> -x <index> -U <reads>` | A FASTA, or the prefix of a bowtie2 index |
-| `bwa` | `bwa mem -t <threads> -v 1 <index> <reads>`, or the same in-process | A FASTA |
+| `bwa` | `bwa mem -t <threads> -v 1 <index> <reads>`, or the same in-process | A FASTA, or the prefix of a bwa index |
 | `minimap2` | `minimap2 -2 -t <threads> -ax sr <genome> <reads>` | A FASTA |
 
 From each alignment, the supplementary records are dropped and the reads are
@@ -72,8 +72,9 @@ sorted by name; a pair is kept when both mates aligned with a mapping quality
 of at least `--quality-min` (30 by default).
 
 bowtie2 and bwa need an index of the genome. The pipeline uses one named after
-the FASTA when it finds it, and otherwise builds one in its temporary
-directory, at every run. On a large genome, build it once:
+the FASTA when it finds it, and otherwise builds one in a directory of its
+own in the temporary directory, at every run, which the cleanup removes. On a
+large genome, build it once:
 
 ```bash
 bowtie2-build genome.fa genome.fa   # genome.fa.1.bt2, …
