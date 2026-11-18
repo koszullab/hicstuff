@@ -170,6 +170,7 @@ line per message, with its time and level.
 ```text
 ## hicstuff: v3.3.0 log file
 ## date: 2026-11-17 23:22:37
+## cmd: hicstuff pipeline --mapping 5spm --enzyme DpnII --genome genome.fa --outdir out/ R1.fq.gz R2.fq.gz
 ## enzyme: DpnII
 ## input1: R1.fq.gz
 ## input2: R2.fq.gz
@@ -180,5 +181,8 @@ line per message, with its time and level.
 2026-11-17,23:22:37 :: INFO :: 10000 reads found in each fastq file.
 ```
 
-The `aligner` line is written when bwa runs in-process, or in mapping mode
-`5spm`. `hicstuff stats` reads the statistics of the run from the log.
+The `cmd` line is the command that ran the pipeline, quoted to paste in a
+shell. A run started from Python, by `full_pipeline`, has none unless its
+`cmd` argument gives one. The `aligner` line is written when bwa runs
+in-process, or in mapping mode `5spm`. `hicstuff stats` reads the statistics
+of the run from the log.

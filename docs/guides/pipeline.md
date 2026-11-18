@@ -46,10 +46,14 @@ fragments are cut from it:
 - A FASTA file, gzipped or not. bowtie2 and bwa need an index: one named after
   the FASTA (`genome.fa.1.bt2`, as `bowtie2-build genome.fa genome.fa` writes
   it, or `genome.fa.bwt`, as `bwa index genome.fa` does) is used; otherwise the
-  pipeline builds one in the temporary directory, at every run.
-- For bowtie2 only, the prefix of a bowtie2 index (`genome` for
-  `genome.1.bt2`, …). The sequence is then read from the index with
-  `bowtie2-inspect`.
+  pipeline copies the FASTA and builds one in a directory of its own in the
+  temporary directory, at every run, which the cleanup removes.
+- For bowtie2 or bwa, the prefix of an index without its FASTA (`genome` for
+  `genome.1.bt2` or `genome.bwt`, …). The sequence is then read from the
+  index: by `bowtie2-inspect` for a bowtie2 index, and by hicstuff itself,
+  from the `.pac` and `.amb` files, for a bwa index.
+
+Any other `--genome` stops the run before it writes anything.
 
 `--enzyme` (`-e`) is the enzyme the library was digested with, several
 enzymes separated by commas, or a fragment size in base pairs (5000 by

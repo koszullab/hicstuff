@@ -2,6 +2,7 @@
 
 import gzip
 import re
+import shlex
 import shutil
 
 import cooler
@@ -13,6 +14,7 @@ from click.testing import CliRunner
 import hicstuff.distance_law as hcdl
 import hicstuff.io as hio
 import hicstuff.iteralign as hci
+import hicstuff.pipeline as hpi
 import hicstuff.view as hcv
 from hicstuff import __version__
 from hicstuff.cli import cli
@@ -259,6 +261,16 @@ def test_pipeline_command(runner, synthetic_lib, final_pairs, tmp_path, monkeypa
     # Filtering 3C events requires restriction fragments
     result = invoke(runner, *args, "-F", "-f", "-e", "5000", exit_code=2)
     assert "Cannot filter events" in text(result)
+
+
+def test_pipeline_command_line(runner, monkeypatch):
+    """The pipeline gets the command that ran it, quoted to paste in a shell."""
+    calls = []
+    monkeypatch.setattr(hpi, "full_pipeline", lambda **kwargs: calls.append(kwargs))
+    args = ["pipeline", "-g", "genomes/sac cer3.fa", "R1.fq.gz", "R2.fq.gz", "--mapping", "5spm"]
+    invoke(runner, *args)
+    assert calls[0]["cmd"] == f"cli {shlex.join(args)}"
+    assert "'genomes/sac cer3.fa'" in calls[0]["cmd"]
 
 
 def test_filter_command(runner, fastq_run, tmp_path):

@@ -19,8 +19,10 @@ import pandas as pd
 import pysam
 import pytest
 
+import hicstuff.bwamem as hbm
 import hicstuff.io as hio
 import hicstuff.pipeline as hpi
+from tests import synthetic as syn
 from tests.conftest import skip_unless_can_align
 
 MAPPING_PARAMETERS = ("mapping", ["normal", "iterative"])
@@ -143,6 +145,80 @@ def test_sort_pairs_failure_raises(tmp_path):
             keys=["chr1", "pos1"],
             buffer="not_a_size",
         )
+
+
+@pytest.mark.parametrize("no_cleanup", [False, True])
+@pytest.mark.parametrize(
+    ("aligner", "mapping", "backend", "programs", "index_file"),
+    [
+        ("bowtie2", "normal", None, ("bowtie2", "bowtie2-build"), "genome.fa.gz.1.bt2"),
+        ("bwa", "normal", "binary", ("bwa",), "genome.fa.gz.bwt"),
+        ("bwa", "5spm", "python", (), "index.bwt"),
+    ],
+)
+def test_genome_indexed_in_a_directory_of_the_run(
+    aligner, mapping, backend, programs, index_file, no_cleanup, synthetic_lib, tmp_path
+):
+    """A fasta file without index is copied and indexed in a directory of
+    tmp_dir of the run, which cleanup removes. Nothing is written next to it."""
+    missing = [program for program in programs if shutil.which(program) is None]
+    if missing:
+        pytest.skip(f"not on PATH: {', '.join(missing)}")
+    if backend == "python" and hbm.pybwa_version() is None:
+        pytest.skip("pybwa is not installed")
+    genome = tmp_path / "genome.fa"
+    shutil.copy(synthetic_lib.genome, genome)
+    out_dir = tmp_path / "out"
+    hpi.full_pipeline(
+        genome=str(genome),
+        input1=str(synthetic_lib.reads1),
+        input2=str(synthetic_lib.reads2),
+        aligner=aligner,
+        aligner_backend=backend,
+        mapping=mapping,
+        enzyme=syn.LIBRARY_ENZYME,
+        out_dir=str(out_dir),
+        no_cleanup=no_cleanup,
+    )
+    assert sorted(os.listdir(tmp_path)) == ["genome.fa", "out"]
+    (log,) = out_dir.glob("*.log")
+    assert f"{aligner} index not found at {genome}, building a temporary one in" in log.read_text()
+    tmp_dir = out_dir / "tmp"
+    if not no_cleanup:
+        assert list(tmp_dir.iterdir()) == []
+        return
+    (genome_dir,) = [path for path in tmp_dir.iterdir() if path.is_dir()]
+    assert (genome_dir / "genome.fa.gz").is_file()
+    assert len(list(genome_dir.rglob(index_file))) == 1
+
+
+def test_genome_neither_fasta_nor_index(tmp_path, caplog):
+    """A genome that is neither a fasta file nor an index stops the run
+    before it writes anything."""
+    out_dir = tmp_path / "out"
+    with pytest.raises(SystemExit):
+        hpi.full_pipeline(
+            genome=str(tmp_path / "missing"),
+            input1="test_data/valid.pairs",
+            start_stage="pairs",
+            aligner="bwa",
+            out_dir=str(out_dir),
+        )
+    assert "The genome must be a fasta file, or the prefix of a bwa index" in caplog.text
+    assert not out_dir.exists()
+
+
+@pytest.mark.parametrize("cmd", [None, "hicstuff pipeline -g ref.fa R1.fq R2.fq"])
+def test_log_header_records_the_command(tmp_path, cmd):
+    """The command that ran the pipeline follows the date, when it is known."""
+    log = tmp_path / "hicstuff.log"
+    hpi.generate_log_header(str(log), "R1.fq", "R2.fq", "ref.fa", 5000, cmd=cmd)
+    header = log.read_text().splitlines()
+    assert header[1].startswith("## date: ")
+    if cmd is None:
+        assert not any(line.startswith("## cmd:") for line in header)
+    else:
+        assert header[2] == f"## cmd: {cmd}"
 
 
 @pytest.mark.needs("bowtie2", "bowtie2-inspect")

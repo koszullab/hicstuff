@@ -45,7 +45,7 @@ hicstuff pipeline [OPTIONS] INPUT1 [INPUT2]
 
 | Option | Default | Description |
 |---|---|---|
-| `-g, --genome` | *required* | The reference: a FASTA file, or for bowtie2 the prefix of its index. |
+| `-g, --genome` | *required* | The reference: a FASTA file, or for bowtie2 and bwa the prefix of its index, with or without the FASTA. |
 | `-S, --start-stage` | `fastq` | What the inputs are: `fastq`, `bam`, `pairs` (7 columns, uncompressed) or `pairs_idx` (9 columns, with fragments, uncompressed). |
 | `-e, --enzyme` | `5000` | Restriction enzyme, or several separated by commas (`DpnII,HinfI`); a fragment size in bp; or `mnase` or `dnase`, for 100 bp fragments. |
 | `-a, --aligner` | `bowtie2` | `bowtie2`, `bwa` or `minimap2`, for the mapping modes other than `5spm`, which aligns with `bwa`. |

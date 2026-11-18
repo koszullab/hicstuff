@@ -20,6 +20,7 @@ This module contains the following functions:
 - resolve_backend
 - load_index
 - build_index
+- write_fasta
 - align
 - iterative_align
 - align_pairs
@@ -32,6 +33,7 @@ import subprocess as sp
 import tempfile
 from shutil import which
 
+import numpy as np
 import pysam as ps
 
 import hicstuff.io as hio
@@ -164,20 +166,81 @@ def build_index(fasta, prefix):
     BwaIndex.index(fasta, method=method, prefix=prefix)
 
 
+def _sequences(prefix):
+    """Names, offsets and lengths of the sequences of the bwa index at
+    prefix, from its .ann file."""
+    with open(f"{prefix}.ann") as ann:
+        n_sequences = int(ann.readline().split()[1])
+        sequences = []
+        for _ in range(n_sequences):
+            # "gi name annotation", then "offset length ambiguous_bases"
+            name = ann.readline().split()[1]
+            offset, length = (int(field) for field in ann.readline().split()[:2])
+            sequences.append((name, offset, length))
+    return sequences
+
+
 def _write_sequence_dict(prefix):
     """Write the sequence dictionary that pybwa reads with the index at
     prefix, from the index itself: the @SQ lines of the bwa program's SAM
     header, with the names and lengths of the reference's sequences."""
-    with open(f"{prefix}.ann") as ann:
-        n_sequences = int(ann.readline().split()[1])
-        lines = []
-        for _ in range(n_sequences):
-            # "gi name annotation", then "offset length ambiguous_bases"
-            name = ann.readline().split()[1]
-            length = int(ann.readline().split()[1])
-            lines.append(f"@SQ\tSN:{name}\tLN:{length}\n")
+    lines = [f"@SQ\tSN:{name}\tLN:{length}\n" for name, _, length in _sequences(prefix)]
     with open(f"{prefix}.dict", "w") as sequence_dict:
         sequence_dict.writelines(lines)
+
+
+#: Bases of the 2-bit codes of a bwa .pac file.
+_PAC_BASES = np.frombuffer(b"ACGT", dtype=np.uint8)
+
+
+def write_fasta(prefix, handle, line_length=60):
+    """Write the sequences of the bwa index at prefix to handle, in the FASTA
+    format.
+
+    bwa keeps the reference in the .pac file, four bases a byte from its most
+    significant bits, with A, C, G and T coded 0 to 3. It codes the other
+    letters (N and the other IUPAC codes) as random bases, and lists each run
+    of them in the .amb file, from which they are restored. Lowercase is not
+    kept: the sequences are written in uppercase, as bwa aligns to them.
+
+    Parameters
+    ----------
+    prefix : str
+        The prefix of the bwa index.
+    handle : file object
+        A file opened for writing bytes.
+    line_length : int
+        Number of bases on each line of sequence.
+    """
+    with open(f"{prefix}.amb") as amb:
+        # "length sequences runs", then "offset length letter" for each run,
+        # in the order of the reference
+        n_runs = int(amb.readline().split()[2])
+        runs = [amb.readline().split() for _ in range(n_runs)]
+    run_offsets = np.array([int(run[0]) for run in runs], dtype=np.int64)
+    with open(f"{prefix}.pac", "rb") as pac:
+        for name, offset, length in _sequences(prefix):
+            first = offset // 4
+            pac.seek(first)
+            packed = np.frombuffer(pac.read((offset + length + 3) // 4 - first), dtype=np.uint8)
+            codes = np.empty((packed.size, 4), dtype=np.uint8)
+            for column, shift in enumerate((6, 4, 2, 0)):
+                codes[:, column] = (packed >> shift) & 3
+            skip = offset - 4 * first
+            sequence = _PAC_BASES[codes.ravel()[skip : skip + length]]
+            low, high = np.searchsorted(run_offsets, [offset, offset + length])
+            for run_offset, run_length, letter in runs[low:high]:
+                start = int(run_offset) - offset
+                # bwa keeps the letter as the fasta has it
+                sequence[start : start + int(run_length)] = ord(letter.upper())
+            handle.write(f">{name}\n".encode())
+            full = length - length % line_length
+            lines = np.empty((full // line_length, line_length + 1), dtype=np.uint8)
+            lines[:, :line_length] = sequence[:full].reshape(-1, line_length)
+            lines[:, line_length] = ord("\n")
+            handle.write(lines.tobytes())
+            if full < length:
+                handle.write(sequence[full:].tobytes() + b"\n")
 
 
 def load_index(genome, tmp_dir):

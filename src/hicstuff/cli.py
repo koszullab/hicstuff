@@ -4,6 +4,7 @@ import copy
 import glob
 import os
 import re
+import shlex
 import shutil
 import subprocess as sp
 import tempfile
@@ -56,6 +57,52 @@ click.rich_click.COMMAND_GROUPS = {
         {
             "name": "Analysis & Visualization",
             "commands": ["view", "scalogram", "distancelaw", "missview", "stats"],
+        },
+    ]
+}
+# OPTION_GROUPS rather than the option_panel decorator, which needs rich-click 1.9.
+click.rich_click.OPTION_GROUPS = {
+    "hicstuff pipeline": [
+        # Listed first, or rich-click renders it after the option panels.
+        {"name": "Arguments", "options": ["input1", "input2"]},
+        {
+            "name": "Main options",
+            "options": [
+                "--genome",
+                "--mapping",
+                "--binning",
+                "--distance-law",
+                "--duplicates",
+                "--enzyme",
+                "--filter",
+                "--plot",
+                "--prefix",
+                "--threads",
+                "--zoomify",
+            ],
+        },
+        {
+            "name": "Advanced options",
+            "options": [
+                "--aligner",
+                "--aligner-backend",
+                "--balancing-args",
+                "--centromeres",
+                "--circular",
+                "--exclude",
+                "--force",
+                "--matfmt",
+                "--no-cleanup",
+                "--outdir",
+                "--quality-min",
+                "--remove-centromeres",
+                "--read-len",
+                "--size",
+                "--start-stage",
+                "--tmpdir",
+                "--skip-count",
+                "--help",
+            ],
         },
     ]
 }
@@ -192,7 +239,27 @@ def _data_transform(dense_map, operation: str):
 # ---------------------------------------------------------------------------
 
 
-@click.group(context_settings={"help_option_names": ["-h", "--help"]})
+class _HicstuffGroup(click.RichGroup):
+    """The hicstuff command group, which keeps the arguments it was given.
+
+    Click clears them before the subcommand runs, and sys.argv holds other
+    arguments when hicstuff is called from Python, as by cli([...]).
+    """
+
+    def parse_args(self, ctx, args):
+        ctx.meta["hicstuff.argv"] = list(args)
+        return super().parse_args(ctx, args)
+
+
+def _command_line():
+    """The command line that ran hicstuff, quoted to paste in a shell, or None."""
+    ctx = click.get_current_context(silent=True)
+    if ctx is None or "hicstuff.argv" not in ctx.meta:
+        return None
+    return f"{ctx.find_root().info_name} {shlex.join(ctx.meta['hicstuff.argv'])}"
+
+
+@click.group(cls=_HicstuffGroup, context_settings={"help_option_names": ["-h", "--help"]})
 @click.version_option(version=__version__, prog_name="hicstuff")
 def cli():
     """Simple Hi-C pipeline for generating and manipulating contact matrices."""
@@ -762,6 +829,69 @@ def view(
     "-g", "--genome", required=True, metavar="FILE", help="Reference genome or aligner index."
 )
 @click.option(
+    "-m",
+    "--mapping",
+    default="normal",
+    show_default=True,
+    type=click.Choice(["normal", "iterative", "cutsite", "5spm"], case_sensitive=False),
+    # Blank lines start new paragraphs: rich-click joins single newlines.
+    help="Mapping mode.\n\n"
+    "[bold]normal[/bold]: align the reads as they are.\n\n"
+    "[bold]iterative[/bold]: truncate the reads, then extend them until they "
+    "align unambiguously.\n\n"
+    "[bold]cutsite[/bold]: cut the reads at the ligation sites of --enzyme and "
+    "pair the fragments; iterative when --enzyme is a chunk size.\n\n"
+    "[bold]5spm[/bold]: align the mates with bwa mem -5SPM, which makes the "
+    "5'-most alignment of a read cut by a ligation junction its primary one, and "
+    "records each mate at its aligned 5' end.",
+)
+@click.option(
+    "-b",
+    "--binning",
+    default=0,
+    show_default=True,
+    type=int,
+    metavar="INT",
+    help="Bin the cool matrix to this resolution (bp). 0 means no binning.",
+)
+@click.option("-d", "--distance-law", is_flag=True, help="Generate a distance law output file.")
+@click.option("-D", "--duplicates", is_flag=True, help="Filter PCR duplicates.")
+@click.option(
+    "-e",
+    "--enzyme",
+    default="5000",
+    show_default=True,
+    metavar="{STR|INT}",
+    help="Restriction enzyme name, 'mnase'/'dnase', or chunk size in bp.",
+)
+@click.option(
+    "-f",
+    "--filter",
+    "filter_events",
+    is_flag=True,
+    help="Filter spurious 3C events (loops and uncuts).",
+)
+@click.option("-p", "--plot", is_flag=True, help="Generate plots at pipeline steps.")
+@click.option("-P", "--prefix", default=None, metavar="STR", help="Prefix for all output files.")
+@click.option(
+    "-t",
+    "--threads",
+    default=1,
+    show_default=True,
+    type=int,
+    metavar="INT",
+    help="Number of parallel threads.",
+)
+@click.option(
+    "-z",
+    "--zoomify",
+    default=True,
+    show_default=True,
+    type=bool,
+    metavar="BOOL",
+    help="Generate multi-resolution .mcool from the binned cool matrix.",
+)
+@click.option(
     "-a",
     "--aligner",
     default=None,
@@ -786,28 +916,9 @@ def view(
     "failure is logged as a warning and does not stop the run.",
 )
 @click.option(
-    "-b",
-    "--binning",
-    default=0,
-    show_default=True,
-    type=int,
-    metavar="INT",
-    help="Bin the cool matrix to this resolution (bp). 0 means no binning.",
-)
-@click.option(
     "-c", "--centromeres", default=None, metavar="FILE", help="Centromere positions file."
 )
 @click.option("-C", "--circular", is_flag=True, help="Genome is circular.")
-@click.option("-d", "--distance-law", is_flag=True, help="Generate a distance law output file.")
-@click.option("-D", "--duplicates", is_flag=True, help="Filter PCR duplicates.")
-@click.option(
-    "-e",
-    "--enzyme",
-    default="5000",
-    show_default=True,
-    metavar="{STR|INT}",
-    help="Restriction enzyme name, 'mnase'/'dnase', or chunk size in bp.",
-)
 @click.option(
     "-E",
     "--exclude",
@@ -815,25 +926,7 @@ def view(
     metavar="STR",
     help="Comma-separated chromosomes to exclude (e.g. chrM,2u).",
 )
-@click.option(
-    "-f",
-    "--filter",
-    "filter_events",
-    is_flag=True,
-    help="Filter spurious 3C events (loops and uncuts).",
-)
 @click.option("-F", "--force", is_flag=True, help="Overwrite existing output files.")
-@click.option(
-    "-m",
-    "--mapping",
-    default="normal",
-    show_default=True,
-    metavar="STR",
-    type=click.Choice(["normal", "iterative", "cutsite", "5spm"], case_sensitive=False),
-    help="Mapping mode. 5spm aligns the mates with bwa mem -5SPM, which makes the "
-    "5'-most alignment of a read cut by a ligation junction its primary one, and "
-    "records each mate at its aligned 5' end.",
-)
 @click.option(
     "-M",
     "--matfmt",
@@ -851,8 +944,6 @@ def view(
     metavar="DIR",
     help="Output directory (default: current directory).",
 )
-@click.option("-p", "--plot", is_flag=True, help="Generate plots at pipeline steps.")
-@click.option("-P", "--prefix", default=None, metavar="STR", help="Prefix for all output files.")
 @click.option(
     "-q",
     "--quality-min",
@@ -897,25 +988,7 @@ def view(
     type=click.Choice(["fastq", "bam", "pairs", "pairs_idx"]),
     help="Pipeline start stage.",
 )
-@click.option(
-    "-t",
-    "--threads",
-    default=1,
-    show_default=True,
-    type=int,
-    metavar="INT",
-    help="Number of parallel threads.",
-)
 @click.option("-T", "--tmpdir", default=None, metavar="DIR", help="Temporary directory.")
-@click.option(
-    "-z",
-    "--zoomify",
-    default=True,
-    show_default=True,
-    type=bool,
-    metavar="BOOL",
-    help="Generate multi-resolution .mcool from the binned cool matrix.",
-)
 @click.option(
     "--skip-count",
     is_flag=True,
@@ -1000,6 +1073,7 @@ def pipeline(
         tmp_dir=tmpdir,
         skip_count=skip_count,
         aligner_backend=aligner_backend,
+        cmd=_command_line(),
     )
 
 
