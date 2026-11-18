@@ -26,9 +26,13 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
 - Pairs are sorted in Python when no usable `sort` program is installed (none
   on PATH, or busybox's) (#124). `HICSTUFF_SORT=python` always sorts them in
   Python.
+- The log of `hicstuff pipeline` records the command that ran it, quoted to
+  paste in a shell, on a `## cmd:` line after the date.
 
 ### Changed
 
+- `hicstuff pipeline --help` lists its main options in a panel of their own,
+  before the advanced ones, and describes each mapping mode.
 - FASTQ reads are counted, and the genome extracted from a bowtie2 index is
   compressed, in Python: gzip, zcat, pigz and wc are no longer needed (#123).
 - Cutsite mode reads FASTQ files with pysam: pyfastx is no longer a
@@ -58,7 +62,7 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
 ### Outputs
 
 Runs with the same programs installed write the same pairs, matrices and logs
-as hicstuff 3.3.0. Without the bwa program, `-a bwa` aligns through pybwa,
+as hicstuff 3.3.0, but for the `## cmd:` line of the pipeline's log. Without the bwa program, `-a bwa` aligns through pybwa,
 and the log says so. Its alignments then equal the bwa program's, except for
 reads with several alignments of equal score beyond the first 10,000 reads of
 a file, which pybwa can place on another of them. In our tests this moved

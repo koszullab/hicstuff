@@ -145,6 +145,19 @@ def test_sort_pairs_failure_raises(tmp_path):
         )
 
 
+@pytest.mark.parametrize("cmd", [None, "hicstuff pipeline -g ref.fa R1.fq R2.fq"])
+def test_log_header_records_the_command(tmp_path, cmd):
+    """The command that ran the pipeline follows the date, when it is known."""
+    log = tmp_path / "hicstuff.log"
+    hpi.generate_log_header(str(log), "R1.fq", "R2.fq", "ref.fa", 5000, cmd=cmd)
+    header = log.read_text().splitlines()
+    assert header[1].startswith("## date: ")
+    if cmd is None:
+        assert not any(line.startswith("## cmd:") for line in header)
+    else:
+        assert header[2] == f"## cmd: {cmd}"
+
+
 @pytest.mark.needs("bowtie2", "bowtie2-inspect")
 def test_full_pipeline_writes_final_pairs(tmp_path):
     """The pipeline must leave a sorted, compressed pairs file in out_dir."""

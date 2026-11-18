@@ -454,10 +454,12 @@ def bam2pairs(
     )
 
 
-def generate_log_header(log_path, input1, input2, genome, enzyme, aligner=None):
+def generate_log_header(log_path, input1, input2, genome, enzyme, aligner=None, cmd=None):
     hcl.set_file_handler(log_path, formatter=logging.Formatter(""))
     logger.info("## hicstuff: v%s log file", __version__)
     logger.info("## date: %s", time.strftime("%Y-%m-%d %H:%M:%S"))
+    if cmd is not None:
+        logger.info("## cmd: %s", cmd)
     logger.info("## enzyme: %s", str(enzyme))
     logger.info("## input1: %s ", input1)
     logger.info("## input2: %s", input2)
@@ -1030,6 +1032,7 @@ def full_pipeline(
     tmp_dir=None,
     skip_count=False,
     aligner_backend=None,
+    cmd=None,
 ):
     """
     Run the whole hicstuff pipeline. Starting from fastq files and a genome to
@@ -1136,6 +1139,9 @@ def full_pipeline(
         HICSTUFF_ALIGNER_BACKEND, and is auto if it is not set. auto runs the
         bwa program if it is on PATH and pybwa otherwise, and in mapping mode
         5spm pybwa first.
+    cmd : str
+        The command line that ran the pipeline, written to the log header after
+        the date. None leaves it out.
     """
     if mapping == "5spm":
         if aligner not in (None, "bwa"):
@@ -1285,6 +1291,7 @@ def full_pipeline(
             if backend == "python" or mapping == "5spm"
             else None
         ),
+        cmd=cmd,
     )
 
     # If defautl `mat_fmt` or set `mat_fmt=cool`, notify the user
