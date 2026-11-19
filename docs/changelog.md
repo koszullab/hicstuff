@@ -28,6 +28,13 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
   Python.
 - The log of `hicstuff pipeline` records the command that ran it, quoted to
   paste in a shell, on a `## cmd:` line after the date.
+- `hicstuff pipeline` reads several pairs of FASTQ files, such as the lanes of
+  a library, as one library: the R1 files, then the R2 files, comma-separated
+  or as glob patterns, quoted or not (`hicstuff pipeline ... lib1_*_R1.fq.gz
+  lib1_*_R2.fq.gz`). The R1 and R2 files of each pair must start with the same
+  read. They are concatenated in the temporary directory, and give the outputs
+  of the library in one pair of files. `full_pipeline` takes lists of files
+  for `input1` and `input2`.
 - The `--genome` of `hicstuff pipeline` can be the prefix of a bwa index
   without its FASTA, as it could be of a bowtie2 index: hicstuff reads the
   sequence from the index's `.pac` and `.amb` files, with no program.
