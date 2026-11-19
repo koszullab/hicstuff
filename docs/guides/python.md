@@ -47,7 +47,7 @@ hpi.full_pipeline(
 | Option | Argument |
 |---|---|
 | `--start-stage` | `start_stage` |
-| `--matfmt` | `mat_fmt` |
+| `--matrix` | `mat_fmt` |
 | `--filter` | `filter_events` |
 | `--duplicates` | `pcr_duplicates` |
 | `--quality-min` | `min_qual` |

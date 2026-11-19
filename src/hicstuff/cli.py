@@ -91,7 +91,7 @@ click.rich_click.OPTION_GROUPS = {
                 "--circular",
                 "--exclude",
                 "--force",
-                "--matfmt",
+                "--matrix",
                 "--no-cleanup",
                 "--outdir",
                 "--quality-min",
@@ -923,20 +923,25 @@ def view(
     "--exclude",
     default=None,
     metavar="STR",
-    help="Comma-separated chromosomes to leave out of the cool matrix (e.g. chrM,2u).",
+    help="Comma-separated chromosomes to leave out of the cool and metacool matrices "
+    "(e.g. chrM,2u).",
 )
 @click.option("-F", "--force", is_flag=True, help="Overwrite existing output files.")
 @click.option(
     "-M",
-    "--matfmt",
-    default="cool",
-    show_default=True,
+    "--matrix",
+    default=None,
+    show_default=f"cool, or metacool from {hpi.MANY_CONTIGS:,} contigs",
     metavar="STR",
-    type=click.Choice(["graal", "bg2", "cool", "none"]),
-    help="Output matrix format, or none to end the run with its pairs file, as "
-    "metaTOR and metacooler read it. With many contigs, the cool matrix is slow "
-    f"to write: the run warns from {hpi.MANY_CONTIGS:,}.",
+    type=click.Choice(hpi.MATRIX_FORMATS),
+    help="Output matrix format: graal, bg2, cool or metacool, metacooler's cool "
+    "matrix for metagenomes, with one bin per fragment; or none, to end the run with "
+    "its pairs file, as metaTOR and metacooler read it. cooler is slow to write a cool "
+    "matrix of many contigs: from that many, the default is metacool, but with --binning.",
 )
+# The former name of --matrix, which still works, and which the help no longer
+# shows.
+@click.option("--matfmt", default=None, hidden=True, type=click.Choice(hpi.MATRIX_FORMATS))
 @click.option("-n", "--no-cleanup", is_flag=True, help="Keep intermediary files.")
 @click.option(
     "-o",
@@ -1011,6 +1016,7 @@ def pipeline(
     filter_events,
     force,
     mapping,
+    matrix,
     matfmt,
     no_cleanup,
     outdir,
@@ -1052,23 +1058,36 @@ def pipeline(
     """
     if filter_events and enzyme.isdigit():
         raise click.UsageError("Cannot filter events without specifying a restriction enzyme.")
-    if matfmt == "none":
-        # The options that would shape the cool matrix, which -M none does not
-        # write. --zoomify has an effect with --binning only.
+    if matfmt is not None:
+        if matrix not in (None, matfmt):
+            raise click.UsageError(
+                f"--matfmt is the former name of --matrix: give --matrix {matrix} alone."
+            )
+        matrix = matfmt
+    if matrix in ("metacool", "none"):
+        # The options that would shape the cool matrix, which -M metacool,
+        # with one bin per fragment, and -M none, which writes no matrix, do not
+        # take; -M metacool leaves the contigs of --exclude out of its matrix.
+        # --zoomify has an effect with --binning only.
         cool_only = [
             option
             for option, given in [
                 ("--binning", binning != 0),
                 ("--balancing-args", bool(balancing_args and balancing_args.strip())),
-                ("--exclude", bool(exclude) and any(name.strip() for name in exclude.split(","))),
+                (
+                    "--exclude",
+                    matrix == "none"
+                    and bool(exclude)
+                    and any(name.strip() for name in exclude.split(",")),
+                ),
             ]
             if given
         ]
         if cool_only:
             options = "is an option" if len(cool_only) == 1 else "are options"
             raise click.UsageError(
-                f"--matfmt none writes no matrix: {', '.join(cool_only)} {options} of the cool "
-                "matrix."
+                f"--matrix {matrix} {hpi._WRITES[matrix]}: {', '.join(cool_only)} {options} "
+                "of the cool matrix."
             )
     if enzyme in ("mnase", "dnase"):
         logger.info("Enzyme is '%s', setting chunk size to 100 bp.", enzyme)
@@ -1092,7 +1111,7 @@ def pipeline(
         filter_events=filter_events,
         force=force,
         mapping=mapping,
-        mat_fmt=matfmt,
+        mat_fmt=matrix,
         binning=binning,
         zoomify=zoomify,
         balancing_args=balancing_args,

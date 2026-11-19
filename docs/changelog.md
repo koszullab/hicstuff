@@ -8,6 +8,11 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
 ### Breaking changes
 
 - hicstuff needs Python 3.10 or later (#122).
+- With 50,000 contigs or more in the map (those that `--size` and `--exclude`
+  keep), as a metagenome assembly may have, `hicstuff pipeline` writes its
+  contact map as a metacool file, `abs_fragments_contacts_weighted.metacool`,
+  rather than a cool file, unless given `--binning` or `--matrix cool`, and
+  warns of it. See `--matrix metacool` below.
 
 ### New
 
@@ -38,21 +43,34 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
 - The `--genome` of `hicstuff pipeline` can be the prefix of a bwa index
   without its FASTA, as it could be of a bowtie2 index: hicstuff reads the
   sequence from the index's `.pac` and `.amb` files, with no program.
-- `hicstuff pipeline --matfmt none` (`-M none`) writes no contact map: the run
+- `hicstuff pipeline --matrix metacool` (`-M metacool`) writes the contact map
+  as a [metacooler](https://pypi.org/project/metacooler/) file, made by
+  `metacooler create pairs`: a cool file with one bin per fragment, which
+  cooler reads, with metacooler's tables of genomes and contigs, its contigs
+  not yet assigned to genomes. Unlike cooler, metacooler does not store the
+  contig of each bin as an HDF5 enum, whose cost grows with the square of the
+  number of contigs. metacooler is now a dependency of hicstuff. It is the
+  default map from 50,000 contigs (see Breaking changes), but with
+  `--binning`, which it does not take: `--binning` and `--balancing-args`,
+  options of the cool map, are refused with it, but for `--binning 0` and blank
+  values. `full_pipeline` takes `mat_fmt="metacool"`, and its default
+  `mat_fmt=None` chooses between cool and metacool as the command does.
+- `hicstuff pipeline --matrix none` (`-M none`) writes no contact map: the run
   ends with its pairs file, for the tools that build their own maps from pairs
   (metaTOR, metacooler). `--binning`, `--balancing-args` and `--exclude`,
   options of the cool map, are refused with it, but for `--binning 0` and blank
   values; so are `binning`, `balancing_args` and `exclude` with
   `mat_fmt="none"` in `full_pipeline`.
-- With 50,000 contigs or more in the cool map (those that `--size` and
-  `--exclude` keep), `hicstuff pipeline` warns, before it aligns reads or
-  builds an index, that the map will be slow to write: cooler takes a time that
-  grows with the square of the number of contigs for every cooler it writes
-  (about 30 s at 117,000 contigs). The warning says how to end the run with its
-  pairs file.
+- With 50,000 contigs or more in a cool map (`--matrix cool`, or with
+  `--binning`), `hicstuff pipeline` warns, before it aligns reads or builds an
+  index, that the map will be slow to write: cooler takes a time that grows
+  with the square of the number of contigs for every cooler it writes (about
+  30 s at 117,000 contigs). The warning names the formats that do not pay it.
 
 ### Changed
 
+- `--matfmt` of `hicstuff pipeline` is now `--matrix`, still `-M`. `--matfmt`
+  still works, but the help no longer shows it.
 - `hicstuff pipeline --help` lists its main options in a panel of their own,
   before the advanced ones, and describes each mapping mode.
 - FASTQ reads are counted, and the genome extracted from a bowtie2 index is
@@ -90,15 +108,16 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
 - A `--genome` that is neither a FASTA file nor the prefix of an index the
   aligner reads stops the pipeline before it writes anything. The error was
   logged, and the run went on until a later step failed.
-- `full_pipeline` refuses a `mat_fmt` other than `graal`, `bg2`, `cool` and
-  `none` before the run starts, logged as an error. Another name wrote an empty
-  matrix file under its extension, and `None` failed once the run had made its
-  output directory and log.
+- `full_pipeline` refuses a `mat_fmt` other than `graal`, `bg2`, `cool`,
+  `metacool` and `none` before the run starts, logged as an error. Another
+  name wrote an empty matrix file under its extension.
 
 ### Outputs
 
 Runs with the same programs installed write the same pairs, matrices and logs
-as hicstuff 3.3.0, but for the `## cmd:` line of the pipeline's log and the warning of a cool map of 50,000 contigs or more. Without the bwa program, `-a bwa` aligns through pybwa,
+as hicstuff 3.3.0, but for the `## cmd:` line of the pipeline's log, and
+for a map of 50,000 contigs or more: a metacool file by default, and a warning
+with a cool file. Without the bwa program, `-a bwa` aligns through pybwa,
 and the log says so. Its alignments then equal the bwa program's, except for
 reads with several alignments of equal score beyond the first 10,000 reads of
 a file, which pybwa can place on another of them. In our tests this moved

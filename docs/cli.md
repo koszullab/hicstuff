@@ -29,7 +29,7 @@ bins, pairs and 3C events, see [Concepts](concepts.md).
 ### `pipeline` { #pipeline }
 
 Run the whole pipeline, from the reads (or BAM or pairs files) to a contact
-map, or to its pairs file with `--matfmt none`. **API:**
+map, or to its pairs file with `--matrix none`. **API:**
 `hicstuff.pipeline.full_pipeline`. **Guide:**
 [Running the pipeline](guides/pipeline.md).
 
@@ -62,11 +62,11 @@ patterns. See [Several pairs of FASTQ files](guides/pipeline.md#several-pairs-of
 | `-s, --size` | `0` | Minimum contig size in bp: shorter contigs, and the pairs with a mate on them, are left out. |
 | `-f, --filter` | off | Remove the uncuts, loops and impossible pairs. Needs a restriction enzyme. |
 | `-D, --duplicates` | off | Remove the PCR duplicates. |
-| `-M, --matfmt` | `cool` | Format of the contact map: `cool`, `bg2` or `graal`; or `none`, for no map: the run ends with its pairs file (`--binning`, `--balancing-args` and `--exclude`, options of the cool map, are refused with it, but for `--binning 0` and blank values). With 50,000 contigs or more in the cool map, the run warns that it is slow to write. |
+| `-M, --matrix` | `cool`, or `metacool` from 50,000 contigs | Format of the contact map: `cool`, `metacool`, `bg2` or `graal`; or `none`, for no map: the run ends with its pairs file. `metacool` is [metacooler](https://pypi.org/project/metacooler/)'s cool file for metagenomes, with one bin per fragment, made by `metacooler create pairs`. It is the default from 50,000 contigs in the map (those that `--size` and `--exclude` keep), but with `--binning`, and the run warns of it: cooler is slow to write a cool file of that many contigs. `-M cool` writes the cool file all the same, and warns that it is slow. `--binning` and `--balancing-args`, options of the cool map, are refused with `metacool` and `none`, and `--exclude` with `none`, but for `--binning 0` and blank values. |
 | `-b, --binning` | `0` | Bin the cool map at this many bp; `0` keeps one bin per fragment. |
 | `-z, --zoomify` | `true` | With `--binning`, write a multi-resolution `.mcool`; `-z false` writes one `.cool`. |
 | `-B, --balancing-args` | none | More options for `cooler balance` (`-B "--max-iters 500"`), checked before the run starts. Balancing runs on `--threads` processes unless they set `--nproc`. A resolution that fails to balance is logged as a warning. |
-| `-E, --exclude` | none | Chromosomes to leave out of the cool map, separated by commas (`chrM,2u`). |
+| `-E, --exclude` | none | Chromosomes to leave out of the cool and metacool maps, separated by commas (`chrM,2u`). |
 | `-d, --distance-law` | off | Write the table of the distance law. |
 | `-c, --centromeres` | none | File of the centromeres' positions, to compute the distance law per arm. |
 | `-r, --remove-centromeres` | `0` | bp to leave out on each side of each centromere, for the distance law (`--help` says kb, but the value is read in bp). |

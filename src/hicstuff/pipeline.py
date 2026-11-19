@@ -23,6 +23,7 @@ from shutil import which
 import click
 import cooler
 import matplotlib
+import metacooler
 import numpy as np
 import pandas as pd
 import pysam as ps
@@ -478,20 +479,32 @@ def generate_log_header(log_path, input1, input2, genome, enzyme, aligner=None, 
 COORD_SORT_KEYS = ["chr1", "pos1", "chr2", "pos2", "strand1", "strand2"]
 
 # The formats of the contact matrix, and none for no matrix.
-MATRIX_FORMATS = ("graal", "bg2", "cool", "none")
+MATRIX_FORMATS = ("graal", "bg2", "cool", "metacool", "none")
 
-# From this many contigs in the cool matrix, the pipeline warns that it is slow
-# to write: cooler tries to store the contig of each bin as an HDF5 enum of one
-# member per contig, which takes a time that grows with the square of their
-# number, for every cooler it writes (about 2 s at 32,000 contigs, 30 s at
-# 117,000), then is refused past a few thousand members, and stores integers.
+# From this many contigs in the matrix, a cool matrix is slow to write: cooler
+# tries to store the contig of each bin as an HDF5 enum of one member per
+# contig, which takes a time that grows with the square of their number, for
+# every cooler it writes (about 2 s at 32,000 contigs, 30 s at 117,000), then
+# is refused past a few thousand members, and stores integers. metacooler skips
+# the enum. From this many contigs, the default matrix is a metacool matrix
+# rather than a cool one, and a cool matrix asked for is warned of.
 MANY_CONTIGS = 50_000
+
+# Why a cool matrix of MANY_CONTIGS contigs is slow, in the warnings
+_SLOW_COOL = (
+    "cooler takes a time that grows with the square of the number of contigs for every "
+    "cooler it writes: about 30 s at 117,000 contigs, four times more for twice as many"
+)
+
+# What the matrix formats that refuse the options of the cool matrix write
+_WRITES = {"metacool": "has one bin per fragment", "none": "writes no matrix"}
 
 
 def _excluded(exclude):
-    """The names of the contigs that exclude leaves out of the cool matrix:
-    None, or comma-separated names, as pairs2cool reads them; or a list of
-    names, which the formats other than cool, which do not read it, take."""
+    """The names of the contigs that exclude leaves out of the cool and
+    metacool matrices: None, or comma-separated names, as pairs2cool reads
+    them; or a list of names, which pairs2metacool and the formats that do not
+    read it take."""
     if not exclude:
         return set()
     return set(exclude.split(",")) if isinstance(exclude, str) else set(exclude)
@@ -766,6 +779,55 @@ def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs, exclude):
         _run_cooler_cload_pairs(chroms_tmp + ":" + str(binning), pairs_file, cool_file)
     finally:
         os.remove(chroms_tmp)
+
+
+def pairs2metacool(pairs_file, metacool_file, bins_file, exclude, threads=1, cmd=None):
+    """
+    Make a metacool file from the pairs file, with one bin per fragment, with
+    `metacooler create pairs`, through its Python function
+    ``metacooler.from_pairs``. See: https://pypi.org/project/metacooler/.
+
+    A metacool file is a cool file, which cooler reads, with metacooler's
+    genomes and contigs on top of it. Its contigs are not yet assigned to
+    genomes: all of them are in metacooler's ``__unbinned__`` genome, longest
+    first, as `metacooler create pairs` orders them by default, until
+    `metacooler reassign` assigns them. Unlike cooler, metacooler does not
+    store the contig of each bin as an HDF5 enum, which takes a time that grows
+    with the square of the number of contigs.
+
+    Parameters
+    ----------
+    pairs_file : str
+        Path to the pairs file containing input contact data.
+    metacool_file : str
+        Path to the output metacool file name to generate.
+    bins_file : str
+        Path to the file containing genomic segmentation information. (fragments_list.txt).
+    exclude : None, str or list of str
+        The contigs to leave out of the matrix, comma-separated, as in
+        pairs2cool.
+    threads : int
+        Number of threads binning the pairs.
+    cmd : str or None
+        The command line that ran the pipeline, stored in the file's metadata
+        as the command that made it. None stores no command.
+    """
+    # The names of the contigs are text, even when they are numbers
+    bins = pd.read_csv(
+        bins_file, sep="\t", usecols=[1, 2, 3], skiprows=1, header=None, dtype={1: str}
+    )
+    bins.columns = ["chrom", "start", "end"]
+    bins = bins[~bins.chrom.isin(_excluded(exclude))].reset_index(drop=True)
+    metacooler.from_pairs(
+        uri=metacool_file,
+        bins=bins,
+        pairs=pairs_file,
+        # hicstuff has its distance law (--distance-law), and writes one file
+        # for the matrix, as it does for a cool matrix.
+        ps=False,
+        nproc=threads,
+        metadata={"commands": [cmd]} if cmd else None,
+    )
 
 
 def cool2mcool(cool_file, output_file):
@@ -1241,7 +1303,7 @@ def full_pipeline(
     filter_events=False,
     force=False,
     mapping="normal",
-    mat_fmt="cool",
+    mat_fmt=None,
     binning=0,
     zoomify=True,
     balancing_args=None,
@@ -1334,14 +1396,19 @@ def full_pipeline(
         "pairs", a single pairs file is given as input, and with "pairs_idx", the
         pairs in the input must already be attributed to fragments and fragment
         attribution is skipped.
-    mat_fmt : str
+    mat_fmt : str or None
         Select the output matrix format. Can be either "bg2" for the
-        bedgraph2 format, "cool" for Mirnylab's cool format, graal for a
-        plain text COO format compatible with Koszullab's instagraal software,
-        or "none" for no matrix: the run ends with its pairs file, which tools
-        that build their own contact maps read (metaTOR, metacooler). Options
-        of the cool matrix, binning other than 0, and balancing_args and
-        exclude that are not blank, are refused with it.
+        bedgraph2 format, "cool" for Mirnylab's cool format, "metacool" for
+        metacooler's cool format for metagenomes, with one bin per fragment,
+        graal for a plain text COO format compatible with Koszullab's
+        instagraal software, or "none" for no matrix: the run ends with its
+        pairs file, which tools that build their own contact maps read
+        (metaTOR, metacooler). Options of the cool matrix, binning other than
+        0 and balancing_args that is not blank, are refused with metacool and
+        none, and exclude that is not blank with none. None, the default,
+        writes a cool matrix, or a metacool matrix, with a warning, when it
+        holds MANY_CONTIGS contigs or more (those that min_size and exclude
+        keep) and binning is 0.
     aligner : str
         Read alignment software to use. Can be either "minimap2", "bwa" or
         "bowtie2". Defaults to bowtie2, and to bwa in mapping mode 5spm, which
@@ -1398,11 +1465,12 @@ def full_pipeline(
     if aligner not in ("bowtie2", "minimap2", "bwa"):
         logger.error("Incompatible aligner software, choose bowtie2, minimap2 or bwa.")
         raise ValueError("aligner should be either bowtie2, minimap2 or bwa.")
-    if mat_fmt not in MATRIX_FORMATS:
-        msg = f"Unknown matrix format {mat_fmt!r}: choose graal, bg2, cool or none."
+    if mat_fmt is not None and mat_fmt not in MATRIX_FORMATS:
+        msg = f"Unknown matrix format {mat_fmt!r}: choose graal, bg2, cool, metacool or none."
         logger.error(msg)
         raise ValueError(msg)
-    if mat_fmt == "cool":
+    # None is cool, or metacool with many contigs and no binning
+    if mat_fmt in ("cool", None):
         try:
             import cooler
         except ImportError:
@@ -1413,20 +1481,23 @@ def full_pipeline(
         if binning > 0:
             # Fail now on invalid balancing arguments, not after the alignment
             _balancing_args(balancing_args)
-    elif mat_fmt == "none":
+    elif mat_fmt in ("metacool", "none"):
         cool_only = [
             name
             for name, given in [
                 ("binning", binning != 0),
                 ("balancing_args", bool(balancing_args and balancing_args.strip())),
-                ("exclude", any(name.strip() for name in _excluded(exclude))),
+                (
+                    "exclude",
+                    mat_fmt == "none" and any(name.strip() for name in _excluded(exclude)),
+                ),
             ]
             if given
         ]
         if cool_only:
             options = "is an option" if len(cool_only) == 1 else "are options"
             msg = (
-                f"The matrix format none writes no matrix: {', '.join(cool_only)} "
+                f"The matrix format {mat_fmt} {_WRITES[mat_fmt]}: {', '.join(cool_only)} "
                 f"{options} of the cool matrix."
             )
             logger.error(msg)
@@ -1591,20 +1662,6 @@ def full_pipeline(
         cmd=cmd,
     )
 
-    # If defautl `mat_fmt` or set `mat_fmt=cool`, notify the user
-    if mat_fmt == "cool":
-        try:
-            import cooler
-
-            logger.info(
-                "The default output format is now `.cool`. The Hi-C "
-                "matrix will be generated with cooler v%s "
-                "(Abdennur & Mirny, Bioinformatics 2020).",
-                cooler.__version__,
-            )
-        except:
-            raise
-
     # The genome has two roles: fasta is the file its sequences are read from
     # (digestion, fragments), index the prefix of the aligner's index. What
     # this run writes from the genome goes to a directory of its own, which
@@ -1644,8 +1701,9 @@ def full_pipeline(
             sys.exit(1)
 
     # Check for spaces in fasta headers and issue error if found, and count
-    # the contigs of the cool matrix (those --size and --exclude keep), before
-    # an index is built: its warning comes first.
+    # the contigs of the matrix (those --size and --exclude keep), before an
+    # index is built: the default format follows from it, and its warnings
+    # come first.
     excluded = _excluded(exclude)
     n_contigs = 0
     for record in SeqIO.parse(hio.read_compressed(fasta), "fasta"):
@@ -1653,13 +1711,34 @@ def full_pipeline(
             n_contigs += 1
         if " " in record.id:
             logger.error("Sequence identifiers contain spaces. Please clean the input genome.")
-    if mat_fmt == "cool" and n_contigs >= MANY_CONTIGS:
+    # The default matrix: metacool from MANY_CONTIGS contigs, unless binned,
+    # which the cool matrix only is; cool otherwise.
+    default_fmt = mat_fmt is None
+    if default_fmt:
+        mat_fmt = "metacool" if n_contigs >= MANY_CONTIGS and binning == 0 else "cool"
+    if default_fmt and mat_fmt == "metacool":
         logger.warning(
-            f"{n_contigs:,} contigs in the cool matrix: it will be slow to write, as cooler "
-            "takes a time that grows with the square of the number of contigs for every cooler "
-            "it writes (about 30 s at 117,000 contigs, four times more for twice as many). "
-            "--matfmt none ends the run with its pairs file, which metaTOR and metacooler read; "
-            "--matfmt bg2 and graal write a text matrix."
+            f"{n_contigs:,} contigs in the matrix: it will be a metacool matrix, written with "
+            "metacooler, rather than a cool matrix, which cooler is slow to write with this many "
+            f"contigs ({_SLOW_COOL}). --matrix cool writes the cool matrix all the same."
+        )
+    elif mat_fmt == "cool" and n_contigs >= MANY_CONTIGS:
+        logger.warning(
+            f"{n_contigs:,} contigs in the cool matrix: it will be slow to write ({_SLOW_COOL}). "
+            "--matrix metacool writes it with metacooler, which does not pay that time, with one "
+            "bin per fragment; --matrix none ends the run with its pairs file; --matrix bg2 and "
+            "graal write a text matrix."
+        )
+    if mat_fmt == "cool":
+        logger.info(
+            "The default output format is now `.cool`. The Hi-C "
+            "matrix will be generated with cooler v%s "
+            "(Abdennur & Mirny, Bioinformatics 2020).",
+            cooler.__version__,
+        )
+    elif mat_fmt == "metacool":
+        logger.info(
+            "The Hi-C matrix will be generated with metacooler v%s.", metacooler.__version__
         )
 
     # A fasta file without bowtie2 or bwa index is indexed in genome_dir when
@@ -1962,7 +2041,7 @@ def full_pipeline(
         use_pairs = pairs_pcr
 
     # Build matrix from pairs.
-    if mat_fmt == "cool":
+    if mat_fmt in ("cool", "metacool"):
         # Log which pairs file is being used and how many pairs are listed
         pairs_count = 0
         with open(use_pairs) as file:
@@ -1977,6 +2056,9 @@ def full_pipeline(
             pairs_count,
         )
 
+    if mat_fmt == "metacool":
+        pairs2metacool(use_pairs, mat, fragments_list, exclude, threads=threads, cmd=cmd)
+    elif mat_fmt == "cool":
         # Name matrix file in .cool
         mat = os.path.splitext(mat)[0] + ".cool"
 
@@ -2000,7 +2082,7 @@ def full_pipeline(
             # Balance binned matrix
             balance(mat, balancing_args, threads=threads)
     elif mat_fmt == "none":
-        logger.info("No matrix (--matfmt none): the run ends with its pairs file.")
+        logger.info("No matrix (--matrix none): the run ends with its pairs file.")
     else:
         pairs2matrix(
             use_pairs,

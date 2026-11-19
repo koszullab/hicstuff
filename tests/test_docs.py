@@ -38,10 +38,11 @@ def documented_options():
 
 
 def cli_options(command):
-    """The options of a click command, without --help."""
+    """The options of a click command, without --help, nor the hidden ones,
+    which the help does not show either: a former name, such as --matfmt."""
     options = set()
     for param in command.params:
-        if isinstance(param, click.Option):
+        if isinstance(param, click.Option) and not param.hidden:
             options.update(param.opts + param.secondary_opts)
     return options - {"-h", "--help"}
 

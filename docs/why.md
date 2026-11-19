@@ -17,8 +17,9 @@ library, the [3C tutorial](https://github.com/axelcournac/3C_tutorial) and the
 - **One command, from reads to matrix.** `hicstuff pipeline` aligns the reads,
   pairs the mates, assigns them to restriction fragments, filters them and
   writes a [cool](https://github.com/open2c/cooler) file, or a binned,
-  balanced, multi-resolution `.mcool`. It can also start from BAM or pairs
-  files.
+  balanced, multi-resolution `.mcool`, or for a metagenome a
+  [metacool](https://pypi.org/project/metacooler/) file. It can also start
+  from BAM or pairs files.
 - **Nothing to install but hicstuff.** `pip install hicstuff` runs the whole
   pipeline in mapping mode `5spm`, the recommended one: bwa runs in-process,
   through [pybwa](https://github.com/fulcrumgenomics/pybwa). bowtie2 and
