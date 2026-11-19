@@ -28,6 +28,50 @@ The BAM files may be in any order: files sorted by read name (with
 `samtools sort -n` or `-N`) are read as they are, others are sorted by name
 first, in the temporary directory.
 
+### Several pairs of FASTQ files
+
+The lanes or sequencing runs of a library are read as one library: give the
+R1 files, then the R2 files. Each R1 file goes with the R2 file in the same
+position.
+
+```bash
+# Glob patterns, which the shell expands
+hicstuff pipeline -m 5spm -e DpnII -g genome.fa -o out/ lib1_*_R1.fq.gz lib1_*_R2.fq.gz
+
+# The same patterns, quoted: hicstuff expands them
+hicstuff pipeline -m 5spm -e DpnII -g genome.fa -o out/ 'lib1_*_R1.fq.gz' 'lib1_*_R2.fq.gz'
+
+# Comma-separated lists
+hicstuff pipeline -m 5spm -e DpnII -g genome.fa -o out/ \
+    lib1_L001_R1.fq.gz,lib1_L002_R1.fq.gz lib1_L001_R2.fq.gz,lib1_L002_R2.fq.gz
+```
+
+- **Patterns** (`*`, `?`, `[...]`) match the files sorted by name, as the
+  shell does: the R1 and R2 files of a lane, named alike, come in the same
+  position. An argument that is the path of a file is that file, even if its
+  name holds a comma or a pattern character.
+- **More than two arguments**, as the shell gives them for unquoted patterns,
+  are halves: the first half are the R1 files, the second half the R2 files.
+  An odd number of them stops the command.
+- **Each pair is checked** before the run starts: every file must exist and be
+  given once, and the R1 and R2 files of a pair must start with the same read,
+  named alike but for a final `/1` or `/2`. Files given in different orders
+  stop the run. The reads of each pair of files are counted, unless
+  `--skip-count`, and the log names a pair whose files have different numbers
+  of reads.
+- **The R1 files are concatenated** in the temporary directory, as are the R2
+  files, and the run goes on from that pair of files: its outputs are those of
+  the library in one pair of files. PCR duplicates (`--duplicates`) are found
+  across the lanes. Gzip files are copied as they are; plain files are
+  compressed when a gzip file is among them. The concatenated files take as
+  much space as the inputs, and are removed with the other temporary files.
+
+Several pairs of files are read from FASTQ files only: `--start-stage bam`
+takes two BAM files, and `pairs` and `pairs_idx` one pairs file. Separate
+libraries are better run one by one, since `--duplicates` would take a pair
+found in two libraries for a PCR duplicate; their maps, on the same fragments
+or bins, can then be summed with `cooler merge`.
+
 !!! warning "`--start-stage pairs_idx` sorts its input in place"
 
     The pairs file given with `-S pairs_idx` is sorted where it is, and must

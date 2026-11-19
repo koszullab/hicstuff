@@ -57,7 +57,10 @@ hpi.full_pipeline(
 | any other `--option-name` | `option_name` |
 
 Unlike the command, `full_pipeline` does not turn `mnase` or `dnase` into a
-fragment size: give `enzyme=100`.
+fragment size: give `enzyme=100`. Several pairs of FASTQ files are lists of
+paths, the R1 files in `input1` and the R2 files in `input2`, in the same
+order: `full_pipeline` does not split commas or expand patterns, which
+`split_inputs` does as the command does.
 
 ## Reading a matrix
 

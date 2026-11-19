@@ -183,6 +183,7 @@ line per message, with its time and level.
 
 The `cmd` line is the command that ran the pipeline, quoted to paste in a
 shell. A run started from Python, by `full_pipeline`, has none unless its
-`cmd` argument gives one. The `aligner` line is written when bwa runs
+`cmd` argument gives one. With several pairs of FASTQ files, `input1` and
+`input2` list the R1 and R2 files, comma-separated. The `aligner` line is written when bwa runs
 in-process, or in mapping mode `5spm`. `hicstuff stats` reads the statistics
 of the run from the log.

@@ -4,6 +4,7 @@ cmdoret, 20190322
 """
 
 import csv
+import glob
 import gzip
 import logging
 import multiprocessing
@@ -1001,6 +1002,213 @@ def check_tool(name):
     return which(name) is not None
 
 
+#: Characters that make an input of ``hicstuff pipeline`` a glob pattern
+_GLOB_CHARS = re.compile(r"[*?[]")
+
+
+def expand_inputs(arg):
+    """The files that an input argument of ``hicstuff pipeline`` names.
+
+    An argument that is a path that exists is that file, whatever characters
+    its name holds. Otherwise, it is a comma-separated list of paths, each of
+    which may be a glob pattern (with ``*``, ``?`` or ``[...]``), replaced by
+    the files it matches, sorted by name.
+
+    Parameters
+    ----------
+    arg : str
+        A path, comma-separated paths, or glob patterns.
+
+    Returns
+    -------
+    list of str
+        The paths of the files, in the order given.
+
+    Raises
+    ------
+    ValueError
+        If a pattern matches no file, or a list holds an empty item.
+
+    Examples
+    --------
+    >>> expand_inputs("lane1_R1.fq.gz,lane2_R1.fq.gz")
+    ['lane1_R1.fq.gz', 'lane2_R1.fq.gz']
+    """
+    if os.path.exists(arg):
+        return [arg]
+    files = []
+    for item in arg.split(","):
+        if not item:
+            raise ValueError(f"Empty path in the input list {arg!r}.")
+        if _GLOB_CHARS.search(item) is None:
+            files.append(item)
+            continue
+        matches = sorted(glob.glob(item))
+        if not matches:
+            raise ValueError(f"No file matches the input pattern {item!r}.")
+        files.extend(matches)
+    return files
+
+
+def split_inputs(args, start_stage="fastq"):
+    """The R1 and R2 files given by the input arguments of ``hicstuff pipeline``.
+
+    Each argument is expanded by :func:`expand_inputs`. From fastq or BAM
+    files, two arguments are the R1 files and the R2 files. More arguments,
+    as the shell gives them for unquoted glob patterns such as
+    ``lib1_*_R1.fq.gz lib1_*_R2.fq.gz``, must be even in number: the first
+    half are the R1 files, the second half the R2 files. From pairs, every
+    argument is a pairs file.
+
+    Parameters
+    ----------
+    args : list of str
+        The input arguments, as given on the command line.
+    start_stage : str
+        The start stage of the pipeline: "fastq", "bam", "pairs" or
+        "pairs_idx".
+
+    Returns
+    -------
+    tuple of (list of str, list of str)
+        The R1 files and the R2 files, in matching order; the files and an
+        empty list from pairs, or from a single argument.
+
+    Raises
+    ------
+    ValueError
+        If the R1 and R2 files cannot be told apart, or an argument names no
+        file (see :func:`expand_inputs`).
+
+    Examples
+    --------
+    >>> split_inputs(["a_R1.fq.gz,b_R1.fq.gz", "a_R2.fq.gz,b_R2.fq.gz"])
+    (['a_R1.fq.gz', 'b_R1.fq.gz'], ['a_R2.fq.gz', 'b_R2.fq.gz'])
+    >>> split_inputs(["a_R1.fq.gz", "b_R1.fq.gz", "a_R2.fq.gz", "b_R2.fq.gz"])
+    (['a_R1.fq.gz', 'b_R1.fq.gz'], ['a_R2.fq.gz', 'b_R2.fq.gz'])
+    """
+    args = list(args)
+    if start_stage in ("pairs", "pairs_idx"):
+        return [f for arg in args for f in expand_inputs(arg)], []
+    if len(args) > 2 and len(args) % 2:
+        raise ValueError(
+            f"{len(args)} input files: give the R1 files, then the R2 files, as many of each."
+        )
+    half = max(len(args) // 2, 1)
+    forward = [f for arg in args[:half] for f in expand_inputs(arg)]
+    reverse = [f for arg in args[half:] for f in expand_inputs(arg)]
+    return forward, reverse
+
+
+def _input_files(value):
+    """The list of files an input of full_pipeline gives: None, a path, or a
+    list of paths."""
+    if value is None:
+        return []
+    if isinstance(value, (str, os.PathLike)):
+        return [os.fspath(value)]
+    return [os.fspath(path) for path in value]
+
+
+def _is_gzip(path):
+    """Whether a file starts as a gzip file."""
+    with open(path, "rb") as handle:
+        return handle.read(2) == b"\x1f\x8b"
+
+
+def _first_read_name(path):
+    """The name of the first read of a fastq file, without the /1 or /2 that
+    some files end it with, or None if the file holds no read."""
+    with hio.read_compressed(path) as handle:
+        header = handle.readline()
+    if not header.startswith("@"):
+        return None
+    fields = header[1:].split(maxsplit=1)
+    if not fields:
+        return None
+    return re.sub(r"/[12]$", "", fields[0])
+
+
+def check_fastq_pairs(forward, reverse):
+    """Check that several pairs of fastq files can be read as one library.
+
+    Every file must exist and be given once, and the R1 and R2 files of each
+    pair must start with the same read: Illumina names both mates of a read
+    pair alike, with an optional /1 or /2.
+
+    Parameters
+    ----------
+    forward : list of str
+        The R1 files.
+    reverse : list of str
+        The R2 files, in the order of their R1 files.
+
+    Raises
+    ------
+    ValueError
+        If a file is missing or given twice, or the files of a pair do not
+        start with the same read.
+    """
+    files = forward + reverse
+    missing = [path for path in files if not os.path.exists(path)]
+    if missing:
+        raise ValueError(f"Input file not found: {', '.join(missing)}")
+    seen = {}
+    for path in files:
+        real = os.path.realpath(path)
+        if real in seen:
+            raise ValueError(f"Input file given twice: {seen[real]} and {path}.")
+        seen[real] = path
+    for fq1, fq2 in zip(forward, reverse):
+        name1, name2 = _first_read_name(fq1), _first_read_name(fq2)
+        if name1 != name2:
+            raise ValueError(
+                f"{fq1} and {fq2} are not the R1 and R2 files of the same reads: they start "
+                f"with reads {name1} and {name2}. Give the R1 files, then the R2 files, in "
+                "the same order."
+            )
+
+
+def concatenate_fastq(files, out_file):
+    """Concatenate fastq files into one, gzip-compressed if any of them is.
+
+    The gzip files are copied as they are, which makes a valid gzip file of
+    several members, read as one by Python, htslib and the aligners. With a
+    gzip file among them, the plain files are compressed; otherwise the
+    output is a plain file. A plain file that does not end with a newline
+    gets one.
+
+    Parameters
+    ----------
+    files : list of str
+        The fastq files, plain or gzip-compressed, in the order to write them.
+    out_file : str
+        Path of the concatenated file.
+    """
+    gzipped = [_is_gzip(path) for path in files]
+    with open(out_file, "wb") as out:
+        for path, is_gzip in zip(files, gzipped):
+            with open(path, "rb") as src:
+                if is_gzip:
+                    st.copyfileobj(src, out, 1 << 20)
+                elif any(gzipped):
+                    # A temporary file, read again soon: compressed fast
+                    with gzip.GzipFile(fileobj=out, mode="wb", compresslevel=1) as dst:
+                        _copy_lines(src, dst)
+                else:
+                    _copy_lines(src, out)
+
+
+def _copy_lines(src, dst):
+    """Copy a text file, adding the newline it may lack at its end."""
+    last = b""
+    for block in iter(lambda: src.read(1 << 20), b""):
+        dst.write(block)
+        last = block[-1:]
+    if last not in (b"", b"\n"):
+        dst.write(b"\n")
+
+
 def full_pipeline(
     genome,
     input1,
@@ -1043,12 +1251,18 @@ def full_pipeline(
     genome : str
         Path to the bowtie2/bwa index prefix if using bowtie2/bwa or to the genome
         in fasta format if using minimap2.
-    input1 : str
+    input1 : str or list of str
         Path to the Hi-C reads in fastq format (forward), the aligned Hi-C reads
         in BAM format, or the pairs file, depending on the value of start_stage.
-    input2 : str
-        Path to the Hi-C reads in fastq format (forward), the aligned Hi-C reads
-        in BAM format, or None, depending on the value of start_stage.
+        From fastq, a list of files: the R1 files of several pairs of fastq
+        files (lanes or runs of a library), read as one library.
+    input2 : str or list of str
+        Path to the Hi-C reads in fastq format (reverse), the aligned Hi-C reads
+        in BAM format, or None, depending on the value of start_stage. From
+        fastq, a list of files: the R2 files, in the order of their R1 files.
+        Each pair must start with the same read; the R1 files are concatenated
+        in the temporary directory, as are the R2 files, and aligned as one
+        pair of files.
     binning : int
         If mat_fmt is set to "cool", the cool file will be further binned to
         this resolution.
@@ -1213,16 +1427,39 @@ def full_pipeline(
         )
 
     # Check if the number of input files is correct
+    for_files, rev_files = _input_files(input1), _input_files(input2)
     if start_stage <= 1:
-        if input2 is None:
+        if not for_files or not rev_files:
             logger.error("You must provide 2 input files when --start-stage is fastq or bam.")
             sys.exit(1)
+        if len(for_files) != len(rev_files):
+            logger.error(
+                "%d R1 files and %d R2 files: each R1 file needs its R2 file.",
+                len(for_files),
+                len(rev_files),
+            )
+            sys.exit(1)
+        if start_stage == 1 and len(for_files) > 1:
+            logger.error(
+                "Several pairs of input files are read from fastq only: give one BAM file per mate."
+            )
+            sys.exit(1)
     else:
-        if input2 is not None:
+        if rev_files or len(for_files) != 1:
             logger.error(
                 "You must provide a single input file when --start-stage is pairs or pairs_idx."
             )
             sys.exit(1)
+    # Several pairs of fastq files are concatenated into one pair of files
+    several_pairs = len(for_files) > 1
+    if several_pairs:
+        try:
+            check_fastq_pairs(for_files, rev_files)
+        except ValueError as error:
+            logger.error(str(error))
+            sys.exit(1)
+    input1 = ",".join(for_files)
+    input2 = ",".join(rev_files) if rev_files else None
     # sanitize enzyme
     enzyme = str(enzyme)
     # Remember whether fragments_file has been generated during this run
@@ -1284,6 +1521,12 @@ def full_pipeline(
     pairs_idx = _tmp_file("valid_idx.pairs")
     pairs_filtered = _tmp_file("valid_idx_filtered.pairs")
     pairs_pcr = _tmp_file("valid_idx_pcrfree.pairs")
+    reads_cat = []
+    if several_pairs:
+        reads_cat = [
+            _tmp_file(f"{mate}.fq.gz" if any(map(_is_gzip, files)) else f"{mate}.fq")
+            for mate, files in (("for", for_files), ("rev", rev_files))
+        ]
 
     # Enable file logging
     hcl.set_file_handler(log_file)
@@ -1400,7 +1643,7 @@ def full_pipeline(
             mat = _out_file("abs_fragments_contacts_weighted." + mat_fmt)
     # Define what input files are given
     if start_stage == 0:
-        reads1, reads2 = input1, input2
+        reads1, reads2 = for_files[0], rev_files[0]
     elif start_stage == 1:
         bam1, bam2 = input1, input2
     elif start_stage == 2:
@@ -1414,14 +1657,40 @@ def full_pipeline(
         if skip_count:
             logger.info("Skipping read count check (--skip-count).")
         else:
-            # Check number of reads in both fastqs
+            # Check number of reads in both fastqs, of each pair of files
             logger.info("Checking content of fastq files.")
-            nreads_input1 = hio.check_fastq_entries(reads1, threads)
-            nreads_input2 = hio.check_fastq_entries(reads2, threads)
-            if nreads_input1 != nreads_input2:
+            nreads_input2 = 0
+            counts_differ = False
+            for fq1, fq2 in zip(for_files, rev_files):
+                nreads1 = hio.check_fastq_entries(fq1, threads)
+                nreads2 = hio.check_fastq_entries(fq2, threads)
+                nreads_input1 += nreads1
+                nreads_input2 += nreads2
+                counts_differ = counts_differ or nreads1 != nreads2
+                if several_pairs and nreads1 != nreads2:
+                    logger.error(
+                        "Fastq files %s and %s do not have the same number of reads: %d and %d.",
+                        fq1,
+                        fq2,
+                        nreads1,
+                        nreads2,
+                    )
+                elif several_pairs:
+                    logger.info("%d reads in each of %s and %s.", nreads1, fq1, fq2)
+            if counts_differ:
                 logger.error("Fastq files do not have the same number of reads.")
             else:
                 logger.info(f"{int(nreads_input1)} reads found in each fastq file.")
+
+        if several_pairs:
+            logger.info(
+                "Concatenating %d pairs of fastq files into %s and %s.",
+                len(for_files),
+                *reads_cat,
+            )
+            for files, out in zip((for_files, rev_files), reads_cat):
+                concatenate_fastq(files, out)
+            reads1, reads2 = reads_cat
 
         # Define mapping choice (default normal):
         if mapping == "normal":
@@ -1719,6 +1988,8 @@ def full_pipeline(
             pairs_pcr,
             bam1,
             bam2,
+            # The concatenated fastq files of several pairs of files
+            *reads_cat,
         ]
         # The genome sequence and the index this run wrote, if any
         if genome_dir is not None:

@@ -33,11 +33,14 @@ map. **API:** `hicstuff.pipeline.full_pipeline`. **Guide:**
 [Running the pipeline](guides/pipeline.md).
 
 ```console
-hicstuff pipeline [OPTIONS] INPUT1 [INPUT2]
+hicstuff pipeline [OPTIONS] INPUT1... [INPUT2...]
 ```
 
 `INPUT1` and `INPUT2` are the R1 and R2 FASTQ files, or the two BAM files of
 `--start-stage bam`. `--start-stage pairs` and `pairs_idx` take one pairs file.
+Several pairs of FASTQ files, such as the lanes of a library, are read as one
+library: give the R1 files, then the R2 files, comma-separated or as glob
+patterns. See [Several pairs of FASTQ files](guides/pipeline.md#several-pairs-of-fastq-files).
 
 **Recommended:** `--mapping 5spm`, which aligns the mates with
 `bwa mem -5SPM`, in-process, and records each mate at its aligned 5' end. See
@@ -84,6 +87,9 @@ hicstuff pipeline -m 5spm -e DpnII,HinfI -b 1000 -t 8 -f -D -P sample -g genome.
 
 # Reads aligned elsewhere with bwa mem -5SPM, one BAM file per mate
 hicstuff pipeline -S bam -m 5spm -e DpnII -g genome.fa -o out/ R1.bam R2.bam
+
+# The lanes of a library, read as one library
+hicstuff pipeline -m 5spm -e DpnII -g genome.fa -o out/ lib1_*_R1.fq.gz lib1_*_R2.fq.gz
 ```
 
 ## Processing

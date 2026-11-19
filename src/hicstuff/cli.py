@@ -64,7 +64,7 @@ click.rich_click.COMMAND_GROUPS = {
 click.rich_click.OPTION_GROUPS = {
     "hicstuff pipeline": [
         # Listed first, or rich-click renders it after the option panels.
-        {"name": "Arguments", "options": ["input1", "input2"]},
+        {"name": "Arguments", "options": ["inputs"]},
         {
             "name": "Main options",
             "options": [
@@ -823,8 +823,7 @@ def view(
 
 
 @cli.command("pipeline")
-@click.argument("input1")
-@click.argument("input2", required=False, default=None)
+@click.argument("inputs", nargs=-1, required=True, metavar="INPUT1... [INPUT2...]")
 @click.option(
     "-g", "--genome", required=True, metavar="FILE", help="Reference genome or aligner index."
 )
@@ -996,8 +995,7 @@ def view(
     help="Skip the read-count check on input FASTQ files.",
 )
 def pipeline(
-    input1,
-    input2,
+    inputs,
     genome,
     aligner,
     balancing_args,
@@ -1029,11 +1027,26 @@ def pipeline(
 ):
     """Run the full Hi-C pipeline from FASTQ to contact matrix.
 
+    INPUT1 and INPUT2 are the R1 and R2 FASTQ files, the two BAM files of
+    --start-stage bam, or the pairs file of --start-stage pairs and pairs_idx.
+
+    Several pairs of FASTQ files, such as the lanes of a library, are read as
+    one library: give the R1 files, then the R2 files, comma-separated or as
+    glob patterns, quoted or not. Each R1 file is paired with the R2 file in
+    the same position, sorted by name for a pattern.
+
     \b
     Example — generate a multi-resolution .mcool for Arima Hi-C:
 
         hicstuff pipeline --enzyme "DpnII,HinfI" --binning 1000 --threads 8 \\
             --genome ref.fa R1.fq.gz R2.fq.gz
+
+    \b
+    Example — read the lanes of a library as one library:
+
+        hicstuff pipeline -e DpnII -g ref.fa lib1_*_R1.fq.gz lib1_*_R2.fq.gz
+        hicstuff pipeline -e DpnII -g ref.fa \\
+            L1_R1.fq.gz,L2_R1.fq.gz L1_R2.fq.gz,L2_R2.fq.gz
     """
     if filter_events and enzyme.isdigit():
         raise click.UsageError("Cannot filter events without specifying a restriction enzyme.")
@@ -1042,10 +1055,14 @@ def pipeline(
         enzyme = "100"
     if outdir is None:
         outdir = os.getcwd()
+    try:
+        input1, input2 = hpi.split_inputs(inputs, start_stage)
+    except ValueError as error:
+        raise click.UsageError(str(error)) from None
     hpi.full_pipeline(
         genome=genome,
         input1=input1,
-        input2=input2,
+        input2=input2 or None,
         aligner=aligner,
         centromeres=centromeres,
         circular=circular,
