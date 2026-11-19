@@ -123,19 +123,22 @@ for both mates. `--duplicates` keeps one of each.
 
 ## Contact map formats
 
-| Format | `--matfmt` | Files | Read by |
+| Format | `--matrix` | Files | Read by |
 |---|---|---|---|
-| cool (default) | `cool` | `.cool`, or `.mcool` with `--binning` | cooler, cooltools, HiGlass, … |
+| cool (default, below 50,000 contigs) | `cool` | `.cool`, or `.mcool` with `--binning` | cooler, cooltools, HiGlass, … |
+| metacool (default from 50,000 contigs) | `metacool` | `.metacool`, one bin per fragment | metacooler, cooler, … |
 | 2D bedgraph | `bg2` | `.bg2` | `cooler load -f bg2` |
 | graal | `graal` | a sparse matrix, `fragments_list.txt`, `info_contigs.txt` | instaGRAAL |
+| none | `none` | no map: the run ends with its pairs file | metaTOR, metacooler, … |
 
 Every command that reads a map (`view`, `rebin`, `subsample`, `convert`,
-`scalogram`) takes any of the three, and tells them apart by the file: a
-`.cool` name or a `.mcool::/resolutions/<N>` URI is a cool, a first line of
-seven tab-separated fields a 2D bedgraph, of three fields a graal matrix. A
-graal matrix carries no coordinates: the commands that need them take its
-`fragments_list.txt` with `--frags`, and `rebin` its `info_contigs.txt` with
-`--chroms` as well.
+`scalogram`) takes cool, 2D bedgraph and graal maps, and tells them apart by
+the file: a `.cool` name or a `.mcool::/resolutions/<N>` URI is a cool, a
+first line of seven tab-separated fields a 2D bedgraph, of three fields a graal
+matrix. A graal matrix carries no coordinates: the commands that need them take
+its `fragments_list.txt` with `--frags`, and `rebin` its `info_contigs.txt`
+with `--chroms` as well. They do not read a `.metacool` file, which metacooler
+reads, and cooler too, as a cool file.
 
 ## Coordinates
 

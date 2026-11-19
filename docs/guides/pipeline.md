@@ -116,20 +116,22 @@ instaGRAAL's file names:
 | Log | `hicstuff_<date>.log` | `sample.hicstuff_<date>.log` | always |
 | Fragments | `fragments_list.txt` | `sample.frags.tsv` | always |
 | Contigs | `info_contigs.txt` | `sample.chr.tsv` | always |
-| Contact map, cool | `abs_fragments_contacts_weighted.cool` | `sample.cool` | by default |
+| Contact map, cool | `abs_fragments_contacts_weighted.cool` | `sample.cool` | by default, below 50,000 contigs |
+| Contact map, metacool | `abs_fragments_contacts_weighted.metacool` | `sample.metacool` | by default from 50,000 contigs, or with `--matrix metacool` |
 | Contact map, binned | `abs_fragments_contacts_weighted.mcool` | `sample.mcool` | with `--binning` |
-| Contact map, graal | `abs_fragments_contacts_weighted.txt` | `sample.mat.tsv` | with `--matfmt graal` |
-| Contact map, 2D bedgraph | `abs_fragments_contacts_weighted.bg2` | `sample.bg2` | with `--matfmt bg2` |
+| Contact map, graal | `abs_fragments_contacts_weighted.txt` | `sample.mat.tsv` | with `--matrix graal` |
+| Contact map, 2D bedgraph | `abs_fragments_contacts_weighted.bg2` | `sample.bg2` | with `--matrix bg2` |
 | Pairs | `valid_idx.pairs.gz` | `sample.valid_idx.pairs.gz` | always |
 | Distance law | `distance_law.txt` | `sample.distance_law.txt` | with `--distance-law` |
 | Plots | `plots/*.pdf` | `plots/sample_*.pdf` | with `--plot` |
 
 `<date>` is the time the run started, as `YYYYmmddHHMMSS`, so a log never
-replaces another. The pairs file holds the pairs the map was built from: it is
+replaces another. The pairs file holds the pairs the map is built from: it is
 `valid_idx_filtered.pairs.gz` after `--filter`, and
 `valid_idx_pcrfree.pairs.gz` after `--duplicates`. It is sorted by `chr1`,
 `chr2`, `pos1`, `pos2` and compressed in the BGZF format, which pairix can
-index.
+index. With `--matrix none`, the run writes no contact map, and ends with this
+file.
 
 A run refuses to replace an output that exists, or a temporary file left by an
 earlier run, unless given `--force` (`-F`).
@@ -186,7 +188,7 @@ half the reads aligned.
 | `--size N` (`-s`) | Contigs shorter than N bp, and the pairs with a mate on them |
 | `--filter` (`-f`) | Uncuts, loops and impossible pairs, with thresholds estimated from the library |
 | `--duplicates` (`-D`) | PCR duplicates: one pair is kept among those with the same coordinates |
-| `--exclude chrM,2u` (`-E`) | These chromosomes, from the cool file only |
+| `--exclude chrM,2u` (`-E`) | These chromosomes, from the cool and metacool files only |
 
 `--filter` needs a restriction enzyme: with a fragment size, no fragment is a
 restriction fragment, and the run refuses it (though not `mnase` or `dnase`,
@@ -195,14 +197,45 @@ explains how the thresholds are chosen, and how to check them.
 
 ## The contact map
 
-`--matfmt` (`-M`) chooses its format:
+`--matrix` (`-M`) chooses its format:
 
-- **`cool`** (the default): a [cooler](https://github.com/open2c/cooler) with
-  one bin per fragment, made by `cooler cload pairs`.
+- **`cool`** (the default, below 50,000 contigs): a
+  [cooler](https://github.com/open2c/cooler) with one bin per fragment, made by
+  `cooler cload pairs`.
+- **`metacool`** (the default from 50,000 contigs, but with `--binning`): a
+  [metacooler](https://pypi.org/project/metacooler/) file with one bin per
+  fragment, made by `metacooler create pairs`. It is a cool file, which cooler
+  reads, with metacooler's tables of genomes and contigs. Its contigs are not
+  yet assigned to genomes: `metacooler reassign` assigns them, from a binning
+  such as metaTOR's. See [metacool](../formats.md#metacool). `--binning` and
+  `--balancing-args`, options of the cool map, are refused with it, but for
+  `--binning 0` and blank values; `--exclude` leaves contigs out of it, as out
+  of the cool map.
 - **`graal`**: instaGRAAL's sparse matrix, one row and column per fragment;
   with `fragments_list.txt` and `info_contigs.txt`, it is what instaGRAAL
   reads.
 - **`bg2`**: a 2D bedgraph, one line per pair of fragments with contacts.
+- **`none`**: no map. The run ends with its pairs file, for the tools that
+  build their own contact maps from pairs, such as
+  [metaTOR](https://github.com/koszullab/metaTOR) and
+  [metacooler](https://pypi.org/project/metacooler/). `--binning`,
+  `--balancing-args` and `--exclude`, options of the cool map, are refused with
+  it, but for `--binning 0` and blank values.
+
+cooler tries to store the contig of each bin of a cool file as an HDF5 enum, of
+one member per contig. Building it takes a time that grows with the square of
+the number of contigs (about 2 s at 32,000 contigs, 30 s at 117,000, four times
+more for twice as many); HDF5 then refuses it past a few thousand members, and
+cooler stores integers instead. It pays that time for every cooler it writes:
+`cooler cload pairs` writes one for every 15 million pairs, then the map.
+metacooler stores integers from the start. So with 50,000 contigs or more in
+the map (those that `--size` and `--exclude` keep), as a metagenome assembly
+may have, the default map is a metacool file, and the run warns of it before
+it aligns reads or builds an index. With `--binning`, which the metacool map
+does not take, the default map stays a cool file, as with `--matrix cool`: the
+run then warns that it will be slow to write. `--matrix none` ends the run with
+its pairs file, and `bg2` and `graal`, text files, do not pay that time
+either.
 
 ### Binned, multi-resolution and balanced maps
 

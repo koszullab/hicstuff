@@ -6,6 +6,7 @@ import shlex
 import shutil
 
 import cooler
+import metacooler
 import numpy as np
 import pandas as pd
 import pytest
@@ -238,6 +239,100 @@ def test_iterative_align_errors(synthetic_lib, tmp_path, caplog, require_tools):
 # ---------------------------------------------------------------------------
 # pipeline, filter, stats
 # ---------------------------------------------------------------------------
+
+
+_WITHOUT_MATRIX = ["pipeline", "-S", "pairs", "-e", "DpnII", "-g", "test_data/genome/seq.fa"]
+
+
+@pytest.mark.parametrize(
+    "matrix, options, named",
+    [
+        ("none", ["-b", "1000"], "writes no matrix: --binning is an option"),
+        ("none", ["-B", "--max-iters 10"], "writes no matrix: --balancing-args is an option"),
+        ("none", ["-E", "seq2"], "writes no matrix: --exclude is an option"),
+        (
+            "none",
+            ["-b", "1000", "-E", "seq2"],
+            "writes no matrix: --binning, --exclude are options",
+        ),
+        ("none", ["-b", "-5"], "writes no matrix: --binning is an option"),
+        ("metacool", ["-b", "1000"], "has one bin per fragment: --binning is an option"),
+        (
+            "metacool",
+            ["-b", "1000", "-B", "--max-iters 10", "-E", "seq2"],
+            "has one bin per fragment: --binning, --balancing-args are options",
+        ),
+    ],
+)
+def test_pipeline_refuses_cool_options(runner, matrix, options, named, tmp_path):
+    """-M none writes no matrix, and -M metacool has one bin per fragment:
+    the options of the cool matrix, given with them, are a usage error,
+    before the run starts. -M metacool takes --exclude."""
+    out_dir = tmp_path / "out"
+    args = [*_WITHOUT_MATRIX, "-M", matrix, *options, "-o", out_dir, "test_data/valid.pairs"]
+    result = invoke(runner, *args, exit_code=2)
+    assert f"--matrix {matrix} {named} of the cool matrix." in text(result)
+    assert not out_dir.exists()
+
+
+@pytest.mark.parametrize(
+    "options", [[], ["-b", "0", "-z", "False", "-B", "", "-E", ""], ["-B", " ", "-E", " , "]]
+)
+def test_pipeline_without_matrix(runner, options, tmp_path):
+    """-M none ends the run with its pairs file. The options of the cool
+    matrix are taken with values that would shape no matrix: no binning, no
+    zoomify, blank balancing arguments, no contig to exclude."""
+    out_dir = tmp_path / "out"
+    invoke(runner, *_WITHOUT_MATRIX, "-M", "none", *options, "-o", out_dir, "test_data/valid.pairs")
+    written = sorted(
+        path.name for path in out_dir.iterdir() if path.is_file() and path.suffix != ".log"
+    )
+    assert written == ["fragments_list.txt", "info_contigs.txt", "valid_idx.pairs.gz"]
+
+
+@pytest.mark.parametrize(
+    "options",
+    [["--matrix", "none"], ["--matfmt", "none"], ["--matfmt", "none", "-M", "none"]],
+)
+def test_pipeline_matrix_option(runner, options, tmp_path):
+    """--matrix (-M) chooses the matrix format. --matfmt, its former name,
+    still works, alone or with --matrix of the same format, but the help no
+    longer shows it."""
+    out_dir = tmp_path / "out"
+    invoke(runner, *_WITHOUT_MATRIX, *options, "-o", out_dir, "test_data/valid.pairs")
+    written = sorted(
+        path.name for path in out_dir.iterdir() if path.is_file() and path.suffix != ".log"
+    )
+    assert written == ["fragments_list.txt", "info_contigs.txt", "valid_idx.pairs.gz"]
+    help_text = text(invoke(runner, "pipeline", "--help"))
+    assert "--matrix -M STR Output matrix format:" in help_text
+    assert "--matfmt" not in help_text
+    assert "[default: (cool, or metacool from 50,000 contigs)]" in help_text
+
+
+def test_pipeline_matrix_option_with_another_former_name(runner, tmp_path):
+    """--matfmt and --matrix of two formats are a usage error, before the run
+    starts."""
+    out_dir = tmp_path / "out"
+    args = [*_WITHOUT_MATRIX, "--matfmt", "bg2", "-M", "none", "-o", out_dir]
+    result = invoke(runner, *args, "test_data/valid.pairs", exit_code=2)
+    assert "--matfmt is the former name of --matrix: give --matrix none alone." in text(result)
+    assert not out_dir.exists()
+
+
+def test_pipeline_metacool_matrix(runner, tmp_path):
+    """-M metacool writes a metacool matrix, without the contigs of --exclude,
+    and stores the command line of the run, as its log records it."""
+    out_dir = tmp_path / "out"
+    args = [*_WITHOUT_MATRIX, "-M", "metacool", "-E", "seq2", "-o", out_dir]
+    invoke(runner, *args, "test_data/valid.pairs")
+    mc = metacooler.MetaCooler(str(out_dir / "abs_fragments_contacts_weighted.metacool"))
+    assert mc.contigs.name.tolist() == ["seq1"]
+    (log,) = out_dir.glob("hicstuff_*.log")
+    (cmd,) = [line for line in log.read_text().splitlines() if "## cmd: " in line]
+    assert mc.metadata["commands"] == [cmd.split("## cmd: ", 1)[1]]
+    # CliRunner names the program after the function: cli
+    assert mc.metadata["commands"][0].startswith("cli pipeline -S pairs -e DpnII")
 
 
 def test_pipeline_command(runner, synthetic_lib, final_pairs, tmp_path, monkeypatch):

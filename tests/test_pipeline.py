@@ -14,6 +14,7 @@ from tempfile import NamedTemporaryFile
 import click
 import cooler
 import h5py
+import metacooler
 import numpy as np
 import pandas as pd
 import pysam
@@ -22,6 +23,7 @@ import pytest
 import hicstuff.bwamem as hbm
 import hicstuff.io as hio
 import hicstuff.pipeline as hpi
+import hicstuff.stats as hcs
 from tests import synthetic as syn
 from tests.conftest import skip_unless_can_align
 
@@ -1267,3 +1269,417 @@ def test_bam2pairs_records_5_prime_ends_of_bams_in_another_order(tmp_path, order
     sort_dir.mkdir()
 
     _run_bam2pairs(tmp_path, mates, tmp_dir=str(sort_dir), five_prime=True)
+
+
+def _run_from_pairs(tmp_path, name, **kwargs):
+    """A pipeline run from a copy of test_data's pairs, in tmp_path/name,
+    which it returns. test_data's genome has two contigs: seq1, of 60 kb, and
+    seq2, of 20 kb."""
+    pairs = tmp_path / f"{name}.pairs"
+    shutil.copy("test_data/valid.pairs", pairs)
+    out_dir = tmp_path / name
+    hpi.full_pipeline(
+        genome="test_data/genome/seq.fa",
+        input1=str(pairs),
+        start_stage="pairs",
+        enzyme="DpnII",
+        out_dir=str(out_dir),
+        **kwargs,
+    )
+    return out_dir
+
+
+def _outputs(out_dir):
+    """The files that a run wrote in out_dir, but its log, by name: the
+    contents of a compressed one uncompressed."""
+    found = {}
+    for path in sorted(out_dir.iterdir()):
+        if path.is_file() and path.suffix != ".log":
+            opener = gzip.open if path.suffix == ".gz" else open
+            with opener(path, "rb") as handle:
+                found[path.name] = handle.read()
+    return found
+
+
+@pytest.mark.parametrize(
+    "prefix, written, matrix",
+    [
+        (
+            None,
+            ["fragments_list.txt", "info_contigs.txt", "valid_idx.pairs.gz"],
+            "abs_fragments_contacts_weighted.cool",
+        ),
+        (
+            "sample",
+            ["sample.chr.tsv", "sample.frags.tsv", "sample.valid_idx.pairs.gz"],
+            "sample.cool",
+        ),
+    ],
+)
+def test_full_pipeline_without_matrix(prefix, written, matrix, tmp_path, caplog):
+    """--matrix none writes no matrix: the run ends with its pairs file,
+    which, with the fragments and contigs tables, is what a run that writes
+    the cool matrix writes too, with or without a prefix."""
+    caplog.set_level(logging.INFO)
+    with_cool = _outputs(_run_from_pairs(tmp_path, "cool", mat_fmt="cool", prefix=prefix))
+    without = _outputs(_run_from_pairs(tmp_path, "none", mat_fmt="none", prefix=prefix))
+    assert sorted(without) == written
+    assert sorted(set(with_cool) - set(without)) == [matrix]
+    assert without == {name: with_cool[name] for name in without}
+    assert "No matrix (--matrix none): the run ends with its pairs file." in caplog.text
+    assert re.search(r"Pairs generated after \d+h \d+m \d+s", caplog.text)
+
+
+@pytest.mark.parametrize(
+    "mat_fmt, kwargs, named",
+    [
+        ("none", dict(binning=1000), "writes no matrix: binning is an option"),
+        (
+            "none",
+            dict(balancing_args="--max-iters 10"),
+            "writes no matrix: balancing_args is an option",
+        ),
+        ("none", dict(exclude="seq2"), "writes no matrix: exclude is an option"),
+        (
+            "none",
+            dict(binning=1000, exclude="seq2"),
+            "writes no matrix: binning, exclude are options",
+        ),
+        ("none", dict(binning=-5), "writes no matrix: binning is an option"),
+        ("none", dict(exclude=["seq2"]), "writes no matrix: exclude is an option"),
+        ("metacool", dict(binning=1000), "has one bin per fragment: binning is an option"),
+        (
+            "metacool",
+            dict(binning=1000, balancing_args="--max-iters 10", exclude="seq2"),
+            "has one bin per fragment: binning, balancing_args are options",
+        ),
+    ],
+)
+def test_full_pipeline_refuses_cool_options(mat_fmt, kwargs, named, tmp_path, caplog):
+    """Binning and balancing arguments are options of the cool matrix, and
+    contigs to exclude of the cool and metacool matrices: with the matrix
+    format none, which writes no matrix, or metacool, which has one bin per
+    fragment, they are refused before the run writes anything, the reason
+    logged as an error."""
+    out_dir = tmp_path / "out"
+    message = f"The matrix format {mat_fmt} {named} of the cool matrix."
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        hpi.full_pipeline(
+            genome="test_data/genome/seq.fa",
+            input1="test_data/valid.pairs",
+            start_stage="pairs",
+            enzyme="DpnII",
+            out_dir=str(out_dir),
+            mat_fmt=mat_fmt,
+            **kwargs,
+        )
+    assert not out_dir.exists()
+    assert ("ERROR", message) in [
+        (record.levelname, record.getMessage()) for record in caplog.records
+    ]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        dict(binning=0, zoomify=False, balancing_args="", exclude=""),
+        dict(balancing_args=" ", exclude=" , "),
+    ],
+)
+def test_full_pipeline_without_matrix_takes_options_without_effect(kwargs, tmp_path):
+    """No binning (0), no zoomify, blank balancing arguments and no contig to
+    exclude would shape no matrix: the matrix format none takes them, and
+    writes what a run without them writes, no matrix."""
+    plain = _outputs(_run_from_pairs(tmp_path, "plain", mat_fmt="none"))
+    assert sorted(plain) == ["fragments_list.txt", "info_contigs.txt", "valid_idx.pairs.gz"]
+    assert _outputs(_run_from_pairs(tmp_path, "given", mat_fmt="none", **kwargs)) == plain
+
+
+def test_full_pipeline_takes_a_list_of_contigs_to_exclude(tmp_path):
+    """exclude given as a list of names, which full_pipeline does not
+    document, still runs with a format that does not read it. A guard
+    against the previous commit, where bg2 never read exclude: it failed
+    once the count of the contigs of the cool matrix read it as a string."""
+    out_dir = _run_from_pairs(tmp_path, "run", mat_fmt="bg2", exclude=["seq2"])
+    assert (out_dir / "abs_fragments_contacts_weighted.bg2").stat().st_size > 0
+
+
+@pytest.mark.parametrize("mat_fmt", ["hic", "mcool", "None"])
+def test_full_pipeline_refuses_an_unknown_matrix_format(mat_fmt, tmp_path, caplog):
+    """A matrix format other than graal, bg2, cool, metacool and none is
+    refused before the run writes anything, the reason logged as an error.
+    Another name wrote an empty matrix file under its extension. None, the
+    Python value, is the default format, and the name "None" is unknown."""
+    out_dir = tmp_path / "out"
+    message = f"Unknown matrix format {mat_fmt!r}: choose graal, bg2, cool, metacool or none."
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        hpi.full_pipeline(
+            genome="test_data/genome/seq.fa",
+            input1="test_data/valid.pairs",
+            start_stage="pairs",
+            enzyme="DpnII",
+            out_dir=str(out_dir),
+            mat_fmt=mat_fmt,
+        )
+    assert not out_dir.exists()
+    assert ("ERROR", message) in [
+        (record.levelname, record.getMessage()) for record in caplog.records
+    ]
+
+
+def _slow_cool_warnings(caplog):
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.levelname == "WARNING" and "contigs in the cool matrix" in record.getMessage()
+    ]
+
+
+#: The warning of a cool matrix of MANY_CONTIGS contigs or more, for
+#: test_data's two contigs
+SLOW_COOL = (
+    "2 contigs in the cool matrix: it will be slow to write (cooler takes a time that grows "
+    "with the square of the number of contigs for every cooler it writes: about 30 s at "
+    "117,000 contigs, four times more for twice as many). --matrix metacool writes it with "
+    "metacooler, which does not pay that time, with one bin per fragment; --matrix none ends "
+    "the run with its pairs file; --matrix bg2 and graal write a text matrix."
+)
+
+#: The warning of the default matrix, metacool from MANY_CONTIGS contigs, for
+#: test_data's two contigs
+DEFAULT_METACOOL = (
+    "2 contigs in the matrix: it will be a metacool matrix, written with metacooler, rather "
+    "than a cool matrix, which cooler is slow to write with this many contigs (cooler takes a "
+    "time that grows with the square of the number of contigs for every cooler it writes: "
+    "about 30 s at 117,000 contigs, four times more for twice as many). --matrix cool writes "
+    "the cool matrix all the same."
+)
+
+
+def _warnings(caplog):
+    return [record.getMessage() for record in caplog.records if record.levelname == "WARNING"]
+
+
+@pytest.mark.parametrize(
+    "mat_fmt, many, warned",
+    [
+        ("cool", 2, True),
+        ("cool", 3, False),
+        ("bg2", 2, False),
+        ("none", 2, False),
+        ("metacool", 2, False),
+    ],
+)
+def test_full_pipeline_warns_of_a_slow_cool_matrix(
+    mat_fmt, many, warned, tmp_path, caplog, monkeypatch
+):
+    """A cool matrix of MANY_CONTIGS contigs or more makes the run warn that
+    it will be slow to write, and which formats do not pay that time:
+    test_data's genome has two contigs. Fewer contigs, or another format,
+    make no warning."""
+    monkeypatch.setattr(hpi, "MANY_CONTIGS", many)
+    _run_from_pairs(tmp_path, "run", mat_fmt=mat_fmt)
+    assert _slow_cool_warnings(caplog) == ([SLOW_COOL] if warned else [])
+    assert DEFAULT_METACOOL not in _warnings(caplog)
+
+
+@pytest.mark.parametrize(
+    "kwargs, chroms",
+    [
+        (dict(), ["seq1", "seq2"]),
+        (dict(min_size=30_000), ["seq1"]),
+        (dict(exclude="seq2"), ["seq1"]),
+    ],
+)
+def test_full_pipeline_counts_the_contigs_of_the_cool_matrix(
+    kwargs, chroms, tmp_path, caplog, monkeypatch
+):
+    """The warning counts the contigs of the cool matrix, not those of the
+    genome: --size and --exclude leave some out."""
+    monkeypatch.setattr(hpi, "MANY_CONTIGS", 1)
+    out_dir = _run_from_pairs(tmp_path, "run", mat_fmt="cool", **kwargs)
+    (warning,) = _slow_cool_warnings(caplog)
+    assert warning.startswith(f"{len(chroms)} contigs in the cool matrix: ")
+    assert cooler.Cooler(str(out_dir / "abs_fragments_contacts_weighted.cool")).chromnames == chroms
+
+
+@pytest.mark.parametrize(
+    "mat_fmt, warning",
+    [
+        ("cool", "contigs in the cool matrix"),
+        (None, "contigs in the matrix: it will be a metacool"),
+    ],
+)
+def test_full_pipeline_warns_before_building_an_index(
+    mat_fmt, warning, tmp_path, caplog, monkeypatch
+):
+    """The warnings of a slow cool matrix, and of the default metacool matrix,
+    come once the genome is read, before the index of a fasta file without
+    one is built, which takes long on a large assembly: the run is stopped
+    there."""
+    genome = tmp_path / "seq.fa"
+    shutil.copy("test_data/genome/seq.fa", genome)
+    monkeypatch.setattr(hpi, "MANY_CONTIGS", 2)
+    run = sp.run
+
+    class IndexBuilt(Exception):
+        pass
+
+    def stop_at_the_index(args, *rest, **kwargs):
+        if args[0] == "bowtie2-build":
+            raise IndexBuilt
+        return run(args, *rest, **kwargs)
+
+    monkeypatch.setattr(hpi.sp, "run", stop_at_the_index)
+    # The run stops before it runs a program: none need be installed (CI's
+    # pip-only job runs the tests without any).
+    monkeypatch.setattr(hpi.hio, "require_tools", lambda *args, **kwargs: None)
+    caplog.set_level(logging.INFO)
+    with pytest.raises(IndexBuilt):
+        hpi.full_pipeline(
+            genome=str(genome),
+            input1="test_data/sample.reads_for.fastq.gz",
+            input2="test_data/sample.reads_rev.fastq.gz",
+            enzyme="DpnII",
+            out_dir=str(tmp_path / "out"),
+            aligner="bowtie2",
+            mat_fmt=mat_fmt,
+        )
+    messages = [record.getMessage() for record in caplog.records]
+    (warned,) = [i for i, message in enumerate(messages) if warning in message]
+    (indexing,) = [i for i, message in enumerate(messages) if "index not found" in message]
+    assert warned < indexing
+
+
+def _contacts(path):
+    """The contacts of a cool or metacool matrix by pair of bins, a bin being
+    its (contig, start, end), whatever the order of the contigs in the file.
+    cooler names the contig of a bin of a cool matrix, and gives the number of
+    that of a metacool matrix, which metacooler stores as an integer."""
+    clr = cooler.Cooler(str(path))
+    bins = clr.bins()[:]
+    chroms = bins.chrom.astype(str)
+    if bins.chrom.dtype.kind in "iu":
+        chroms = np.asarray(clr.chromnames)[bins.chrom]
+    keys = list(zip(chroms, bins.start, bins.end))
+    contacts = {}
+    for bin1, bin2, count in clr.pixels()[:][["bin1_id", "bin2_id", "count"]].itertuples(
+        index=False
+    ):
+        pair = tuple(sorted((keys[bin1], keys[bin2])))
+        contacts[pair] = contacts.get(pair, 0) + int(count)
+    return contacts
+
+
+@pytest.mark.parametrize(
+    "prefix, matrix", [(None, "abs_fragments_contacts_weighted"), ("sample", "sample")]
+)
+def test_full_pipeline_metacool_matrix(prefix, matrix, tmp_path):
+    """--matrix metacool writes a metacool matrix, with metacooler: the bins
+    of the cool matrix, one per fragment, and its contacts. The other outputs
+    are those of the cool run, byte for byte, with or without a prefix.
+    metacooler checks the file, which cooler reads too; its contigs are not
+    yet assigned to genomes, and the run's command is stored as the one that
+    made it."""
+    cool_dir = _run_from_pairs(tmp_path, "cool", mat_fmt="cool", prefix=prefix)
+    cmd = "hicstuff pipeline -M metacool -S pairs"
+    meta_dir = _run_from_pairs(tmp_path, "meta", mat_fmt="metacool", prefix=prefix, cmd=cmd)
+    with_cool, with_metacool = _outputs(cool_dir), _outputs(meta_dir)
+    assert sorted(set(with_cool) ^ set(with_metacool)) == [f"{matrix}.cool", f"{matrix}.metacool"]
+    common = set(with_cool) & set(with_metacool)
+    assert {name: with_metacool[name] for name in common} == {
+        name: with_cool[name] for name in common
+    }
+    metacool = str(meta_dir / f"{matrix}.metacool")
+    contacts = _contacts(metacool)
+    assert contacts == _contacts(cool_dir / f"{matrix}.cool")
+    assert sum(contacts.values()) == 10_000
+    assert all(check.ok for check in metacooler.check(metacool))
+    mc = metacooler.MetaCooler(metacool)
+    assert mc.info["bin-type"] == "variable"
+    assert mc.genomes.name.tolist() == ["__unbinned__"]
+    assert mc.contigs.name.tolist() == ["seq1", "seq2"]
+    assert mc.metadata["commands"] == [cmd]
+
+
+def test_full_pipeline_metacool_matrix_excludes_contigs(tmp_path):
+    """--exclude leaves its contigs out of the metacool matrix, with their
+    contacts, as out of the cool matrix. A run without a command stores
+    none."""
+    cool_dir = _run_from_pairs(tmp_path, "cool", mat_fmt="cool", exclude="seq2")
+    meta_dir = _run_from_pairs(tmp_path, "meta", mat_fmt="metacool", exclude=["seq2"])
+    metacool = str(meta_dir / "abs_fragments_contacts_weighted.metacool")
+    contacts = _contacts(metacool)
+    assert contacts == _contacts(cool_dir / "abs_fragments_contacts_weighted.cool")
+    assert {bin1[0] for bin1, _ in contacts} == {"seq1"}
+    mc = metacooler.MetaCooler(metacool)
+    assert mc.contigs.name.tolist() == ["seq1"]
+    assert "commands" not in mc.metadata
+
+
+@pytest.mark.parametrize(
+    "many, kwargs, written",
+    [
+        (2, dict(), "metacool"),
+        (3, dict(), "cool"),
+        (2, dict(min_size=30_000), "cool"),
+        (2, dict(exclude="seq2"), "cool"),
+        (1, dict(exclude="seq2"), "metacool"),
+    ],
+)
+def test_full_pipeline_default_matrix(many, kwargs, written, tmp_path, caplog, monkeypatch):
+    """Without a matrix format, the run writes a cool matrix, or, from
+    MANY_CONTIGS contigs in the matrix (those that --size and --exclude keep),
+    a metacool matrix, and warns of it: test_data's genome has two contigs."""
+    monkeypatch.setattr(hpi, "MANY_CONTIGS", many)
+    out_dir = _run_from_pairs(tmp_path, "run", **kwargs)
+    matrices = [path.name for path in out_dir.iterdir() if path.suffix in (".cool", ".metacool")]
+    assert matrices == [f"abs_fragments_contacts_weighted.{written}"]
+    n_contigs = 1 if kwargs else 2
+    default_warnings = [
+        message
+        for message in _warnings(caplog)
+        if message.startswith(f"{n_contigs} contigs in the")
+    ]
+    if written == "metacool":
+        assert default_warnings == [DEFAULT_METACOOL.replace("2 contigs", f"{n_contigs} contigs")]
+        assert metacooler.is_metacooler(str(out_dir / matrices[0]))
+    else:
+        assert default_warnings == []
+
+
+def test_full_pipeline_default_binned_matrix(tmp_path, caplog, monkeypatch):
+    """With binning, the default matrix is the cool one whatever the number of
+    contigs, as the metacool matrix has one bin per fragment: from
+    MANY_CONTIGS, the run warns that it is slow to write."""
+    monkeypatch.setattr(hpi, "MANY_CONTIGS", 2)
+    out_dir = _run_from_pairs(tmp_path, "run", binning=5000)
+    assert (out_dir / "abs_fragments_contacts_weighted.mcool").is_file()
+    assert not list(out_dir.glob("*.metacool"))
+    assert _slow_cool_warnings(caplog) == [SLOW_COOL]
+    assert DEFAULT_METACOOL not in _warnings(caplog)
+
+
+def test_full_pipeline_default_metacool_matrix_from_fastq(tmp_path, caplog, monkeypatch):
+    """A run from FASTQ files that writes the default metacool matrix ends
+    with the statistics of the run: metacooler's log, in the run's, does not
+    stop them. pybwa aligns the reads: no program is needed."""
+    monkeypatch.setattr(hpi, "MANY_CONTIGS", 2)
+    out_dir = tmp_path / "out"
+    caplog.set_level(logging.INFO)
+    hpi.full_pipeline(
+        genome="test_data/genome/seq.fa",
+        input1="test_data/sample.reads_for.fastq.gz",
+        input2="test_data/sample.reads_rev.fastq.gz",
+        enzyme="DpnII",
+        aligner="bwa",
+        aligner_backend="python",
+        out_dir=str(out_dir),
+    )
+    (log,) = out_dir.glob("hicstuff_*.log")
+    log_text = log.read_text()
+    assert "Created metacool file" in log_text
+    assert "Stats not compiled" not in log_text
+    stats = hcs.get_pipeline_stats(str(log))
+    contacts = _contacts(out_dir / "abs_fragments_contacts_weighted.metacool")
+    assert sum(contacts.values()) == stats["Final contacts"]

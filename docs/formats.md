@@ -96,6 +96,25 @@ Both store the upper triangle of the map, and raw counts. `convert`, `rebin`
 and `subsample` write cool files with the `size` and `gc_content` columns as
 well, when they know them, and record hicstuff's version in the metadata.
 
+## metacool
+
+From 50,000 contigs in the map, as a metagenome assembly may have, or with
+`--matrix metacool`, the pipeline writes a `.metacool` file, made by
+[metacooler](https://pypi.org/project/metacooler/)'s `create pairs`. It is a
+cool file with one bin per fragment, as the default cool file without
+`--binning`, which cooler reads, with metacooler's tables of genomes and
+contigs on top of it.
+
+- Its contigs are not yet assigned to genomes: they are all in metacooler's
+  `__unbinned__` genome, longest first, until `metacooler reassign` assigns
+  them, from a binning such as metaTOR's.
+- The contig of each bin is stored as an integer, where cooler tries an HDF5
+  enum first, which is slow to write with many contigs (see
+  [The contact map](guides/pipeline.md#the-contact-map)).
+- Its metadata hold the command line of the run (`commands`) and metacooler's
+  counts of the contacts within and between contigs (`qc`), which
+  `metacooler qc` reads.
+
 ## Graal matrices
 
 The format of [instaGRAAL](https://github.com/koszullab/instaGRAAL): a sparse
