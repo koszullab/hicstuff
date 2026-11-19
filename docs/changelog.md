@@ -38,6 +38,18 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
 - The `--genome` of `hicstuff pipeline` can be the prefix of a bwa index
   without its FASTA, as it could be of a bowtie2 index: hicstuff reads the
   sequence from the index's `.pac` and `.amb` files, with no program.
+- `hicstuff pipeline --matfmt none` (`-M none`) writes no contact map: the run
+  ends with its pairs file, for the tools that build their own maps from pairs
+  (metaTOR, metacooler). `--binning`, `--balancing-args` and `--exclude`,
+  options of the cool map, are refused with it, but for `--binning 0` and blank
+  values; so are `binning`, `balancing_args` and `exclude` with
+  `mat_fmt="none"` in `full_pipeline`.
+- With 50,000 contigs or more in the cool map (those that `--size` and
+  `--exclude` keep), `hicstuff pipeline` warns, before it aligns reads or
+  builds an index, that the map will be slow to write: cooler takes a time that
+  grows with the square of the number of contigs for every cooler it writes
+  (about 30 s at 117,000 contigs). The warning says how to end the run with its
+  pairs file.
 
 ### Changed
 
@@ -78,11 +90,15 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
 - A `--genome` that is neither a FASTA file nor the prefix of an index the
   aligner reads stops the pipeline before it writes anything. The error was
   logged, and the run went on until a later step failed.
+- `full_pipeline` refuses a `mat_fmt` other than `graal`, `bg2`, `cool` and
+  `none` before the run starts, logged as an error. Another name wrote an empty
+  matrix file under its extension, and `None` failed once the run had made its
+  output directory and log.
 
 ### Outputs
 
 Runs with the same programs installed write the same pairs, matrices and logs
-as hicstuff 3.3.0, but for the `## cmd:` line of the pipeline's log. Without the bwa program, `-a bwa` aligns through pybwa,
+as hicstuff 3.3.0, but for the `## cmd:` line of the pipeline's log and the warning of a cool map of 50,000 contigs or more. Without the bwa program, `-a bwa` aligns through pybwa,
 and the log says so. Its alignments then equal the bwa program's, except for
 reads with several alignments of equal score beyond the first 10,000 reads of
 a file, which pybwa can place on another of them. In our tests this moved

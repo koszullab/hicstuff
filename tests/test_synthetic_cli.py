@@ -240,6 +240,44 @@ def test_iterative_align_errors(synthetic_lib, tmp_path, caplog, require_tools):
 # ---------------------------------------------------------------------------
 
 
+_WITHOUT_MATRIX = ["pipeline", "-S", "pairs", "-e", "DpnII", "-g", "test_data/genome/seq.fa"]
+
+
+@pytest.mark.parametrize(
+    "options, named",
+    [
+        (["-b", "1000"], "--binning is an option"),
+        (["-B", "--max-iters 10"], "--balancing-args is an option"),
+        (["-E", "seq2"], "--exclude is an option"),
+        (["-b", "1000", "-E", "seq2"], "--binning, --exclude are options"),
+        (["-b", "-5"], "--binning is an option"),
+    ],
+)
+def test_pipeline_without_matrix_refuses_cool_options(runner, options, named, tmp_path):
+    """-M none writes no matrix: the options of the cool matrix, given with
+    it, are a usage error, before the run starts."""
+    out_dir = tmp_path / "out"
+    args = [*_WITHOUT_MATRIX, "-M", "none", *options, "-o", out_dir, "test_data/valid.pairs"]
+    result = invoke(runner, *args, exit_code=2)
+    assert f"--matfmt none writes no matrix: {named} of the cool matrix." in text(result)
+    assert not out_dir.exists()
+
+
+@pytest.mark.parametrize(
+    "options", [[], ["-b", "0", "-z", "False", "-B", "", "-E", ""], ["-B", " ", "-E", " , "]]
+)
+def test_pipeline_without_matrix(runner, options, tmp_path):
+    """-M none ends the run with its pairs file. The options of the cool
+    matrix are taken with values that would shape no matrix: no binning, no
+    zoomify, blank balancing arguments, no contig to exclude."""
+    out_dir = tmp_path / "out"
+    invoke(runner, *_WITHOUT_MATRIX, "-M", "none", *options, "-o", out_dir, "test_data/valid.pairs")
+    written = sorted(
+        path.name for path in out_dir.iterdir() if path.is_file() and path.suffix != ".log"
+    )
+    assert written == ["fragments_list.txt", "info_contigs.txt", "valid_idx.pairs.gz"]
+
+
 def test_pipeline_command(runner, synthetic_lib, final_pairs, tmp_path, monkeypatch):
     inputs = tmp_path / "inputs"
     inputs.mkdir()

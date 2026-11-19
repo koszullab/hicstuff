@@ -923,7 +923,7 @@ def view(
     "--exclude",
     default=None,
     metavar="STR",
-    help="Comma-separated chromosomes to exclude (e.g. chrM,2u).",
+    help="Comma-separated chromosomes to leave out of the cool matrix (e.g. chrM,2u).",
 )
 @click.option("-F", "--force", is_flag=True, help="Overwrite existing output files.")
 @click.option(
@@ -932,8 +932,10 @@ def view(
     default="cool",
     show_default=True,
     metavar="STR",
-    type=click.Choice(["graal", "bg2", "cool"]),
-    help="Output matrix format.",
+    type=click.Choice(["graal", "bg2", "cool", "none"]),
+    help="Output matrix format, or none to end the run with its pairs file, as "
+    "metaTOR and metacooler read it. With many contigs, the cool matrix is slow "
+    f"to write: the run warns from {hpi.MANY_CONTIGS:,}.",
 )
 @click.option("-n", "--no-cleanup", is_flag=True, help="Keep intermediary files.")
 @click.option(
@@ -1025,7 +1027,7 @@ def pipeline(
     skip_count,
     aligner_backend,
 ):
-    """Run the full Hi-C pipeline from FASTQ to contact matrix.
+    """Run the full Hi-C pipeline from FASTQ to contact matrix, or to pairs with -M none.
 
     INPUT1 and INPUT2 are the R1 and R2 FASTQ files, the two BAM files of
     --start-stage bam, or the pairs file of --start-stage pairs and pairs_idx.
@@ -1050,6 +1052,24 @@ def pipeline(
     """
     if filter_events and enzyme.isdigit():
         raise click.UsageError("Cannot filter events without specifying a restriction enzyme.")
+    if matfmt == "none":
+        # The options that would shape the cool matrix, which -M none does not
+        # write. --zoomify has an effect with --binning only.
+        cool_only = [
+            option
+            for option, given in [
+                ("--binning", binning != 0),
+                ("--balancing-args", bool(balancing_args and balancing_args.strip())),
+                ("--exclude", bool(exclude) and any(name.strip() for name in exclude.split(","))),
+            ]
+            if given
+        ]
+        if cool_only:
+            options = "is an option" if len(cool_only) == 1 else "are options"
+            raise click.UsageError(
+                f"--matfmt none writes no matrix: {', '.join(cool_only)} {options} of the cool "
+                "matrix."
+            )
     if enzyme in ("mnase", "dnase"):
         logger.info("Enzyme is '%s', setting chunk size to 100 bp.", enzyme)
         enzyme = "100"

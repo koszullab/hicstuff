@@ -29,7 +29,8 @@ bins, pairs and 3C events, see [Concepts](concepts.md).
 ### `pipeline` { #pipeline }
 
 Run the whole pipeline, from the reads (or BAM or pairs files) to a contact
-map. **API:** `hicstuff.pipeline.full_pipeline`. **Guide:**
+map, or to its pairs file with `--matfmt none`. **API:**
+`hicstuff.pipeline.full_pipeline`. **Guide:**
 [Running the pipeline](guides/pipeline.md).
 
 ```console
@@ -61,7 +62,7 @@ patterns. See [Several pairs of FASTQ files](guides/pipeline.md#several-pairs-of
 | `-s, --size` | `0` | Minimum contig size in bp: shorter contigs, and the pairs with a mate on them, are left out. |
 | `-f, --filter` | off | Remove the uncuts, loops and impossible pairs. Needs a restriction enzyme. |
 | `-D, --duplicates` | off | Remove the PCR duplicates. |
-| `-M, --matfmt` | `cool` | Format of the contact map: `cool`, `bg2` or `graal`. |
+| `-M, --matfmt` | `cool` | Format of the contact map: `cool`, `bg2` or `graal`; or `none`, for no map: the run ends with its pairs file (`--binning`, `--balancing-args` and `--exclude`, options of the cool map, are refused with it, but for `--binning 0` and blank values). With 50,000 contigs or more in the cool map, the run warns that it is slow to write. |
 | `-b, --binning` | `0` | Bin the cool map at this many bp; `0` keeps one bin per fragment. |
 | `-z, --zoomify` | `true` | With `--binning`, write a multi-resolution `.mcool`; `-z false` writes one `.cool`. |
 | `-B, --balancing-args` | none | More options for `cooler balance` (`-B "--max-iters 500"`), checked before the run starts. Balancing runs on `--threads` processes unless they set `--nproc`. A resolution that fails to balance is logged as a warning. |

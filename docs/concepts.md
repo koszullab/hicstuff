@@ -128,6 +128,7 @@ for both mates. `--duplicates` keeps one of each.
 | cool (default) | `cool` | `.cool`, or `.mcool` with `--binning` | cooler, cooltools, HiGlass, … |
 | 2D bedgraph | `bg2` | `.bg2` | `cooler load -f bg2` |
 | graal | `graal` | a sparse matrix, `fragments_list.txt`, `info_contigs.txt` | instaGRAAL |
+| none | `none` | no map: the run ends with its pairs file | metaTOR, metacooler, … |
 
 Every command that reads a map (`view`, `rebin`, `subsample`, `convert`,
 `scalogram`) takes any of the three, and tells them apart by the file: a

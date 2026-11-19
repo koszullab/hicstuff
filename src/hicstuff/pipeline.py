@@ -477,6 +477,25 @@ def generate_log_header(log_path, input1, input2, genome, enzyme, aligner=None, 
 #: between two duplicates.
 COORD_SORT_KEYS = ["chr1", "pos1", "chr2", "pos2", "strand1", "strand2"]
 
+# The formats of the contact matrix, and none for no matrix.
+MATRIX_FORMATS = ("graal", "bg2", "cool", "none")
+
+# From this many contigs in the cool matrix, the pipeline warns that it is slow
+# to write: cooler tries to store the contig of each bin as an HDF5 enum of one
+# member per contig, which takes a time that grows with the square of their
+# number, for every cooler it writes (about 2 s at 32,000 contigs, 30 s at
+# 117,000), then is refused past a few thousand members, and stores integers.
+MANY_CONTIGS = 50_000
+
+
+def _excluded(exclude):
+    """The names of the contigs that exclude leaves out of the cool matrix:
+    None, or comma-separated names, as pairs2cool reads them; or a list of
+    names, which the formats other than cool, which do not read it, take."""
+    if not exclude:
+        return set()
+    return set(exclude.split(",")) if isinstance(exclude, str) else set(exclude)
+
 
 def filter_pcr_dup(pairs_idx_file, filtered_file):
     """
@@ -1317,8 +1336,12 @@ def full_pipeline(
         attribution is skipped.
     mat_fmt : str
         Select the output matrix format. Can be either "bg2" for the
-        bedgraph2 format, "cool" for Mirnylab's cool format, or graal for a
-        plain text COO format compatible with Koszullab's instagraal software.
+        bedgraph2 format, "cool" for Mirnylab's cool format, graal for a
+        plain text COO format compatible with Koszullab's instagraal software,
+        or "none" for no matrix: the run ends with its pairs file, which tools
+        that build their own contact maps read (metaTOR, metacooler). Options
+        of the cool matrix, binning other than 0, and balancing_args and
+        exclude that are not blank, are refused with it.
     aligner : str
         Read alignment software to use. Can be either "minimap2", "bwa" or
         "bowtie2". Defaults to bowtie2, and to bwa in mapping mode 5spm, which
@@ -1375,6 +1398,10 @@ def full_pipeline(
     if aligner not in ("bowtie2", "minimap2", "bwa"):
         logger.error("Incompatible aligner software, choose bowtie2, minimap2 or bwa.")
         raise ValueError("aligner should be either bowtie2, minimap2 or bwa.")
+    if mat_fmt not in MATRIX_FORMATS:
+        msg = f"Unknown matrix format {mat_fmt!r}: choose graal, bg2, cool or none."
+        logger.error(msg)
+        raise ValueError(msg)
     if mat_fmt == "cool":
         try:
             import cooler
@@ -1386,6 +1413,24 @@ def full_pipeline(
         if binning > 0:
             # Fail now on invalid balancing arguments, not after the alignment
             _balancing_args(balancing_args)
+    elif mat_fmt == "none":
+        cool_only = [
+            name
+            for name, given in [
+                ("binning", binning != 0),
+                ("balancing_args", bool(balancing_args and balancing_args.strip())),
+                ("exclude", any(name.strip() for name in _excluded(exclude))),
+            ]
+            if given
+        ]
+        if cool_only:
+            options = "is an option" if len(cool_only) == 1 else "are options"
+            msg = (
+                f"The matrix format none writes no matrix: {', '.join(cool_only)} "
+                f"{options} of the cool matrix."
+            )
+            logger.error(msg)
+            raise ValueError(msg)
 
     # Pipeline can start from 3 input types
     start_time = datetime.now()
@@ -1598,6 +1643,25 @@ def full_pipeline(
             )
             sys.exit(1)
 
+    # Check for spaces in fasta headers and issue error if found, and count
+    # the contigs of the cool matrix (those --size and --exclude keep), before
+    # an index is built: its warning comes first.
+    excluded = _excluded(exclude)
+    n_contigs = 0
+    for record in SeqIO.parse(hio.read_compressed(fasta), "fasta"):
+        if len(record.seq) >= int(min_size) and record.id not in excluded:
+            n_contigs += 1
+        if " " in record.id:
+            logger.error("Sequence identifiers contain spaces. Please clean the input genome.")
+    if mat_fmt == "cool" and n_contigs >= MANY_CONTIGS:
+        logger.warning(
+            f"{n_contigs:,} contigs in the cool matrix: it will be slow to write, as cooler "
+            "takes a time that grows with the square of the number of contigs for every cooler "
+            "it writes (about 30 s at 117,000 contigs, four times more for twice as many). "
+            "--matfmt none ends the run with its pairs file, which metaTOR and metacooler read; "
+            "--matfmt bg2 and graal write a text matrix."
+        )
+
     # A fasta file without bowtie2 or bwa index is indexed in genome_dir when
     # reads are aligned, read where it is, plain or compressed. pybwa indexes
     # it when it loads it, below.
@@ -1622,24 +1686,22 @@ def full_pipeline(
             else:
                 sp.run(["bwa", "index", "-p", index, fasta], stderr=sp.PIPE)
 
-    # Check for spaces in fasta headers and issue error if found
-    for record in SeqIO.parse(hio.read_compressed(fasta), "fasta"):
-        if " " in record.id:
-            logger.error("Sequence identifiers contain spaces. Please clean the input genome.")
     # Define output file names (tsv files)
     if prefix:
         fragments_list = _out_file("frags.tsv")
         info_contigs = _out_file("chr.tsv")
-        mat = _out_file("mat.tsv")
+        if mat_fmt != "none":
+            mat = _out_file("mat.tsv")
         # If matrix has a different format, give it the right extension
-        if mat_fmt != "graal":
+        if mat_fmt not in ("graal", "none"):
             mat = _out_file(mat_fmt)
     else:
         # Default graal file names
         fragments_list = _out_file("fragments_list.txt")
         info_contigs = _out_file("info_contigs.txt")
-        mat = _out_file("abs_fragments_contacts_weighted.txt")
-        if mat_fmt != "graal":
+        if mat_fmt != "none":
+            mat = _out_file("abs_fragments_contacts_weighted.txt")
+        if mat_fmt not in ("graal", "none"):
             mat = _out_file("abs_fragments_contacts_weighted." + mat_fmt)
     # Define what input files are given
     if start_stage == 0:
@@ -1937,6 +1999,8 @@ def full_pipeline(
 
             # Balance binned matrix
             balance(mat, balancing_args, threads=threads)
+    elif mat_fmt == "none":
+        logger.info("No matrix (--matfmt none): the run ends with its pairs file.")
     else:
         pairs2matrix(
             use_pairs,
@@ -2017,6 +2081,5 @@ def full_pipeline(
 
     end_time = datetime.now()
     duration = relativedelta(end_time, start_time)
-    logger.info(
-        f"Contact map generated after {duration.hours}h {duration.minutes}m {duration.seconds}s"
-    )
+    made = "Pairs" if mat_fmt == "none" else "Contact map"
+    logger.info(f"{made} generated after {duration.hours}h {duration.minutes}m {duration.seconds}s")

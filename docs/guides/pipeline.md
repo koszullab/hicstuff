@@ -125,11 +125,12 @@ instaGRAAL's file names:
 | Plots | `plots/*.pdf` | `plots/sample_*.pdf` | with `--plot` |
 
 `<date>` is the time the run started, as `YYYYmmddHHMMSS`, so a log never
-replaces another. The pairs file holds the pairs the map was built from: it is
+replaces another. The pairs file holds the pairs the map is built from: it is
 `valid_idx_filtered.pairs.gz` after `--filter`, and
 `valid_idx_pcrfree.pairs.gz` after `--duplicates`. It is sorted by `chr1`,
 `chr2`, `pos1`, `pos2` and compressed in the BGZF format, which pairix can
-index.
+index. With `--matfmt none`, the run writes no contact map, and ends with this
+file.
 
 A run refuses to replace an output that exists, or a temporary file left by an
 earlier run, unless given `--force` (`-F`).
@@ -203,6 +204,22 @@ explains how the thresholds are chosen, and how to check them.
   with `fragments_list.txt` and `info_contigs.txt`, it is what instaGRAAL
   reads.
 - **`bg2`**: a 2D bedgraph, one line per pair of fragments with contacts.
+- **`none`**: no map. The run ends with its pairs file, for the tools that
+  build their own contact maps from pairs, such as
+  [metaTOR](https://github.com/koszullab/metaTOR) and
+  [metacooler](https://pypi.org/project/metacooler/). `--binning`,
+  `--balancing-args` and `--exclude`, options of the cool map, are refused with
+  it, but for `--binning 0` and blank values.
+
+cooler tries to store the contig of each bin of a cool file as an HDF5 enum, of
+one member per contig. Building it takes a time that grows with the square of
+the number of contigs (about 2 s at 32,000 contigs, 30 s at 117,000, four times
+more for twice as many); HDF5 then refuses it past a few thousand members, and
+cooler stores integers instead. It pays that time for every cooler it writes:
+`cooler cload pairs` writes one for every 15 million pairs, then the map. With
+50,000 contigs or more in the cool map, as a metagenome assembly may have, the
+run warns of it before it aligns reads or builds an index: `--matfmt none` ends
+the run with its pairs file, and `bg2` and `graal`, text files, do not pay it.
 
 ### Binned, multi-resolution and balanced maps
 

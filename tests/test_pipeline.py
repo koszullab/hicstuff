@@ -1267,3 +1267,234 @@ def test_bam2pairs_records_5_prime_ends_of_bams_in_another_order(tmp_path, order
     sort_dir.mkdir()
 
     _run_bam2pairs(tmp_path, mates, tmp_dir=str(sort_dir), five_prime=True)
+
+
+def _run_from_pairs(tmp_path, name, **kwargs):
+    """A pipeline run from a copy of test_data's pairs, in tmp_path/name,
+    which it returns. test_data's genome has two contigs: seq1, of 60 kb, and
+    seq2, of 20 kb."""
+    pairs = tmp_path / f"{name}.pairs"
+    shutil.copy("test_data/valid.pairs", pairs)
+    out_dir = tmp_path / name
+    hpi.full_pipeline(
+        genome="test_data/genome/seq.fa",
+        input1=str(pairs),
+        start_stage="pairs",
+        enzyme="DpnII",
+        out_dir=str(out_dir),
+        **kwargs,
+    )
+    return out_dir
+
+
+def _outputs(out_dir):
+    """The files that a run wrote in out_dir, but its log, by name: the
+    contents of a compressed one uncompressed."""
+    found = {}
+    for path in sorted(out_dir.iterdir()):
+        if path.is_file() and path.suffix != ".log":
+            opener = gzip.open if path.suffix == ".gz" else open
+            with opener(path, "rb") as handle:
+                found[path.name] = handle.read()
+    return found
+
+
+@pytest.mark.parametrize(
+    "prefix, written, matrix",
+    [
+        (
+            None,
+            ["fragments_list.txt", "info_contigs.txt", "valid_idx.pairs.gz"],
+            "abs_fragments_contacts_weighted.cool",
+        ),
+        (
+            "sample",
+            ["sample.chr.tsv", "sample.frags.tsv", "sample.valid_idx.pairs.gz"],
+            "sample.cool",
+        ),
+    ],
+)
+def test_full_pipeline_without_matrix(prefix, written, matrix, tmp_path, caplog):
+    """--matfmt none writes no matrix: the run ends with its pairs file,
+    which, with the fragments and contigs tables, is what a run that writes
+    the cool matrix writes too, with or without a prefix."""
+    caplog.set_level(logging.INFO)
+    with_cool = _outputs(_run_from_pairs(tmp_path, "cool", mat_fmt="cool", prefix=prefix))
+    without = _outputs(_run_from_pairs(tmp_path, "none", mat_fmt="none", prefix=prefix))
+    assert sorted(without) == written
+    assert sorted(set(with_cool) - set(without)) == [matrix]
+    assert without == {name: with_cool[name] for name in without}
+    assert "No matrix (--matfmt none): the run ends with its pairs file." in caplog.text
+    assert re.search(r"Pairs generated after \d+h \d+m \d+s", caplog.text)
+
+
+@pytest.mark.parametrize(
+    "kwargs, named",
+    [
+        (dict(binning=1000), "binning is an option"),
+        (dict(balancing_args="--max-iters 10"), "balancing_args is an option"),
+        (dict(exclude="seq2"), "exclude is an option"),
+        (dict(binning=1000, exclude="seq2"), "binning, exclude are options"),
+        (dict(binning=-5), "binning is an option"),
+        (dict(exclude=["seq2"]), "exclude is an option"),
+    ],
+)
+def test_full_pipeline_without_matrix_refuses_cool_options(kwargs, named, tmp_path, caplog):
+    """Binning, balancing arguments and contigs to exclude are options of the
+    cool matrix: with the matrix format none, which writes none, they are
+    refused before the run writes anything, the reason logged as an error."""
+    out_dir = tmp_path / "out"
+    message = f"The matrix format none writes no matrix: {named} of the cool matrix."
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        hpi.full_pipeline(
+            genome="test_data/genome/seq.fa",
+            input1="test_data/valid.pairs",
+            start_stage="pairs",
+            enzyme="DpnII",
+            out_dir=str(out_dir),
+            mat_fmt="none",
+            **kwargs,
+        )
+    assert not out_dir.exists()
+    assert ("ERROR", message) in [
+        (record.levelname, record.getMessage()) for record in caplog.records
+    ]
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        dict(binning=0, zoomify=False, balancing_args="", exclude=""),
+        dict(balancing_args=" ", exclude=" , "),
+    ],
+)
+def test_full_pipeline_without_matrix_takes_options_without_effect(kwargs, tmp_path):
+    """No binning (0), no zoomify, blank balancing arguments and no contig to
+    exclude would shape no matrix: the matrix format none takes them, and
+    writes what a run without them writes, no matrix."""
+    plain = _outputs(_run_from_pairs(tmp_path, "plain", mat_fmt="none"))
+    assert sorted(plain) == ["fragments_list.txt", "info_contigs.txt", "valid_idx.pairs.gz"]
+    assert _outputs(_run_from_pairs(tmp_path, "given", mat_fmt="none", **kwargs)) == plain
+
+
+def test_full_pipeline_takes_a_list_of_contigs_to_exclude(tmp_path):
+    """exclude given as a list of names, which full_pipeline does not
+    document, still runs with a format that does not read it. A guard
+    against the previous commit, where bg2 never read exclude: it failed
+    once the count of the contigs of the cool matrix read it as a string."""
+    out_dir = _run_from_pairs(tmp_path, "run", mat_fmt="bg2", exclude=["seq2"])
+    assert (out_dir / "abs_fragments_contacts_weighted.bg2").stat().st_size > 0
+
+
+@pytest.mark.parametrize("mat_fmt", [None, "hic"])
+def test_full_pipeline_refuses_an_unknown_matrix_format(mat_fmt, tmp_path, caplog):
+    """A matrix format other than graal, bg2, cool and none is refused before
+    the run writes anything, the reason logged as an error. None, the Python
+    value, is not the format none. Before, None failed once the run had made
+    its output directory and log, and another name wrote an empty matrix
+    file under its extension."""
+    out_dir = tmp_path / "out"
+    message = f"Unknown matrix format {mat_fmt!r}: choose graal, bg2, cool or none."
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        hpi.full_pipeline(
+            genome="test_data/genome/seq.fa",
+            input1="test_data/valid.pairs",
+            start_stage="pairs",
+            enzyme="DpnII",
+            out_dir=str(out_dir),
+            mat_fmt=mat_fmt,
+        )
+    assert not out_dir.exists()
+    assert ("ERROR", message) in [
+        (record.levelname, record.getMessage()) for record in caplog.records
+    ]
+
+
+def _slow_cool_warnings(caplog):
+    return [
+        record.getMessage()
+        for record in caplog.records
+        if record.levelname == "WARNING" and "contigs in the cool matrix" in record.getMessage()
+    ]
+
+
+@pytest.mark.parametrize(
+    "mat_fmt, many, warned",
+    [("cool", 2, True), ("cool", 3, False), ("bg2", 2, False), ("none", 2, False)],
+)
+def test_full_pipeline_warns_of_a_slow_cool_matrix(
+    mat_fmt, many, warned, tmp_path, caplog, monkeypatch
+):
+    """A cool matrix of MANY_CONTIGS contigs or more makes the run warn that
+    it will be slow to write, and how to end the run with its pairs file
+    instead: test_data's genome has two contigs. Fewer contigs, or another
+    format, make no warning. Those three cases are guards: against the
+    previous commit, they fail only as MANY_CONTIGS is new."""
+    monkeypatch.setattr(hpi, "MANY_CONTIGS", many)
+    _run_from_pairs(tmp_path, "run", mat_fmt=mat_fmt)
+    expected = (
+        "2 contigs in the cool matrix: it will be slow to write, as cooler takes a time that "
+        "grows with the square of the number of contigs for every cooler it writes (about 30 s "
+        "at 117,000 contigs, four times more for twice as many). --matfmt none ends the run "
+        "with its pairs file, which metaTOR and metacooler read; --matfmt bg2 and graal write a "
+        "text matrix."
+    )
+    assert _slow_cool_warnings(caplog) == ([expected] if warned else [])
+
+
+@pytest.mark.parametrize(
+    "kwargs, chroms",
+    [
+        (dict(), ["seq1", "seq2"]),
+        (dict(min_size=30_000), ["seq1"]),
+        (dict(exclude="seq2"), ["seq1"]),
+    ],
+)
+def test_full_pipeline_counts_the_contigs_of_the_cool_matrix(
+    kwargs, chroms, tmp_path, caplog, monkeypatch
+):
+    """The warning counts the contigs of the cool matrix, not those of the
+    genome: --size and --exclude leave some out."""
+    monkeypatch.setattr(hpi, "MANY_CONTIGS", 1)
+    out_dir = _run_from_pairs(tmp_path, "run", mat_fmt="cool", **kwargs)
+    (warning,) = _slow_cool_warnings(caplog)
+    assert warning.startswith(f"{len(chroms)} contigs in the cool matrix: ")
+    assert cooler.Cooler(str(out_dir / "abs_fragments_contacts_weighted.cool")).chromnames == chroms
+
+
+def test_full_pipeline_warns_before_building_an_index(tmp_path, caplog, monkeypatch):
+    """The warning comes once the genome is read, before the index of a fasta
+    file without one is built, which takes long on a large assembly: the run
+    is stopped there."""
+    genome = tmp_path / "seq.fa"
+    shutil.copy("test_data/genome/seq.fa", genome)
+    monkeypatch.setattr(hpi, "MANY_CONTIGS", 2)
+    run = sp.run
+
+    class IndexBuilt(Exception):
+        pass
+
+    def stop_at_the_index(args, *rest, **kwargs):
+        if args[0] == "bowtie2-build":
+            raise IndexBuilt
+        return run(args, *rest, **kwargs)
+
+    monkeypatch.setattr(hpi.sp, "run", stop_at_the_index)
+    # The run stops before it runs a program: none need be installed (CI's
+    # pip-only job runs the tests without any).
+    monkeypatch.setattr(hpi.hio, "require_tools", lambda *args, **kwargs: None)
+    caplog.set_level(logging.INFO)
+    with pytest.raises(IndexBuilt):
+        hpi.full_pipeline(
+            genome=str(genome),
+            input1="test_data/sample.reads_for.fastq.gz",
+            input2="test_data/sample.reads_rev.fastq.gz",
+            enzyme="DpnII",
+            out_dir=str(tmp_path / "out"),
+            aligner="bowtie2",
+            mat_fmt="cool",
+        )
+    messages = [record.getMessage() for record in caplog.records]
+    (warned,) = [i for i, message in enumerate(messages) if "contigs in the cool matrix" in message]
+    (indexing,) = [i for i, message in enumerate(messages) if "index not found" in message]
+    assert warned < indexing
