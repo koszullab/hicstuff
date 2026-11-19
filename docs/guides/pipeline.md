@@ -94,11 +94,13 @@ earlier run, unless given `--force` (`-F`).
 
 The intermediate files go to `--tmpdir` (`-T`), by default `tmp/` in the
 output directory: the alignments (`for.bam`, `rev.bam`), the pairs before and
-after each step (`valid.pairs`, `valid_idx.pairs`, …) and a compressed copy of
-the genome. They are deleted at the end of the run, unless `--no-cleanup`
-(`-n`) keeps them. The `tmp/` directory stays, with what the cleanup leaves
-in it: the index built for the run, when the genome had none, and in mapping
-mode `cutsite` the cut reads (`digest_for.fq.gz`, `digest_rev.fq.gz`). To run
+after each step (`valid.pairs`, `valid_idx.pairs`, …) and, in a directory of
+their own, the index built for the run when the genome has none, or the
+sequence read from an index without FASTA (a FASTA is read where it is, and
+never copied). These files are deleted at the end of the run, unless
+`--no-cleanup` (`-n`) keeps them. The `tmp/` directory stays, with what the
+cleanup leaves in it: in mapping mode `cutsite`, the cut reads
+(`digest_for.fq.gz`, `digest_rev.fq.gz`). To run
 several samples in one output directory, give each its `--prefix`: the
 temporary files take it too.
 

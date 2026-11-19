@@ -42,6 +42,8 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
   dependency (#123).
 - When the aligner is missing, the error also suggests `-a bwa`, which needs
   no program (#125).
+- With `-a bwa`, the log warns of a bwa-mem2 index of the genome, which bwa
+  and pybwa cannot read, before building a bwa index.
 - An installation of hicstuff now contains GPLv3 code: every pybwa wheel
   compiles in bwa (#125). See [Licence](installation.md#licence).
 - The Docker image no longer ships samtools, which hicstuff has not needed
@@ -61,9 +63,11 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
 
 - Iterative mapping with `-a mm2`, `-a minimap` or `-a bt2` aligned with
   bowtie2 in its final round (#125).
-- The pipeline copies and indexes a FASTA without index in a directory of its
-  own in the temporary directory, which the cleanup removes: the index files
-  it built were left in the temporary directory.
+- The pipeline indexes a FASTA without index where it is, plain or
+  compressed, in a directory of its own in the temporary directory, which the
+  cleanup removes. It copied the FASTA to the temporary directory first,
+  compressed, also in runs that align no reads, and left there the index
+  files it built.
 - A `--genome` that is neither a FASTA file nor the prefix of an index the
   aligner reads stops the pipeline before it writes anything. The error was
   logged, and the run went on until a later step failed.
