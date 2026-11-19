@@ -1317,34 +1317,32 @@ def full_pipeline(
         except:
             raise
 
-    # What this run writes from the genome goes to a directory of its own,
-    # which cleanup removes: the copy of a fasta file without index and the
-    # index built from it, or the sequence read from an index without fasta.
-    genome_dir = hio.generate_temp_dir(tmp_dir)
-    tmp_genome = join(genome_dir, "genome.fa.gz")
-    if is_fasta and idx:
-        # Indexed, or for minimap2, which needs no index file
+    # The genome has two roles: fasta is the file its sequences are read from
+    # (digestion, fragments), index the prefix of the aligner's index. What
+    # this run writes from the genome goes to a directory of its own, which
+    # cleanup removes: the sequence read from an index without fasta, the
+    # index built from a fasta file without one, or the files pybwa loads.
+    # Nothing is written next to the genome, and a fasta file is not copied.
+    genome_dir = None
+    if (start_stage == 0 and (backend == "python" or idx is None)) or not is_fasta:
+        genome_dir = hio.generate_temp_dir(tmp_dir)
+    if is_fasta:
         fasta = genome
-    elif is_fasta:
-        # Copied, compressed, to be indexed below
-        with hio.read_compressed(genome, "rb") as src, gzip.open(tmp_genome, "wb") as dst:
-            dst.writelines(src)
-        fasta = tmp_genome
     elif aligner == "bwa":
         # A bwa index without fasta: its .pac file holds the sequence
-        fasta = tmp_genome
-        with gzip.open(tmp_genome, "wb", compresslevel=6) as dst:
+        fasta = join(genome_dir, "genome.fa.gz")
+        with gzip.open(fasta, "wb", compresslevel=6) as dst:
             hbm.write_fasta(genome, dst)
     else:
         # A bowtie2 index without fasta: bowtie2-inspect reads the sequence
-        fasta = tmp_genome
+        fasta = join(genome_dir, "genome.fa.gz")
         bt2fa = sp.Popen(
             ["bowtie2-inspect", genome],
             stdout=sp.PIPE,
             stderr=sp.PIPE,
         )
         # At gzip's default level, as `gzip -c` compressed it
-        with gzip.open(tmp_genome, "wb", compresslevel=6) as dst:
+        with gzip.open(fasta, "wb", compresslevel=6) as dst:
             st.copyfileobj(bt2fa.stdout, dst, 1 << 20)
         _, bt2err = bt2fa.communicate()
         # bowtie2-inspect still has return code 0 when crashing, need to
@@ -1357,20 +1355,29 @@ def full_pipeline(
             )
             sys.exit(1)
 
-    # A fasta file without bowtie2 or bwa index is indexed in genome_dir, from
-    # its copy, when reads are aligned. pybwa indexes it when it loads it.
+    # A fasta file without bowtie2 or bwa index is indexed in genome_dir when
+    # reads are aligned, read where it is, plain or compressed. pybwa indexes
+    # it when it loads it, below.
+    index = idx
     if idx is None and start_stage == 0:
-        logger.info(
-            "%s index not found at %s, building a temporary one in %s.",
-            aligner,
-            genome,
-            genome_dir,
-        )
-        if aligner == "bowtie2":
-            sp.run(["bowtie2-build", "-q", fasta, fasta], stderr=sp.PIPE)
-        elif backend != "python":
-            sp.run(["bwa", "index", fasta], stderr=sp.PIPE)
-        genome = fasta
+        if aligner == "bwa" and os.path.isfile(genome + ".bwt.2bit.64"):
+            logger.warning(
+                "Found a bwa-mem2 index at %s, which bwa and pybwa cannot read: "
+                "a bwa index is built instead.",
+                genome,
+            )
+        if backend != "python":
+            index = join(genome_dir, "genome")
+            logger.info(
+                "%s index not found at %s, building a temporary one in %s.",
+                aligner,
+                genome,
+                genome_dir,
+            )
+            if aligner == "bowtie2":
+                sp.run(["bowtie2-build", "-q", fasta, index], stderr=sp.PIPE)
+            else:
+                sp.run(["bwa", "index", "-p", index, fasta], stderr=sp.PIPE)
 
     # Check for spaces in fasta headers and issue error if found
     for record in SeqIO.parse(hio.read_compressed(fasta), "fasta"):
@@ -1450,11 +1457,11 @@ def full_pipeline(
             logger.error("mapping must be either normal, iterative, cutsite or 5spm.")
             raise ValueError
 
-        # bwa in-process loads the index once, for both mates
-        index = genome
+        # bwa in-process loads the index once, for both mates, and builds it
+        # from the fasta if there is none
         if backend == "python":
             logger.info("Aligning with %s.", hbm.describe(backend, five_spm=mapping == "5spm"))
-            index = hbm.load_index(genome, genome_dir)
+            index = hbm.load_index(fasta if index is None else index, genome_dir)
         if mapping == "5spm":
             logger.info("Now mapping R1 and R2 reads with bwa mem -5SPM...")
             hbm.align_pairs(
@@ -1713,8 +1720,9 @@ def full_pipeline(
             bam1,
             bam2,
         ]
-        # The genome copy or sequence, and the indexes this run built
-        st.rmtree(genome_dir)
+        # The genome sequence and the index this run wrote, if any
+        if genome_dir is not None:
+            st.rmtree(genome_dir)
         # Do not delete files that were given as input
         try:
             tempfiles.remove(input1)

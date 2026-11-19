@@ -252,7 +252,7 @@ def load_index(genome, tmp_dir):
     than write one next to the reference, where another file may have that
     name, the index files are linked into a new directory of tmp_dir, next
     to a dictionary written from the index. An index that must be built is
-    built there.
+    built there, from the fasta where it is, plain or compressed.
 
     Parameters
     ----------
@@ -268,9 +268,11 @@ def load_index(genome, tmp_dir):
     """
     from pybwa import BwaIndex
 
-    prefix = os.path.join(hio.generate_temp_dir(tmp_dir), "index")
+    directory = hio.generate_temp_dir(tmp_dir)
+    prefix = os.path.join(directory, "index")
     found = hio.check_fasta_index(genome, mode="bwa")
     if found is None:
+        logger.info("bwa index not found at %s, building a temporary one in %s.", genome, directory)
         build_index(genome, prefix)
     else:
         for suffix in INDEX_SUFFIXES:

@@ -147,27 +147,45 @@ def test_sort_pairs_failure_raises(tmp_path):
         )
 
 
+#: Files of the bowtie2 and bwa indexes at prefix "genome", and of the index
+#: that pybwa builds, with the sequence dictionary it loads, at "index".
+BOWTIE2_INDEX = [f"genome.{name}.bt2" for name in ("1", "2", "3", "4", "rev.1", "rev.2")]
+BWA_INDEX = [f"genome.{ext}" for ext in ("amb", "ann", "bwt", "pac", "sa")]
+PYBWA_INDEX = [f"index.{ext}" for ext in ("amb", "ann", "bwt", "dict", "pac", "sa")]
+
+
+@pytest.mark.parametrize("genome_name", ["genome.fa", "genome.fa.gz"])
 @pytest.mark.parametrize("no_cleanup", [False, True])
 @pytest.mark.parametrize(
-    ("aligner", "mapping", "backend", "programs", "index_file"),
+    ("aligner", "mapping", "backend", "programs", "index_files"),
     [
-        ("bowtie2", "normal", None, ("bowtie2", "bowtie2-build"), "genome.fa.gz.1.bt2"),
-        ("bwa", "normal", "binary", ("bwa",), "genome.fa.gz.bwt"),
-        ("bwa", "5spm", "python", (), "index.bwt"),
+        ("bowtie2", "normal", None, ("bowtie2", "bowtie2-build"), BOWTIE2_INDEX),
+        ("bwa", "normal", "binary", ("bwa",), BWA_INDEX),
+        ("bwa", "5spm", "python", (), PYBWA_INDEX),
     ],
 )
 def test_genome_indexed_in_a_directory_of_the_run(
-    aligner, mapping, backend, programs, index_file, no_cleanup, synthetic_lib, tmp_path
+    aligner,
+    mapping,
+    backend,
+    programs,
+    index_files,
+    no_cleanup,
+    genome_name,
+    synthetic_lib,
+    tmp_path,
 ):
-    """A fasta file without index is copied and indexed in a directory of
-    tmp_dir of the run, which cleanup removes. Nothing is written next to it."""
+    """A fasta file without index, plain or compressed, is indexed where it
+    is, once, in a directory of tmp_dir of the run, which cleanup removes. It
+    is not copied, and nothing is written next to it."""
     missing = [program for program in programs if shutil.which(program) is None]
     if missing:
         pytest.skip(f"not on PATH: {', '.join(missing)}")
     if backend == "python" and hbm.pybwa_version() is None:
         pytest.skip("pybwa is not installed")
-    genome = tmp_path / "genome.fa"
-    shutil.copy(synthetic_lib.genome, genome)
+    genome = tmp_path / genome_name
+    compressed = genome_name.endswith(".gz")
+    shutil.copy(synthetic_lib.genome_gz if compressed else synthetic_lib.genome, genome)
     out_dir = tmp_path / "out"
     hpi.full_pipeline(
         genome=str(genome),
@@ -180,16 +198,84 @@ def test_genome_indexed_in_a_directory_of_the_run(
         out_dir=str(out_dir),
         no_cleanup=no_cleanup,
     )
-    assert sorted(os.listdir(tmp_path)) == ["genome.fa", "out"]
+    assert sorted(os.listdir(tmp_path)) == [genome_name, "out"]
     (log,) = out_dir.glob("*.log")
-    assert f"{aligner} index not found at {genome}, building a temporary one in" in log.read_text()
+    log_text = log.read_text()
     tmp_dir = out_dir / "tmp"
     if not no_cleanup:
+        assert f"{aligner} index not found at {genome}, building a temporary one in" in log_text
         assert list(tmp_dir.iterdir()) == []
         return
     (genome_dir,) = [path for path in tmp_dir.iterdir() if path.is_dir()]
-    assert (genome_dir / "genome.fa.gz").is_file()
-    assert len(list(genome_dir.rglob(index_file))) == 1
+    # The log names where the index is built: pybwa builds it in a
+    # directory of genome_dir
+    built = f"{aligner} index not found at {genome}, building a temporary one in {genome_dir}"
+    assert built in log_text
+    # genome_dir holds one index, and no copy of the genome
+    files = [path for path in genome_dir.rglob("*") if path.is_file()]
+    assert sorted(path.name for path in files) == index_files
+    assert len({path.parent for path in files}) == 1
+    # The reads were aligned to it
+    with pysam.AlignmentFile(str(tmp_dir / "for.bam")) as bam:
+        assert any(not read.is_unmapped for read in bam)
+
+
+@pytest.mark.parametrize("aligner", ["bowtie2", "bwa"])
+@pytest.mark.parametrize(
+    ("stage", "pairs"), [("pairs", "valid.pairs"), ("pairs_idx", "valid_idx.pairs")]
+)
+def test_genome_not_indexed_without_alignment(aligner, stage, pairs, tmp_path):
+    """A run that aligns no reads neither copies nor indexes a fasta file
+    without index: it reads it where it is."""
+    genome = tmp_path / "genome.fa"
+    shutil.copy("test_data/genome/seq.fa", genome)
+    # The pairs file of stage pairs_idx is the run's own: it sorts it in place
+    shutil.copy(f"test_data/{pairs}", tmp_path / pairs)
+    out_dir = tmp_path / "out"
+    hpi.full_pipeline(
+        genome=str(genome),
+        input1=str(tmp_path / pairs),
+        start_stage=stage,
+        aligner=aligner,
+        enzyme="DpnII",
+        out_dir=str(out_dir),
+        no_cleanup=True,
+    )
+    assert sorted(os.listdir(tmp_path)) == ["genome.fa", "out", pairs]
+    # No directory for the genome in tmp_dir
+    assert [path for path in (out_dir / "tmp").iterdir() if path.is_dir()] == []
+    (log,) = out_dir.glob("*.log")
+    assert "index not found" not in log.read_text()
+    assert (out_dir / "fragments_list.txt").stat().st_size > 0
+
+
+@pytest.mark.parametrize("backend", ["binary", "python"])
+def test_bwa_mem2_index_is_named(backend, synthetic_lib, tmp_path):
+    """A bwa-mem2 index, which bwa cannot read, is named in the log of a run
+    that builds a bwa index instead."""
+    if backend == "binary" and shutil.which("bwa") is None:
+        pytest.skip("bwa is not installed")
+    if backend == "python" and hbm.pybwa_version() is None:
+        pytest.skip("pybwa is not installed")
+    genome = tmp_path / "genome.fa"
+    shutil.copy(synthetic_lib.genome, genome)
+    # The files of a bwa-mem2 index, which only their names identify here
+    for suffix in (".0123", ".amb", ".ann", ".bwt.2bit.64", ".pac"):
+        (tmp_path / f"genome.fa{suffix}").write_bytes(b"")
+    hpi.full_pipeline(
+        genome=str(genome),
+        input1=str(synthetic_lib.reads1),
+        input2=str(synthetic_lib.reads2),
+        aligner="bwa",
+        aligner_backend=backend,
+        mapping="5spm",
+        enzyme=syn.LIBRARY_ENZYME,
+        out_dir=str(tmp_path / "out"),
+    )
+    (log,) = (tmp_path / "out").glob("*.log")
+    log_text = log.read_text()
+    assert f"Found a bwa-mem2 index at {genome}, which bwa and pybwa cannot read" in log_text
+    assert f"bwa index not found at {genome}" in log_text
 
 
 def test_genome_neither_fasta_nor_index(tmp_path, caplog):
