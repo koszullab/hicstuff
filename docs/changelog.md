@@ -49,7 +49,11 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
   cooler reads, with metacooler's tables of genomes and contigs, its contigs
   not yet assigned to genomes. Unlike cooler, metacooler does not store the
   contig of each bin as an HDF5 enum, whose cost grows with the square of the
-  number of contigs. metacooler is now a dependency of hicstuff. It is the
+  number of contigs. metacooler, 0.4.0 or later, is now a dependency of
+  hicstuff: the contact statistics it counts on the pairs (`qc`, which
+  hicstuff leaves to metacooler's defaults) split the contacts within a contig
+  at 1001 bp, so that those whose reads are more than 1 kb apart are
+  long-range, as metaTOR's `mge` reads them from the map. It is the
   default map from 50,000 contigs (see Breaking changes), but with
   `--binning`, which it does not take: `--binning` and `--balancing-args`,
   options of the cool map, are refused with it, but for `--binning 0` and blank
@@ -69,11 +73,6 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
 
 ### Changed
 
-- hicstuff requires metacooler 0.4.0. The contact statistics of a metacool
-  map (`qc`, which hicstuff leaves to metacooler's defaults) split the
-  contacts within a contig at 1001 bp, where they split them at 10 kb: those
-  whose reads are more than 1 kb apart are long-range, as metaTOR's `mge`
-  reads them from the map, so every map hicstuff writes serves it.
 - `--matfmt` of `hicstuff pipeline` is now `--matrix`, still `-M`. `--matfmt`
   still works, but the help no longer shows it.
 - `hicstuff pipeline --help` lists its main options in a panel of their own,
