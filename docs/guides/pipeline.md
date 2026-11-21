@@ -207,7 +207,9 @@ explains how the thresholds are chosen, and how to check them.
   fragment, made by `metacooler create pairs`. It is a cool file, which cooler
   reads, with metacooler's tables of genomes and contigs. Its contigs are not
   yet assigned to genomes: `metacooler reassign` assigns them, from a binning
-  such as metaTOR's. See [metacool](../formats.md#metacool). `--binning` and
+  such as metaTOR's. See [metacool](../formats.md#metacool). Its contact
+  statistics, counted on the pairs, split the contacts within a contig at
+  1001 bp, as metaTOR's `mge` reads them. `--binning` and
   `--balancing-args`, options of the cool map, are refused with it, but for
   `--binning 0` and blank values; `--exclude` leaves contigs out of it, as out
   of the cool map.
