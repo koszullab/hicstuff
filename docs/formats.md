@@ -113,7 +113,12 @@ contigs on top of it.
   [The contact map](guides/pipeline.md#the-contact-map)).
 - Its metadata hold the command line of the run (`commands`) and metacooler's
   counts of the contacts within and between contigs (`qc`), which
-  `metacooler qc` reads.
+  `metacooler qc` reads. They are counted on the pairs, read by read, and
+  split the contacts within a contig at 1001 bp: those whose reads are more
+  than 1 kb apart are long-range (`intra_contig_long`, and per contig the
+  `qc_intra_contig_long` column of the contigs table), the contacts metaTOR's
+  `mge` reads from the map. hicstuff sets no threshold: it is metacooler's
+  default, 1001 bp from metacooler 0.4.0 (10 kb before).
 
 ## Graal matrices
 

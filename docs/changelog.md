@@ -69,6 +69,11 @@ matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
 
 ### Changed
 
+- hicstuff requires metacooler 0.4.0. The contact statistics of a metacool
+  map (`qc`, which hicstuff leaves to metacooler's defaults) split the
+  contacts within a contig at 1001 bp, where they split them at 10 kb: those
+  whose reads are more than 1 kb apart are long-range, as metaTOR's `mge`
+  reads them from the map, so every map hicstuff writes serves it.
 - `--matfmt` of `hicstuff pipeline` is now `--matrix`, still `-M`. `--matfmt`
   still works, but the help no longer shows it.
 - `hicstuff pipeline --help` lists its main options in a panel of their own,
