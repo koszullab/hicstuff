@@ -92,7 +92,7 @@ toggle.name = "Switch to light mode"
 [project.extra]
 # Beside the name in the header and in every page's footer. bump-my-version
 # keeps it in step with the package (see [tool.bumpversion] in pyproject.toml).
-release = "3.3.0"
+release = "4.0.0"
 # The small word after the name ("" for none).
 kicker = "docs"
 

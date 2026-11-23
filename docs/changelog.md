@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 4.0.0 - 2026-11-23
+
 `pip install hicstuff` alone now runs the whole pipeline, from FASTQ files to
 matrices, on Linux and macOS: with `-a bwa`, no other program is needed.
 
