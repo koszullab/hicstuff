@@ -47,8 +47,6 @@ dependencies = [
     "cooler",
     "click>=8.0",
     "python-dateutil",
-    # 0.4.0 splits the QC block's contacts within a contig at 1001 bp, as
-    # metaTOR's mge reads them.
     "metacooler>=0.4.0",
 ]
 
@@ -61,8 +59,6 @@ dev = [
     "ipython>=8.12.3",
     "bump-my-version>=1.2",
 ]
-# The documentation site (docs/, zensical.toml): `uv sync --extra docs`, then
-# `uv run zensical serve`.
 docs = [
     "zensical>=0.0.43",
     "mkdocstrings[python]>=0.25",
