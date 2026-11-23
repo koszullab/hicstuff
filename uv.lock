@@ -1212,7 +1212,7 @@ requires-dist = [
     { name = "cooler" },
     { name = "ipython", marker = "extra == 'dev'", specifier = ">=8.12.3" },
     { name = "matplotlib", specifier = ">=3.4.0" },
-    { name = "metacooler", specifier = ">=0.3" },
+    { name = "metacooler", specifier = ">=0.4.0" },
     { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.25" },
     { name = "numpy" },
     { name = "pandas", specifier = ">=1.5.0" },
@@ -1998,7 +1998,7 @@ wheels = [
 
 [[package]]
 name = "metacooler"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -2021,9 +2021,9 @@ dependencies = [
     { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
     { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/74/16/3d892a40354d65a8f18e13f7c0302314e70e8bda2b62d5cb728b532dbd3b/metacooler-0.3.0.tar.gz", hash = "sha256:9bfe1fc530083ac40ec22524551ac478a61c538e26de72d757a2aacf187fe3cd", size = 2398470, upload-time = "2026-11-18T19:10:13.01Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/67/8e/223095faecd4d32204456366d660fc61a62f313c848cbfb7b55503c40a89/metacooler-0.4.0.tar.gz", hash = "sha256:d43187bb56b96cfac7173c0ca46b053c1254d5386652994513c6815959fe63fe", size = 2642964, upload-time = "2026-11-23T08:57:42.733Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/96/d565fd864f3e4ba52fad16ee58d341290f1eec846eac341e0065f095d573/metacooler-0.3.0-py3-none-any.whl", hash = "sha256:2fccd4798fe5841f0f9e0af99ed6a53bbceea8ebccbfb2182dbe4cbe92cdc8e4", size = 300448, upload-time = "2026-11-18T19:10:10.571Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/5d/78feddfa459dcc5eebbacd9aa16070c01b619d4f72a9dd43633fe9fd5ea9/metacooler-0.4.0-py3-none-any.whl", hash = "sha256:b90c56ccd5299a084c6074ae59799dd0c62109f36e4a81b4d56279c7ece7d91b", size = 418398, upload-time = "2026-11-23T08:57:41.224Z" },
 ]
 
 [[package]]
