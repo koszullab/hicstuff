@@ -730,6 +730,46 @@ def test_check_fasta_index(tmp_path, monkeypatch, layout, name):
         assert hio.check_fasta_index(ref, mode=mode) == ref
 
 
+@pytest.mark.parametrize("layout", INDEX_FILES)
+@pytest.mark.parametrize(
+    ("fasta", "prefixes"),
+    [
+        ("genome.fa", ["genome.fa", "genome"]),
+        ("genome.v2.FASTA", ["genome.v2.FASTA", "genome.v2"]),
+        ("genome.fna.gz", ["genome.fna.gz", "genome.fna", "genome"]),
+        ("genome.gz", ["genome.gz", "genome"]),
+    ],
+)
+def test_check_fasta_index_without_extension(tmp_path, monkeypatch, layout, fasta, prefixes):
+    """The index of a FASTA file is found named after it with or without its
+    extensions (bowtie2-build genome.fa genome), the FASTA path as given
+    first, and then without its compression extension."""
+    mode = layout.split("-")[0]
+    ref_dir = tmp_path / "ref.v2"
+    ref_dir.mkdir()
+    monkeypatch.chdir(ref_dir)
+    (ref_dir / fasta).write_text(">chr1\nACGT\n")
+    # Each prefix, from the last one tried to the first, is found once its
+    # index exists, and returned as written: relative with ./ or ../, or
+    # absolute.
+    for prefix in reversed(prefixes):
+        _touch_index(ref_dir / prefix, INDEX_FILES[layout])
+        for ref, root in ((fasta, ""), (f"./{fasta}", "./"), (f"../ref.v2/{fasta}", "../ref.v2/")):
+            assert hio.check_fasta_index(ref, mode=mode) == root + prefix
+        assert hio.check_fasta_index(ref_dir / fasta, mode=mode) == str(ref_dir / prefix)
+
+
+def test_check_fasta_index_keeps_other_extensions(tmp_path):
+    """Only FASTA and compression extensions are left out, from a file: an
+    index prefix is never cut, nor the path of a missing FASTA file."""
+    _touch_index(tmp_path / "genome", INDEX_FILES["bowtie2"])
+    _touch_index(tmp_path / "genome.v2", INDEX_FILES["bowtie2"])
+    (tmp_path / "genome.txt").write_text(">chr1\nACGT\n")
+    (tmp_path / "genome.v2.fa").mkdir()
+    for ref in ("genome.txt", "genome.fa", "genome.v2.fa", "genome.v2.1"):
+        assert hio.check_fasta_index(tmp_path / ref, mode="bowtie2") is None
+
+
 def test_check_fasta_index_incomplete(tmp_path):
     """An index missing a file is no index, nor are bowtie2 files of both sizes."""
     prefix = tmp_path / "genome.fa"

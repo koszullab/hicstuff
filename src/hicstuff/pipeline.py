@@ -1886,7 +1886,7 @@ def full_pipeline(
             )
     if aligner == "bowtie2" and not is_fasta:
         hio.require_tools(
-            ["bowtie2-inspect"], f"to extract the genome sequence from the bowtie2 index {genome}"
+            ["bowtie2-inspect"], f"to extract the genome sequence from the bowtie2 index {idx}"
         )
 
     # Check if the number of input files is correct
@@ -2024,12 +2024,12 @@ def full_pipeline(
         # A bwa index without fasta: its .pac file holds the sequence
         fasta = join(genome_dir, "genome.fa.gz")
         with gzip.open(fasta, "wb", compresslevel=6) as dst:
-            hbm.write_fasta(genome, dst)
+            hbm.write_fasta(idx, dst)
     else:
         # A bowtie2 index without fasta: bowtie2-inspect reads the sequence
         fasta = join(genome_dir, "genome.fa.gz")
         bt2fa = sp.Popen(
-            ["bowtie2-inspect", genome],
+            ["bowtie2-inspect", idx],
             stdout=sp.PIPE,
             stderr=sp.PIPE,
         )
@@ -2123,6 +2123,9 @@ def full_pipeline(
     # reads are aligned, read where it is, plain or compressed. pybwa indexes
     # it when it loads it, below.
     index = idx
+    if idx is not None and idx != genome and (start_stage == 0 or not is_fasta):
+        # Found at the FASTA path without its extension
+        logger.info("Found the %s index of %s at %s.", aligner, genome, idx)
     if idx is None and start_stage == 0:
         if aligner == "bwa" and os.path.isfile(genome + ".bwt.2bit.64"):
             logger.warning(

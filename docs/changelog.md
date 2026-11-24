@@ -41,6 +41,13 @@
 
 ### Changed
 
+- The bowtie2 or bwa index of a FASTA file is also found named after it
+  without its extensions, as `bowtie2-build genome.fa genome` and
+  `bwa index -p genome genome.fa` write it: for `--genome genome.fa.gz`,
+  hicstuff looks for the index at `genome.fa.gz`, then `genome.fa`, then
+  `genome`, and the log names the one it found. It used to build a temporary
+  index at every run. This applies to `pipeline`, `iteralign` and `missview`,
+  and to `check_fasta_index`, which returns the prefix it found.
 - `--binning` is checked before the run starts, whatever the matrix format: a
   negative number, or text that is neither digits nor a file, is a usage error.
   A negative binning with `--matrix cool` used to fail in cooler, once the

@@ -88,10 +88,14 @@ or bins, can then be summed with `cooler merge`.
 fragments are cut from it:
 
 - A FASTA file, gzipped or not. bowtie2 and bwa need an index: one named after
-  the FASTA (`genome.fa.1.bt2`, as `bowtie2-build genome.fa genome.fa` writes
-  it, or `genome.fa.bwt`, as `bwa index genome.fa` does) is used; otherwise the
-  pipeline copies the FASTA and builds one in a directory of its own in the
-  temporary directory, at every run, which the cleanup removes.
+  the FASTA, with or without its extensions, is used: `genome.fa.1.bt2` or
+  `genome.1.bt2`, as `bowtie2-build genome.fa genome.fa` or
+  `bowtie2-build genome.fa genome` write it, `genome.fa.bwt` or `genome.bwt`,
+  as `bwa index genome.fa` or `bwa index -p genome genome.fa` do. For
+  `genome.fa.gz`, `genome.fa.gz`, `genome.fa` and `genome` are tried in this
+  order, and the log names the index found. Otherwise the pipeline builds one
+  in a directory of its own in the temporary directory, at every run, which
+  the cleanup removes.
 - For bowtie2 or bwa, the prefix of an index without its FASTA (`genome` for
   `genome.1.bt2` or `genome.bwt`, …). The sequence is then read from the
   index: by `bowtie2-inspect` for a bowtie2 index, and by hicstuff itself,

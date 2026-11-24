@@ -72,14 +72,19 @@ sorted by name; a pair is kept when both mates aligned with a mapping quality
 of at least `--quality-min` (30 by default).
 
 bowtie2 and bwa need an index of the genome. The pipeline uses one named after
-the FASTA when it finds it, and otherwise builds one in a directory of its
-own in the temporary directory, at every run, which the cleanup removes. On a
-large genome, build it once:
+the FASTA, with or without its extensions, when it finds it, and otherwise
+builds one in a directory of its own in the temporary directory, at every run,
+which the cleanup removes. On a large genome, build it once:
 
 ```bash
 bowtie2-build genome.fa genome.fa   # genome.fa.1.bt2, …
 bwa index genome.fa                 # genome.fa.bwt, …
 ```
+
+For `--genome genome.fa.gz`, the index is looked for at `genome.fa.gz`, then
+`genome.fa`, then `genome`: `bowtie2-build genome.fa genome` and
+`bwa index -p genome genome.fa` are found as well. The log names the index the
+run aligns to.
 
 minimap2 indexes the genome as it aligns.
 
@@ -120,7 +125,8 @@ hicstuff iteralign --genome genome.fa --out-bam R1.bam --threads 8 R1.fq.gz
 
 Unlike the pipeline, `iteralign` builds no index: for bowtie2 and bwa,
 `--genome` must name an index built beforehand, as above (`genome.fa` once
-`bowtie2-build genome.fa genome.fa` has run). `--min-len` (`-l`) sets the
+`bowtie2-build genome.fa genome.fa` or `bowtie2-build genome.fa genome` has
+run). `--min-len` (`-l`) sets the
 length reads are first truncated to (20 bases), and `--tempdir` (`-T`) where
 the truncated reads are written.
 
