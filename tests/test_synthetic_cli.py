@@ -255,24 +255,121 @@ _WITHOUT_MATRIX = ["pipeline", "-S", "pairs", "-e", "DpnII", "-g", "test_data/ge
             ["-b", "1000", "-E", "seq2"],
             "writes no matrix: --binning, --exclude are options",
         ),
-        ("none", ["-b", "-5"], "writes no matrix: --binning is an option"),
-        ("metacool", ["-b", "1000"], "has one bin per fragment: --binning is an option"),
+        ("metacool", ["-z", "true"], "is neither zoomified nor balanced: --zoomify is an option"),
         (
             "metacool",
-            ["-b", "1000", "-B", "--max-iters 10", "-E", "seq2"],
-            "has one bin per fragment: --binning, --balancing-args are options",
+            ["-b", "1000", "-z", "True", "-B", "--max-iters 10", "-E", "seq2"],
+            "is neither zoomified nor balanced: --zoomify, --balancing-args are options",
         ),
     ],
 )
 def test_pipeline_refuses_cool_options(runner, matrix, options, named, tmp_path):
-    """-M none writes no matrix, and -M metacool has one bin per fragment:
-    the options of the cool matrix, given with them, are a usage error,
-    before the run starts. -M metacool takes --exclude."""
+    """-M none writes no matrix, and -M metacool is binned but neither
+    zoomified nor balanced: the options of the cool matrix, given with them,
+    are a usage error, before the run starts. -M metacool takes --binning and
+    --exclude."""
     out_dir = tmp_path / "out"
     args = [*_WITHOUT_MATRIX, "-M", matrix, *options, "-o", out_dir, "test_data/valid.pairs"]
     result = invoke(runner, *args, exit_code=2)
     assert f"--matrix {matrix} {named} of the cool matrix." in text(result)
     assert not out_dir.exists()
+
+
+def _bins_file(tmp_path):
+    """A BED file of bins of no single size: of 7 kb on seq1, 3 kb on seq2."""
+    path = tmp_path / "bins.bed"
+    rows = [("seq1", start, min(start + 7000, 60_000)) for start in range(0, 60_000, 7000)]
+    rows += [("seq2", start, min(start + 3000, 20_000)) for start in range(0, 20_000, 3000)]
+    path.write_text("".join(f"{chrom}\t{start}\t{end}\n" for chrom, start, end in rows))
+    return path
+
+
+@pytest.mark.parametrize("binning", ["-5", "nowhere.bed"])
+def test_pipeline_refuses_a_binning(runner, binning, tmp_path):
+    """--binning is 0, a bin size in bp or a BED file of bins: another value
+    is a usage error, before the run starts."""
+    out_dir = tmp_path / "out"
+    args = [*_WITHOUT_MATRIX, "-b", binning, "-o", out_dir, "test_data/valid.pairs"]
+    result = invoke(runner, *args, exit_code=2)
+    assert "Invalid value for '-b' / '--binning'" in text(result)
+    assert not out_dir.exists()
+
+
+@pytest.mark.parametrize("options", [["-b", "5000"], ["-b", "5000", "-z", "false"], ["-b", "BED"]])
+def test_pipeline_binned_metacool_matrix(runner, options, tmp_path):
+    """-M metacool takes --binning, a bin size or a BED file of bins, and -z
+    false: it writes one metacool matrix of those bins, neither zoomified nor
+    balanced."""
+    bed = _bins_file(tmp_path)
+    options = [str(bed) if option == "BED" else option for option in options]
+    out_dir = tmp_path / "out"
+    invoke(
+        runner, *_WITHOUT_MATRIX, "-M", "metacool", *options, "-o", out_dir, "test_data/valid.pairs"
+    )
+    matrices = sorted(path.name for path in out_dir.iterdir() if "cool" in path.suffix)
+    assert matrices == ["abs_fragments_contacts_weighted.metacool"]
+    clr = cooler.Cooler(str(out_dir / matrices[0]))
+    assert clr.binsize == (None if options[1] == str(bed) else 5000)
+    assert "weight" not in clr.bins().columns
+    assert clr.pixels()[:]["count"].sum() == 10_000
+
+
+def test_pipeline_bed_binned_cool_matrix(runner, tmp_path):
+    """-M cool with a BED file of bins writes one balanced cool matrix: -z
+    left to its default is ignored, and -z true is a usage error, before the
+    run starts, with -M cool and without -M."""
+    bed = _bins_file(tmp_path)
+    refused = tmp_path / "refused"
+    for matrix in (["-M", "cool"], []):
+        args = [*_WITHOUT_MATRIX, *matrix, "-b", bed, "-z", "true", "-o", refused]
+        result = invoke(runner, *args, "test_data/valid.pairs", exit_code=2)
+        assert f"--zoomify is refused with the bins of {bed}" in text(result)
+        assert not refused.exists()
+    out_dir = tmp_path / "out"
+    invoke(
+        runner, *_WITHOUT_MATRIX, "-M", "cool", "-b", bed, "-o", out_dir, "test_data/valid.pairs"
+    )
+    matrices = sorted(path.name for path in out_dir.iterdir() if "cool" in path.suffix)
+    assert matrices == ["abs_fragments_contacts_weighted.cool"]
+    assert "weight" in cooler.Cooler(str(out_dir / matrices[0])).bins().columns
+
+
+@pytest.mark.parametrize(
+    "options, named",
+    [
+        (["-B", "--max-iters 10"], "--balancing-args is an option"),
+        (["-z", "true"], "--zoomify is an option"),
+        (["-z", "true", "-B", "--max-iters 10"], "--zoomify, --balancing-args are options"),
+    ],
+)
+def test_pipeline_refuses_cool_options_with_the_default_metacool(
+    runner, options, named, tmp_path, monkeypatch
+):
+    """From MANY_CONTIGS contigs, the default matrix is metacool, binned or
+    not: -z true and --balancing-args, given with it, are a usage error, once
+    the genome is read, that says to give --matrix cool."""
+    monkeypatch.setattr(hpi, "MANY_CONTIGS", 2)
+    out_dir = tmp_path / "out"
+    args = [*_WITHOUT_MATRIX, "-b", "5000", *options, "-o", out_dir, "test_data/valid.pairs"]
+    result = invoke(runner, *args, exit_code=2)
+    assert (
+        "2 contigs in the matrix: its default format is metacool, which is neither zoomified "
+        f"nor balanced: {named} of the cool matrix. Give --matrix cool to write the cool matrix"
+    ) in text(result)
+    assert not [path for path in out_dir.iterdir() if path.is_file() and path.suffix != ".log"]
+
+
+def test_pipeline_default_binned_metacool_matrix(runner, tmp_path, monkeypatch):
+    """From MANY_CONTIGS contigs, --binning makes the default matrix a binned
+    metacool matrix: -z left to its default, or false, is taken."""
+    monkeypatch.setattr(hpi, "MANY_CONTIGS", 2)
+    for name, options in [("default", []), ("no-zoomify", ["-z", "false"])]:
+        out_dir = tmp_path / name
+        invoke(
+            runner, *_WITHOUT_MATRIX, "-b", "5000", *options, "-o", out_dir, "test_data/valid.pairs"
+        )
+        matrices = sorted(path.name for path in out_dir.iterdir() if "cool" in path.suffix)
+        assert matrices == ["abs_fragments_contacts_weighted.metacool"]
 
 
 @pytest.mark.parametrize(

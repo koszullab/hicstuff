@@ -1347,20 +1347,26 @@ def test_full_pipeline_without_matrix(prefix, written, matrix, tmp_path, caplog)
         ),
         ("none", dict(binning=-5), "writes no matrix: binning is an option"),
         ("none", dict(exclude=["seq2"]), "writes no matrix: exclude is an option"),
-        ("metacool", dict(binning=1000), "has one bin per fragment: binning is an option"),
+        ("metacool", dict(zoomify=True), "is neither zoomified nor balanced: zoomify is an option"),
         (
             "metacool",
-            dict(binning=1000, balancing_args="--max-iters 10", exclude="seq2"),
-            "has one bin per fragment: binning, balancing_args are options",
+            dict(balancing_args="--max-iters 10"),
+            "is neither zoomified nor balanced: balancing_args is an option",
+        ),
+        (
+            "metacool",
+            dict(binning=1000, zoomify=True, balancing_args="--max-iters 10", exclude="seq2"),
+            "is neither zoomified nor balanced: zoomify, balancing_args are options",
         ),
     ],
 )
 def test_full_pipeline_refuses_cool_options(mat_fmt, kwargs, named, tmp_path, caplog):
-    """Binning and balancing arguments are options of the cool matrix, and
-    contigs to exclude of the cool and metacool matrices: with the matrix
-    format none, which writes no matrix, or metacool, which has one bin per
-    fragment, they are refused before the run writes anything, the reason
-    logged as an error."""
+    """Binning, zoomify and balancing arguments are options of the cool
+    matrix, and contigs to exclude of the cool and metacool matrices: with
+    the matrix format none, which writes no matrix, they are refused, and
+    zoomify True and balancing arguments with metacool, which is binned but
+    neither zoomified nor balanced, before the run writes anything, the
+    reason logged as an error."""
     out_dir = tmp_path / "out"
     message = f"The matrix format {mat_fmt} {named} of the cool matrix."
     with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
@@ -1383,7 +1389,7 @@ def test_full_pipeline_refuses_cool_options(mat_fmt, kwargs, named, tmp_path, ca
     "kwargs",
     [
         dict(binning=0, zoomify=False, balancing_args="", exclude=""),
-        dict(balancing_args=" ", exclude=" , "),
+        dict(binning=" 0 ", balancing_args=" ", exclude=" , "),
     ],
 )
 def test_full_pipeline_without_matrix_takes_options_without_effect(kwargs, tmp_path):
@@ -1648,16 +1654,357 @@ def test_full_pipeline_default_matrix(many, kwargs, written, tmp_path, caplog, m
         assert default_warnings == []
 
 
-def test_full_pipeline_default_binned_matrix(tmp_path, caplog, monkeypatch):
-    """With binning, the default matrix is the cool one whatever the number of
-    contigs, as the metacool matrix has one bin per fragment: from
-    MANY_CONTIGS, the run warns that it is slow to write."""
+#: The warning of the default matrix, metacool from MANY_CONTIGS contigs,
+#: binned, for test_data's two contigs
+DEFAULT_BINNED_METACOOL = DEFAULT_METACOOL.replace(
+    " --matrix cool", " It is binned, but neither zoomified nor balanced. --matrix cool"
+)
+
+
+@pytest.mark.parametrize("zoomify", [None, False])
+def test_full_pipeline_default_binned_matrix(zoomify, tmp_path, caplog, monkeypatch):
+    """With binning too, the default matrix is metacool from MANY_CONTIGS
+    contigs: binned, but neither zoomified nor balanced, and the run warns of
+    it. zoomify left to its default, or False, is taken."""
     monkeypatch.setattr(hpi, "MANY_CONTIGS", 2)
+    out_dir = _run_from_pairs(tmp_path, "run", binning=5000, zoomify=zoomify)
+    assert not list(out_dir.glob("*.cool")) and not list(out_dir.glob("*.mcool"))
+    metacool = str(out_dir / "abs_fragments_contacts_weighted.metacool")
+    assert cooler.Cooler(metacool).binsize == 5000
+    assert "weight" not in cooler.Cooler(metacool).bins().columns
+    assert DEFAULT_BINNED_METACOOL in _warnings(caplog)
+    assert _slow_cool_warnings(caplog) == []
+
+
+def test_full_pipeline_default_binned_matrix_below_many_contigs(tmp_path, caplog, monkeypatch):
+    """Below MANY_CONTIGS contigs, the default binned matrix is a cool one,
+    zoomified and balanced, as before, and the run warns of no format."""
+    monkeypatch.setattr(hpi, "MANY_CONTIGS", 3)
     out_dir = _run_from_pairs(tmp_path, "run", binning=5000)
     assert (out_dir / "abs_fragments_contacts_weighted.mcool").is_file()
     assert not list(out_dir.glob("*.metacool"))
-    assert _slow_cool_warnings(caplog) == [SLOW_COOL]
-    assert DEFAULT_METACOOL not in _warnings(caplog)
+    assert _slow_cool_warnings(caplog) == []
+    assert DEFAULT_BINNED_METACOOL not in _warnings(caplog)
+
+
+def _bed(path, rows):
+    """A BED file of bins at path, of rows of (contig, start, end)."""
+    path.write_text("".join(f"{chrom}\t{start}\t{end}\n" for chrom, start, end in rows))
+    return str(path)
+
+
+def _bins(path):
+    """The bins of a cool or metacool matrix, as (contig, start, end)."""
+    clr = cooler.Cooler(str(path))
+    bins = clr.bins()[:]
+    chroms = bins.chrom.astype(str)
+    if bins.chrom.dtype.kind in "iu":
+        chroms = np.asarray(clr.chromnames)[bins.chrom]
+    return sorted(zip(chroms, bins.start, bins.end))
+
+
+#: test_data's contigs and their lengths
+LENGTHS = {"seq1": 60_000, "seq2": 20_000}
+
+#: Bins of no single size: of 3 kb on seq2, then of 7 kb on seq1
+UNEVEN_BINS = [("seq2", start, min(start + 3000, 20_000)) for start in range(0, 20_000, 3000)] + [
+    ("seq1", start, min(start + 7000, 60_000)) for start in range(0, 60_000, 7000)
+]
+
+
+@pytest.mark.parametrize("bed", [False, True])
+def test_full_pipeline_binned_metacool_matrix(bed, tmp_path):
+    """-M metacool with binning, a bin size or a BED file of bins: the pairs
+    are binned from their positions, as for the cool matrix. The metacool
+    matrix has the bins of the cool matrix of the same binning, and its
+    contacts, bin for bin, with metacooler's contact statistics counted on
+    the pairs; it is neither zoomified nor balanced."""
+    binning = _bed(tmp_path / "bins.bed", UNEVEN_BINS) if bed else 5000
+    cool_dir = _run_from_pairs(tmp_path, "cool", mat_fmt="cool", binning=binning, zoomify=False)
+    meta_dir = _run_from_pairs(tmp_path, "meta", mat_fmt="metacool", binning=binning)
+    cool = cool_dir / "abs_fragments_contacts_weighted.cool"
+    metacool = str(meta_dir / "abs_fragments_contacts_weighted.metacool")
+    assert _bins(metacool) == _bins(cool)
+    if bed:
+        assert _bins(metacool) == sorted(UNEVEN_BINS)
+    contacts = _contacts(metacool)
+    assert contacts == _contacts(cool)
+    assert sum(contacts.values()) == 10_000
+    assert all(check.ok for check in metacooler.check(metacool))
+    assert cooler.Cooler(metacool).binsize == (None if bed else 5000)
+    assert "weight" in cooler.Cooler(str(cool)).bins().columns
+    assert "weight" not in cooler.Cooler(metacool).bins().columns
+    qc = metacooler.MetaCooler(metacool).metadata["qc"]
+    assert (qc["source"], qc["distance_threshold"]) == ("pairs", 1001)
+    assert not list(meta_dir.glob("*.mcool"))
+
+
+def test_full_pipeline_metacool_matrix_of_contigs(tmp_path):
+    """A BED file of one bin per contig makes the map of the contigs, as
+    metaTOR reads it: its contacts are those of the fragments, summed by pair
+    of contigs."""
+    binning = _bed(
+        tmp_path / "contigs.bed", [(name, 0, length) for name, length in LENGTHS.items()]
+    )
+    frag_dir = _run_from_pairs(tmp_path, "frag", mat_fmt="metacool")
+    meta_dir = _run_from_pairs(tmp_path, "meta", mat_fmt="metacool", binning=binning)
+    by_contig = {}
+    for pair, count in _contacts(frag_dir / "abs_fragments_contacts_weighted.metacool").items():
+        key = tuple(sorted((name, 0, LENGTHS[name]) for name, _, _ in pair))
+        by_contig[key] = by_contig.get(key, 0) + count
+    metacool = meta_dir / "abs_fragments_contacts_weighted.metacool"
+    assert _contacts(metacool) == by_contig
+    assert _bins(metacool) == [("seq1", 0, 60_000), ("seq2", 0, 20_000)]
+
+
+@pytest.mark.parametrize(
+    "kwargs", [dict(exclude="seq2"), dict(exclude=["seq2"]), dict(min_size=30_000)]
+)
+@pytest.mark.parametrize("mat_fmt", ["cool", "metacool"])
+def test_full_pipeline_bins_on_the_contigs_of_the_matrix(mat_fmt, kwargs, tmp_path):
+    """The bins of a BED file, or of a bin size, on the contigs that --exclude
+    or --size leaves out are left out of the matrix, with their contacts."""
+    if mat_fmt == "cool" and isinstance(kwargs.get("exclude"), list):
+        pytest.skip("the cool matrix reads comma-separated contigs to exclude only")
+    for binning in (_bed(tmp_path / "bins.bed", UNEVEN_BINS), 5000):
+        out_dir = _run_from_pairs(
+            tmp_path,
+            f"{mat_fmt}{binning != 5000}",
+            mat_fmt=mat_fmt,
+            binning=binning,
+            zoomify=False,
+            **kwargs,
+        )
+        (matrix,) = [path for path in out_dir.iterdir() if path.suffix in (".cool", ".metacool")]
+        assert {chrom for chrom, _, _ in _bins(matrix)} == {"seq1"}
+        assert {pair[0][0] for pair in _contacts(matrix)} == {"seq1"}
+
+
+def test_full_pipeline_bed_binned_cool_matrix(tmp_path):
+    """The cool matrix of a BED file of bins is balanced, but not zoomified:
+    zoomify left to its default is ignored, as a BED file gives no bin
+    size."""
+    out_dir = _run_from_pairs(tmp_path, "run", binning=_bed(tmp_path / "bins.bed", UNEVEN_BINS))
+    assert not list(out_dir.glob("*.mcool"))
+    cool = out_dir / "abs_fragments_contacts_weighted.cool"
+    assert _bins(cool) == sorted(UNEVEN_BINS)
+    assert "weight" in cooler.Cooler(str(cool)).bins().columns
+
+
+def _refused_before_the_run(tmp_path, caplog, message, **kwargs):
+    """full_pipeline refuses kwargs with message, logged as an error, before
+    it writes anything."""
+    out_dir = tmp_path / "out"
+    with pytest.raises(ValueError, match=f"^{re.escape(message)}$"):
+        hpi.full_pipeline(
+            genome="test_data/genome/seq.fa",
+            input1="test_data/valid.pairs",
+            start_stage="pairs",
+            enzyme="DpnII",
+            out_dir=str(out_dir),
+            **kwargs,
+        )
+    assert not out_dir.exists()
+    assert ("ERROR", message) in [(r.levelname, r.getMessage()) for r in caplog.records]
+
+
+@pytest.mark.parametrize("binning", [-5, "-5", " -5 "])
+def test_full_pipeline_refuses_a_negative_binning(binning, tmp_path, caplog):
+    message = "The binning must be 0, a bin size in bp or a BED file of bins, not -5."
+    _refused_before_the_run(tmp_path, caplog, message, mat_fmt="cool", binning=binning)
+
+
+def test_full_pipeline_refuses_a_binning_that_is_no_file(tmp_path, caplog):
+    path = str(tmp_path / "nowhere.bed")
+    message = (
+        f"The binning {path!r} is neither a bin size in bp nor a BED file of bins: there is no "
+        "such file."
+    )
+    _refused_before_the_run(tmp_path, caplog, message, mat_fmt="metacool", binning=path)
+
+
+@pytest.mark.parametrize(
+    "content, reason",
+    [
+        ("", "it is empty."),
+        (
+            "chrom\tstart\tend\nseq1\t0\t100\n",
+            "its second and third columns, the starts and ends of the bins, must be integers, "
+            "without a header line.",
+        ),
+        ("seq1\t100\t100\n", "the bin seq1:100-100 is empty."),
+        ("seq1\t-1\t100\n", "the first bin of seq1 starts at -1, not 0."),
+        ("seq1\t0\t100\nseq2\t100\t200\n", "the first bin of seq2 starts at 100, not 0."),
+        (
+            "seq1\t100\t300\nseq2\t0\t10\nseq1\t0\t200\n",
+            "the bins seq1:0-200 and seq1:100-300 overlap.",
+        ),
+        (
+            "seq1\t0\t100\nseq1\t200\t300\n",
+            "the bins seq1:0-100 and seq1:200-300 leave a gap.",
+        ),
+    ],
+)
+def test_full_pipeline_refuses_a_bed_file_that_is_not_of_bins(content, reason, tmp_path, caplog):
+    """A BED file of bins is read before the run writes anything: one that is
+    not of bins, or whose bins do not tile their contigs from 0, without gap
+    or overlap, is refused, and why."""
+    bed = tmp_path / "bins.bed"
+    bed.write_text(content)
+    message = f"{bed} is not a BED file of bins: {reason}"
+    _refused_before_the_run(tmp_path, caplog, message, mat_fmt="metacool", binning=str(bed))
+
+
+def test_full_pipeline_refuses_a_bed_file_of_fewer_than_three_columns(tmp_path, caplog):
+    bed = tmp_path / "bins.bed"
+    bed.write_text("seq1\t0\n")
+    out_dir = tmp_path / "out"
+    with pytest.raises(ValueError, match=f"^{re.escape(str(bed))} is not a BED file of bins: "):
+        hpi.full_pipeline(
+            genome="test_data/genome/seq.fa",
+            input1="test_data/valid.pairs",
+            start_stage="pairs",
+            enzyme="DpnII",
+            out_dir=str(out_dir),
+            mat_fmt="cool",
+            binning=str(bed),
+        )
+    assert not out_dir.exists()
+
+
+@pytest.mark.parametrize("mat_fmt", ["cool", None])
+def test_full_pipeline_refuses_zoomify_with_a_bed_file(mat_fmt, tmp_path, caplog):
+    """zoomify True is refused with the bins of a BED file, which give no bin
+    size, before the run writes anything: with the cool matrix, and with the
+    default one, which is cool or metacool, which is not zoomified."""
+    bed = _bed(tmp_path / "bins.bed", UNEVEN_BINS)
+    message = hpi._zoomify_refused_message(bed)
+    _refused_before_the_run(tmp_path, caplog, message, mat_fmt=mat_fmt, binning=bed, zoomify=True)
+
+
+@pytest.mark.parametrize(
+    "rows, reason",
+    [
+        ([("seq3", 0, 100)], "are on contigs that are not in the genome: seq3."),
+        (
+            [(f"other{i}", 0, 100) for i in range(7)],
+            "are on contigs that are not in the genome: other0, other1, other2, other3, "
+            "other4, and 2 more.",
+        ),
+        ([("seq2", 0, 25_000)], "ends at 25,000 bp, not at the end of the contig, 20,000 bp."),
+        (
+            [("seq1", 0, 60_000), ("seq2", 0, 10_000)],
+            "ends at 10,000 bp, not at the end of the contig, 20,000 bp.",
+        ),
+    ],
+)
+def test_full_pipeline_refuses_bins_that_are_not_of_the_genome(rows, reason, tmp_path, caplog):
+    """The bins of a BED file must be on contigs of the genome, and those of a
+    contig must end at its end, as they tile it: checked once the genome is
+    read, before the pairs are."""
+    bed = _bed(tmp_path / "bins.bed", rows)
+    with pytest.raises(ValueError) as raised:
+        _run_from_pairs(tmp_path, "run", mat_fmt="metacool", binning=bed)
+    message = str(raised.value)
+    assert message.endswith(reason)
+    assert bed in message
+    assert ("ERROR", message) in [(r.levelname, r.getMessage()) for r in caplog.records]
+    assert _outputs(tmp_path / "run") == {}
+
+
+def test_full_pipeline_refuses_bins_on_no_contig_of_the_matrix(tmp_path):
+    bed = _bed(tmp_path / "bins.bed", [("seq2", 0, 20_000)])
+    with pytest.raises(ValueError, match="is on a contig of the matrix"):
+        _run_from_pairs(tmp_path, "run", mat_fmt="cool", binning=bed, exclude="seq2")
+    assert _outputs(tmp_path / "run") == {}
+
+
+@pytest.mark.parametrize(
+    "kwargs, options",
+    [
+        (dict(balancing_args="--max-iters 10"), ["balancing_args"]),
+        (dict(zoomify=True), ["zoomify"]),
+        (dict(zoomify=True, balancing_args="--max-iters 10"), ["zoomify", "balancing_args"]),
+    ],
+)
+def test_full_pipeline_refuses_cool_options_with_the_default_metacool(
+    kwargs, options, tmp_path, caplog, monkeypatch
+):
+    """From MANY_CONTIGS contigs, the default matrix is metacool, binned or
+    not: zoomify True and balancing arguments, options of the cool matrix, are
+    refused with it, once the genome is read, before the pairs are, with
+    DefaultMatrixError, which names them and says to give the cool format."""
+    monkeypatch.setattr(hpi, "MANY_CONTIGS", 2)
+    with pytest.raises(hpi.DefaultMatrixError) as raised:
+        _run_from_pairs(tmp_path, "run", binning=5000, **kwargs)
+    assert (raised.value.n_contigs, raised.value.options) == (2, options)
+    message = hpi._default_metacool_message(2, options)
+    assert str(raised.value) == message
+    assert message.startswith("2 contigs in the matrix: its default format is metacool, which ")
+    assert ("ERROR", message) in [(r.levelname, r.getMessage()) for r in caplog.records]
+    assert _outputs(tmp_path / "run") == {}
+
+
+def test_full_pipeline_warns_of_a_slow_binned_cool_matrix(tmp_path, caplog, monkeypatch):
+    """The warning of a slow cool matrix says that the metacool matrix would
+    have the same bins, neither zoomified nor balanced."""
+    monkeypatch.setattr(hpi, "MANY_CONTIGS", 2)
+    _run_from_pairs(tmp_path, "run", mat_fmt="cool", binning=5000, zoomify=False)
+    binned = SLOW_COOL.replace(
+        "with one bin per fragment", "with the same bins, but neither zoomified nor balanced"
+    )
+    assert _slow_cool_warnings(caplog) == [binned]
+
+
+@pytest.mark.parametrize(
+    "binning, parsed",
+    [(0, 0), ("0", 0), (" 0 ", 0), (" 1000 ", 1000), (np.int64(5), 5), (5000, 5000)],
+)
+def test_parse_binning(binning, parsed):
+    assert hpi.parse_binning(binning) == parsed
+    assert type(hpi.parse_binning(binning)) is int
+    assert hpi._binned(binning) is (parsed != 0)
+
+
+def test_parse_binning_of_a_bed_file(tmp_path):
+    bed = _bed(tmp_path / "bins.bed", UNEVEN_BINS)
+    import pathlib
+
+    assert hpi.parse_binning(pathlib.Path(bed)) == bed
+    assert hpi.parse_binning(bed) == bed
+    assert hpi._binned(bed)
+
+
+def test_matrix_bins_cuts_the_contigs_as_cooler_does(tmp_path):
+    """The bins of a bin size are cooler's: the contigs of info_contigs in its
+    order, but those of exclude, each cut from 0, its last bin shorter."""
+    info_contigs = tmp_path / "info_contigs.txt"
+    info_contigs.write_text(
+        "contig\tlength\tn_frags\tcumul_length\n"
+        "b\t2500\t1\t0\nx\t900\t1\t1\na\t1000\t1\t2\n10\t1\t1\t3\n"
+    )
+    chromsizes = pd.Series({"b": 2500, "a": 1000, "10": 1})
+    expected = cooler.util.binnify(chromsizes, 1000)
+    got = hpi.matrix_bins(1000, str(info_contigs), "x")
+    assert list(zip(got.chrom, got.start, got.end)) == list(
+        zip(expected.chrom.astype(str), expected.start, expected.end)
+    )
+    bed = _bed(
+        tmp_path / "bins.bed", [("a", 0, 1000), ("x", 0, 900), ("b", 1000, 2500), ("b", 0, 1000)]
+    )
+    got = hpi.matrix_bins(bed, str(info_contigs), ["x"])
+    assert list(zip(got.chrom, got.start, got.end)) == [
+        ("b", 0, 1000),
+        ("b", 1000, 2500),
+        ("a", 0, 1000),
+    ]
+
+
+def test_binned_metacool_needs_the_contigs(tmp_path):
+    with pytest.raises(ValueError, match="needs info_contigs"):
+        hpi.pairs2metacool(
+            "test_data/valid.pairs", str(tmp_path / "x.metacool"), None, None, binning=1000
+        )
 
 
 def test_full_pipeline_default_metacool_matrix_from_fastq(tmp_path, caplog, monkeypatch):

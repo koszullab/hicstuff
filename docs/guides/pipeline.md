@@ -202,17 +202,18 @@ explains how the thresholds are chosen, and how to check them.
 - **`cool`** (the default, below 50,000 contigs): a
   [cooler](https://github.com/open2c/cooler) with one bin per fragment, made by
   `cooler cload pairs`.
-- **`metacool`** (the default from 50,000 contigs, but with `--binning`): a
+- **`metacool`** (the default from 50,000 contigs): a
   [metacooler](https://pypi.org/project/metacooler/) file with one bin per
-  fragment, made by `metacooler create pairs`. It is a cool file, which cooler
-  reads, with metacooler's tables of genomes and contigs. Its contigs are not
-  yet assigned to genomes: `metacooler reassign` assigns them, from a binning
-  such as metaTOR's. See [metacool](../formats.md#metacool). Its contact
-  statistics, counted on the pairs, split the contacts within a contig at
-  1001 bp, as metaTOR's `mge` reads them. `--binning` and
+  fragment, or the bins of `--binning`, made by `metacooler create pairs`. It
+  is a cool file, which cooler reads, with metacooler's tables of genomes and
+  contigs. Its contigs are not yet assigned to genomes: `metacooler reassign`
+  assigns them, from a binning such as metaTOR's. See
+  [metacool](../formats.md#metacool). Its contact statistics, counted on the
+  pairs, split the contacts within a contig at 1001 bp, as metaTOR's `mge`
+  reads them. It is neither zoomified nor balanced: `-z true` and
   `--balancing-args`, options of the cool map, are refused with it, but for
-  `--binning 0` and blank values; `--exclude` leaves contigs out of it, as out
-  of the cool map.
+  blank values, and `--zoomify` left to its default is ignored. `--exclude`
+  leaves contigs out of it, as out of the cool map.
 - **`graal`**: instaGRAAL's sparse matrix, one row and column per fragment;
   with `fragments_list.txt` and `info_contigs.txt`, it is what instaGRAAL
   reads.
@@ -232,17 +233,18 @@ cooler stores integers instead. It pays that time for every cooler it writes:
 `cooler cload pairs` writes one for every 15 million pairs, then the map.
 metacooler stores integers from the start. So with 50,000 contigs or more in
 the map (those that `--size` and `--exclude` keep), as a metagenome assembly
-may have, the default map is a metacool file, and the run warns of it before
-it aligns reads or builds an index. With `--binning`, which the metacool map
-does not take, the default map stays a cool file, as with `--matrix cool`: the
-run then warns that it will be slow to write. `--matrix none` ends the run with
-its pairs file, and `bg2` and `graal`, text files, do not pay that time
-either.
+may have, the default map is a metacool file, binned with `--binning`, and the
+run warns of it before it aligns reads or builds an index. Given with it,
+`-z true` and `--balancing-args`, options of the cool map, stop the run there,
+with an error that says to give `--matrix cool`: the cool map is then zoomified
+and balanced as below, and the run warns that it will be slow to write.
+`--matrix none` ends the run with its pairs file, and `bg2` and `graal`, text
+files, do not pay that time either.
 
 ### Binned, multi-resolution and balanced maps
 
 `--binning N` (`-b`) counts the contacts in bins of N base pairs instead of
-fragments, and applies to cool files only:
+fragments. A cool file then goes through three steps:
 
 1. The pairs are binned at N bp.
 2. The map is zoomified into a `.mcool` file holding N, 2N, 5N, 10N, 20N, 50N
@@ -262,6 +264,33 @@ hicstuff's commands as with cooler's.
 hicstuff pipeline --mapping 5spm --enzyme DpnII,HinfI --binning 1000 --threads 8 \
     --filter --duplicates --prefix sample --genome genome.fa --outdir out/ \
     R1.fq.gz R2.fq.gz
+```
+
+`--binning` also takes a BED file of bins: the contig, start and end of each
+bin, tab-separated, without a header line, as `cooler makebins` and
+`cooler digest` write them. The bins of each contig it names must tile it, from
+0 to its end, without gap or overlap; the contigs it does not name are left out
+of the map, with their contacts, and so are the contigs that `--size` and
+`--exclude` leave out. The file is read before the run starts, and checked
+against the genome before the reads are aligned. A cool file of the bins of a
+BED file is balanced, but not zoomified, as they have no single size:
+`--zoomify` left to its default is ignored, and `-z true` refused.
+
+A metacool file is binned in the same way, from the positions of the pairs:
+it holds the contacts of the cool file of the same bins, with metacooler's
+contact statistics, but is neither zoomified nor balanced. One bin per contig
+makes the map of the contigs, as metaTOR reads it:
+
+```bash
+# A metagenome at 1 kb, to look at its MAGs at their sizes
+hicstuff pipeline --mapping 5spm --enzyme DpnII --matrix metacool --binning 1000 \
+    --genome assembly.fa --outdir out/ R1.fq.gz R2.fq.gz
+
+# One bin per contig
+samtools faidx assembly.fa
+awk -v OFS='\t' '{print $1, 0, $2}' assembly.fa.fai > contigs.bed
+hicstuff pipeline --mapping 5spm --enzyme DpnII --matrix metacool --binning contigs.bed \
+    --genome assembly.fa --outdir out/ R1.fq.gz R2.fq.gz
 ```
 
 ## The distance law

@@ -91,6 +91,8 @@ cooltools, HiGlass and most Hi-C tools read.
   20N, 50N and 100N bp, under `/resolutions/<size>`, each with the `weight`
   column of `cooler balance`. With `--zoomify false`, it writes the map at N bp
   alone, as a balanced `.cool`.
+- With `--binning bins.bed`, a BED file of bins, it writes the map of those
+  bins as a balanced `.cool`, which is not zoomified.
 
 Both store the upper triangle of the map, and raw counts. `convert`, `rebin`
 and `subsample` write cool files with the `size` and `gc_content` columns as
@@ -102,8 +104,9 @@ From 50,000 contigs in the map, as a metagenome assembly may have, or with
 `--matrix metacool`, the pipeline writes a `.metacool` file, made by
 [metacooler](https://pypi.org/project/metacooler/)'s `create pairs`. It is a
 cool file with one bin per fragment, as the default cool file without
-`--binning`, which cooler reads, with metacooler's tables of genomes and
-contigs on top of it.
+`--binning`, or the bins of `--binning` (a bin size or a BED file of bins),
+which cooler reads, with metacooler's tables of genomes and contigs on top of
+it. It is neither zoomified nor balanced.
 
 - Its contigs are not yet assigned to genomes: they are all in metacooler's
   `__unbinned__` genome, longest first, until `metacooler reassign` assigns
