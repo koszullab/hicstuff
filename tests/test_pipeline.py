@@ -251,6 +251,69 @@ def test_genome_not_indexed_without_alignment(aligner, stage, pairs, tmp_path):
     assert (out_dir / "fragments_list.txt").stat().st_size > 0
 
 
+@pytest.mark.parametrize(
+    ("aligner", "mapping", "backend", "build"),
+    [
+        ("bowtie2", "normal", None, ["bowtie2-build", "-q", "{fasta}", "{prefix}"]),
+        ("bwa", "normal", "binary", ["bwa", "index", "-p", "{prefix}", "{fasta}"]),
+        ("bwa", "5spm", "python", None),
+    ],
+)
+@pytest.mark.parametrize("fasta_name", ["genome.fa", "genome.fa.gz"])
+def test_index_named_without_fasta_extension(
+    aligner, mapping, backend, build, fasta_name, synthetic_lib, tmp_path
+):
+    """The index of a FASTA file named after it without its extensions
+    (bowtie2-build genome.fa genome, bwa index -p genome genome.fa) is
+    aligned to, and no other index is built."""
+    programs = [aligner] if build is None else [aligner, build[0]]
+    missing = [program for program in programs if shutil.which(program) is None]
+    if backend != "python" and missing:
+        pytest.skip(f"not on PATH: {', '.join(missing)}")
+    if backend == "python" and hbm.pybwa_version() is None:
+        pytest.skip("pybwa is not installed")
+    ref_dir = tmp_path / "ref.v2"
+    ref_dir.mkdir()
+    fasta = ref_dir / fasta_name
+    compressed = fasta_name.endswith(".gz")
+    shutil.copy(synthetic_lib.genome_gz if compressed else synthetic_lib.genome, fasta)
+    prefix = ref_dir / "genome"
+    if build is None:
+        hbm.build_index(str(synthetic_lib.genome), str(prefix))
+    else:
+        sp.run(
+            [arg.format(fasta=synthetic_lib.genome, prefix=prefix) for arg in build],
+            check=True,
+            stdout=sp.DEVNULL,
+            stderr=sp.DEVNULL,
+        )
+    out_dir = tmp_path / "out"
+    hpi.full_pipeline(
+        genome=str(fasta),
+        input1=str(synthetic_lib.reads1),
+        input2=str(synthetic_lib.reads2),
+        aligner=aligner,
+        aligner_backend=backend,
+        mapping=mapping,
+        enzyme=syn.LIBRARY_ENZYME,
+        out_dir=str(out_dir),
+        no_cleanup=True,
+    )
+    (log,) = out_dir.glob("*.log")
+    log_text = log.read_text()
+    assert f"Found the {aligner} index of {fasta} at {prefix}." in log_text
+    assert "index not found" not in log_text
+    # No index was built: pybwa only links to the index it loads
+    built = [
+        path
+        for path in (out_dir / "tmp").rglob("*")
+        if path.is_file() and not path.is_symlink() and path.suffix in (".bt2", ".bwt", ".sa")
+    ]
+    assert built == []
+    with pysam.AlignmentFile(str(out_dir / "tmp" / "for.bam")) as bam:
+        assert any(not read.is_unmapped for read in bam)
+
+
 @pytest.mark.parametrize("backend", ["binary", "python"])
 def test_bwa_mem2_index_is_named(backend, synthetic_lib, tmp_path):
     """A bwa-mem2 index, which bwa cannot read, is named in the log of a run

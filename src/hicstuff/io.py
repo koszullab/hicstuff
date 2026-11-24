@@ -1661,15 +1661,43 @@ _INDEX_SUFFIXES = {
 }
 
 
+#: Extensions of a FASTA file, then of its compression, that an index named
+#: after the FASTA file may leave out: bowtie2-build genome.fa genome.
+_FASTA_EXTENSIONS = (".fa", ".fasta", ".fna", ".fas", ".fsa")
+_COMPRESSION_EXTENSIONS = (".gz", ".bz2", ".zip")
+
+
+def _index_prefixes(ref):
+    """Prefixes at which the index of a reference is looked for, in order:
+    the reference path as given, then, for a file, that path without its
+    compression extension, and without its FASTA extension."""
+    yield ref
+    if not os.path.isfile(ref):
+        return
+    stem = ref
+    for extensions in (_COMPRESSION_EXTENSIONS, _FASTA_EXTENSIONS):
+        base, ext = os.path.splitext(stem)
+        if ext.lower() in extensions:
+            stem = base
+            yield stem
+
+
 def check_fasta_index(ref, mode="bowtie2"):
     """
     Checks for the existence of a bowtie2 or bwa index based on the reference
     file name.
 
-    The index must be named after the reference path as given, which is how
-    bowtie2 and bwa find it: <ref>.1.bt2 to <ref>.rev.2.bt2 (or .bt2l) for
-    bowtie2, <ref>.amb, .ann, .bwt, .pac and .sa for bwa. The reference path
-    is kept as is: relative (./ or ../), absolute, or with dots in its name.
+    The index is looked for where bowtie2 and bwa find it from a prefix, by
+    appending to it: <prefix>.1.bt2 to <prefix>.rev.2.bt2 (or .bt2l) for
+    bowtie2, <prefix>.amb, .ann, .bwt, .pac and .sa (or .64.*) for bwa. The
+    prefix is the reference path as given, and when the reference is a file,
+    that path without its compression extension (.gz, .bz2, .zip), then
+    without its FASTA extension (.fa, .fasta, .fna, .fas, .fsa): for
+    genome.fa.gz, genome.fa.gz, genome.fa and genome, in this order, so that
+    `bowtie2-build genome.fa genome` and `bwa index -p genome genome.fa` are
+    found as well as `bowtie2-build genome.fa genome.fa`. The path is not
+    otherwise parsed: relative (./ or ../), absolute, or with dots in its
+    name, it is kept as is.
 
     Parameters
     ----------
@@ -1682,16 +1710,16 @@ def check_fasta_index(ref, mode="bowtie2"):
     Returns
     -------
     index : str
-        The bowtie2 or bwa index prefix, i.e. ref. None if no index was found
+        The bowtie2 or bwa index prefix: ref, or ref without its extensions.
+        None if no index was found
     """
     ref = os.fspath(ref)
     if mode not in _INDEX_SUFFIXES:
         return ref
-    # Index files are named by appending to the prefix: it is never parsed,
-    # so leading ./ or ../ and dots in names are kept.
-    for suffixes in _INDEX_SUFFIXES[mode]:
-        if all(os.path.isfile(ref + suffix) for suffix in suffixes):
-            return ref
+    for prefix in _index_prefixes(ref):
+        for suffixes in _INDEX_SUFFIXES[mode]:
+            if all(os.path.isfile(prefix + suffix) for suffix in suffixes):
+                return prefix
     return None
 
 
