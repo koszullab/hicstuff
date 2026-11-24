@@ -323,7 +323,11 @@ def test_pipeline_bed_binned_cool_matrix(runner, tmp_path):
     for matrix in (["-M", "cool"], []):
         args = [*_WITHOUT_MATRIX, *matrix, "-b", bed, "-z", "true", "-o", refused]
         result = invoke(runner, *args, "test_data/valid.pairs", exit_code=2)
-        assert f"--zoomify is refused with the bins of {bed}" in text(result)
+        # rich-click may wrap the message within the path: it is looked for
+        # without the spaces text() joins the lines with
+        assert "--zoomify is refused with the bins of" in text(result)
+        assert "which a BED file of bins does not give." in text(result)
+        assert str(bed) in text(result).replace(" ", "")
         assert not refused.exists()
     out_dir = tmp_path / "out"
     invoke(
