@@ -497,7 +497,10 @@ _SLOW_COOL = (
 )
 
 # What the matrix formats that refuse the options of the cool matrix write
-_WRITES = {"metacool": "has one bin per fragment", "none": "writes no matrix"}
+_WRITES = {"metacool": "is neither zoomified nor balanced", "none": "writes no matrix"}
+
+# The options of the cool matrix, in the order the refusals name them
+_COOL_OPTIONS = ("binning", "zoomify", "balancing_args", "exclude")
 
 
 def _excluded(exclude):
@@ -508,6 +511,305 @@ def _excluded(exclude):
     if not exclude:
         return set()
     return set(exclude.split(",")) if isinstance(exclude, str) else set(exclude)
+
+
+def _binned(binning):
+    """Whether binning bins the matrix: a bin size in bp or a BED file of bins,
+    rather than 0, one bin per fragment, an integer or its digits."""
+    if isinstance(binning, str) and re.fullmatch(r"\s*-?\d+\s*", binning):
+        binning = int(binning)
+    return bool(binning != 0)
+
+
+def parse_binning(binning):
+    """
+    The binning of the cool and metacool matrices, as full_pipeline takes it.
+
+    Parameters
+    ----------
+    binning : int, str or os.PathLike
+        0, for one bin per fragment; a bin size in bp, an integer or its
+        digits; or the path of a BED file of bins.
+
+    Returns
+    -------
+    int or str
+        0 or the bin size, an int; or the path of the BED file, a str.
+
+    Raises
+    ------
+    ValueError
+        If binning is a negative number, or neither digits nor the path of a
+        file.
+    """
+    if isinstance(binning, os.PathLike):
+        binning = os.fspath(binning)
+    if isinstance(binning, str) and re.fullmatch(r"\s*-?\d+\s*", binning):
+        binning = int(binning)
+    if isinstance(binning, (int, np.integer)):
+        if binning < 0:
+            raise ValueError(
+                f"The binning must be 0, a bin size in bp or a BED file of bins, not {binning}."
+            )
+        return int(binning)
+    if not os.path.isfile(binning):
+        raise ValueError(
+            f"The binning {binning!r} is neither a bin size in bp nor a BED file of bins: "
+            "there is no such file."
+        )
+    return binning
+
+
+def read_bins(bins_file):
+    """
+    The bins of a BED file: its first three columns, the contig, start and end
+    of each bin, tab-separated, without a header line, as cooler and
+    metacooler read them. Its other columns are left out.
+
+    The bins of a contig must tile it, from 0, without gap or overlap, as
+    `cooler makebins` and `cooler digest` write them, and as one bin per
+    contig does: cooler and metacooler take the length of a contig from its
+    last bin, and a position in a gap would be counted in the bin before it.
+    full_pipeline checks, once it has read the genome, that the last one ends
+    at the end of its contig.
+
+    Parameters
+    ----------
+    bins_file : str
+        Path to the BED file.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The chrom, start and end columns of the bins, contig after contig, in
+        the order the file names them, by start within a contig.
+
+    Raises
+    ------
+    ValueError
+        If the file has fewer than three columns or no bin, if its starts or
+        ends are not integers (a header line, for example), if a bin ends at or
+        before its start, or if the bins of a contig do not start at 0, leave a
+        gap or overlap.
+    """
+    not_bed = f"{bins_file} is not a BED file of bins"
+    try:
+        bins = pd.read_csv(bins_file, sep="\t", header=None, usecols=[0, 1, 2], dtype={0: str})
+    except pd.errors.EmptyDataError:
+        raise ValueError(f"{not_bed}: it is empty.") from None
+    except ValueError as err:
+        raise ValueError(f"{not_bed}: {err}.") from None
+    bins.columns = ["chrom", "start", "end"]
+    if not all(pd.api.types.is_integer_dtype(bins[column]) for column in ("start", "end")):
+        raise ValueError(
+            f"{not_bed}: its second and third columns, the starts and ends of the bins, must be "
+            "integers, without a header line."
+        )
+    empty = bins.end <= bins.start
+    if empty.any():
+        row = bins[empty].iloc[0]
+        raise ValueError(f"{not_bed}: the bin {row.chrom}:{row.start}-{row.end} is empty.")
+    # Contig after contig, in the order of the file, by start within a contig
+    first_named, _ = pd.factorize(bins.chrom)
+    bins = bins.iloc[np.lexsort((bins.start.to_numpy(), first_named))].reset_index(drop=True)
+    chrom, start, end = bins.chrom.to_numpy(), bins.start.to_numpy(), bins.end.to_numpy()
+    first = np.ones(len(bins), dtype=bool)
+    first[1:] = chrom[1:] != chrom[:-1]
+    late = np.flatnonzero(first & (start != 0))
+    if late.size:
+        row = bins.iloc[late[0]]
+        raise ValueError(f"{not_bed}: the first bin of {row.chrom} starts at {row.start}, not 0.")
+    # Each bin but the first of its contig starts where the one before ends
+    apart = np.flatnonzero(~first[1:] & (start[1:] != end[:-1])) + 1
+    if apart.size:
+        before, after = bins.iloc[apart[0] - 1], bins.iloc[apart[0]]
+        how = "overlap" if after.start < before.end else "leave a gap"
+        raise ValueError(
+            f"{not_bed}: the bins {before.chrom}:{before.start}-{before.end} and "
+            f"{after.chrom}:{after.start}-{after.end} {how}."
+        )
+    return bins
+
+
+def _check_bins(bins, bins_file, lengths, kept):
+    """
+    Refuse bins that are not of the genome, before the run aligns its reads.
+
+    Parameters
+    ----------
+    bins : pandas.DataFrame
+        The bins of bins_file, as read_bins reads them.
+    bins_file : str
+        Path to the BED file of the bins, which the errors name.
+    lengths : dict
+        The length of every contig of the genome, by name.
+    kept : set of str
+        The contigs of the matrix: those that the minimum contig size and the
+        contigs to exclude keep. The bins of the others are left out.
+
+    Raises
+    ------
+    ValueError
+        If a bin is on a contig that is not in the genome, if the last bin of
+        a contig does not end at its end, or if no bin is on a contig of the
+        matrix.
+    """
+    unknown = sorted(set(bins.chrom) - set(lengths))
+    if unknown:
+        named = ", ".join(unknown[:5]) + (
+            f", and {len(unknown) - 5:,} more" if len(unknown) > 5 else ""
+        )
+        raise ValueError(
+            f"The bins of {bins_file} are on contigs that are not in the genome: {named}."
+        )
+    # The last bin of each contig, which read_bins orders by start
+    last = bins.groupby("chrom", sort=False).tail(1)
+    wrong = last[last.end.to_numpy() != last.chrom.map(lengths).to_numpy()]
+    if len(wrong):
+        row = wrong.iloc[0]
+        raise ValueError(
+            f"The last bin of {row.chrom} in {bins_file} ends at {row.end:,} bp, not at the end "
+            f"of the contig, {lengths[row.chrom]:,} bp."
+        )
+    if not bins.chrom.isin(kept).any():
+        raise ValueError(
+            f"No bin of {bins_file} is on a contig of the matrix: those that the minimum contig "
+            "size and the contigs to exclude keep."
+        )
+
+
+def _tile(names, lengths, binsize):
+    """Cut the contigs of names, of lengths, into bins of binsize bp, the last
+    one of each contig shorter, as cooler cuts them: in one pass, without a
+    loop over the contigs, of which a metagenome may have millions."""
+    lengths = np.asarray(lengths, dtype=np.int64)
+    n_bins = -(-lengths // binsize)
+    first = np.repeat(np.cumsum(n_bins) - n_bins, n_bins)
+    start = (np.arange(int(n_bins.sum()), dtype=np.int64) - first) * binsize
+    end = np.minimum(start + binsize, np.repeat(lengths, n_bins))
+    chrom = np.repeat(np.asarray(names, dtype=object), n_bins)
+    return pd.DataFrame({"chrom": chrom, "start": start, "end": end})
+
+
+def matrix_bins(binning, info_contigs, exclude):
+    """
+    The bins of a binned cool or metacool matrix.
+
+    Parameters
+    ----------
+    binning : int or str
+        A bin size in bp, or the path of a BED file of bins.
+    info_contigs : str
+        Path to the info_contigs.txt of the run: the contigs of the matrix
+        (those of the minimum contig size), and their lengths.
+    exclude : None, str or list of str
+        The contigs to leave out of the matrix, comma-separated or a list.
+
+    Returns
+    -------
+    pandas.DataFrame
+        The chrom, start and end columns of the bins: the contigs of
+        info_contigs, but those of exclude, cut into bins of binning bp, or the
+        bins of the BED file on those contigs; contig after contig, in the
+        order of info_contigs.
+    """
+    contigs = pd.read_csv(info_contigs, sep="\t", usecols=[0, 1], dtype={0: str})
+    contigs.columns = ["chrom", "length"]
+    contigs = contigs[~contigs.chrom.isin(_excluded(exclude))]
+    if not isinstance(binning, str):
+        return _tile(contigs.chrom.to_numpy(), contigs.length.to_numpy(), binning)
+    bins = read_bins(binning)
+    rank = pd.Series(np.arange(len(contigs)), index=contigs.chrom.to_numpy())
+    bins = bins[bins.chrom.isin(rank.index)]
+    order = np.lexsort((bins.start.to_numpy(), bins.chrom.map(rank).to_numpy()))
+    return bins.iloc[order].reset_index(drop=True)
+
+
+def _cool_only_options(mat_fmt, binning=0, zoomify=None, balancing_args=None, exclude=None):
+    """
+    The options of the cool matrix that the matrix format mat_fmt refuses.
+
+    metacool takes binning, and leaves contigs out of its matrix as cool does,
+    but is neither zoomified nor balanced: zoomify True and balancing_args that
+    is not blank are refused with it. none, which writes no matrix, refuses
+    binning other than 0, balancing_args and exclude that are not blank.
+
+    Parameters
+    ----------
+    mat_fmt : str or None
+        The matrix format.
+    binning : int or str
+        0, a bin size in bp, or the path of a BED file of bins.
+    zoomify : bool or None
+        Whether to zoomify, asked for (True or False), or the default (None).
+    balancing_args : str or None
+        Extra arguments of cooler balance.
+    exclude : None, str or list of str
+        The contigs to leave out of the matrix.
+
+    Returns
+    -------
+    list of str
+        The names of the refused options, as full_pipeline takes them.
+    """
+    given = {
+        "binning": mat_fmt == "none" and _binned(binning),
+        "zoomify": mat_fmt == "metacool" and zoomify is True,
+        "balancing_args": mat_fmt in ("metacool", "none")
+        and bool(balancing_args and balancing_args.strip()),
+        "exclude": mat_fmt == "none" and any(name.strip() for name in _excluded(exclude)),
+    }
+    return [name for name in _COOL_OPTIONS if given[name]]
+
+
+def _refused_options_message(mat_fmt, options, subject=None):
+    """Why options of the cool matrix are refused with the matrix format
+    mat_fmt, the options named as the caller names them, and the format by
+    subject ("The matrix format metacool" by default, "--matrix metacool")."""
+    subject = subject or f"The matrix format {mat_fmt}"
+    verb = "is an option" if len(options) == 1 else "are options"
+    return f"{subject} {_WRITES[mat_fmt]}: {', '.join(options)} {verb} of the cool matrix."
+
+
+def _zoomify_refused_message(bins_file, zoomify_name="zoomify"):
+    """Why zoomify is refused with the bins of a BED file, the option named as
+    the caller names it."""
+    return (
+        f"{zoomify_name} is refused with the bins of {bins_file}: a matrix is zoomified from a "
+        "bin size in bp, which a BED file of bins does not give."
+    )
+
+
+def _default_metacool_message(n_contigs, options, matrix_cool="the matrix format cool"):
+    """Why options of the cool matrix are refused with the default matrix,
+    metacool from MANY_CONTIGS contigs, the options and the cool matrix
+    format named as the caller names them."""
+    verb = "is an option" if len(options) == 1 else "are options"
+    return (
+        f"{n_contigs:,} contigs in the matrix: its default format is metacool, which "
+        f"{_WRITES['metacool']}: {', '.join(options)} {verb} of the cool matrix. Give "
+        f"{matrix_cool} to write the cool matrix, which cooler is slow to write with this "
+        f"many contigs ({_SLOW_COOL})."
+    )
+
+
+class DefaultMatrixError(ValueError):
+    """
+    Options of the cool matrix, given with the default matrix format when it
+    is metacool, from MANY_CONTIGS contigs.
+
+    Attributes
+    ----------
+    n_contigs : int
+        The number of contigs of the matrix.
+    options : list of str
+        The names of the refused options, as full_pipeline takes them.
+    """
+
+    def __init__(self, n_contigs, options):
+        self.n_contigs = n_contigs
+        self.options = list(options)
+        super().__init__(_default_metacool_message(n_contigs, self.options))
 
 
 def filter_pcr_dup(pairs_idx_file, filtered_file):
@@ -760,12 +1062,26 @@ def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs, exclude):
         Path to the pairs file containing input contact data.
     cool_file : str
         Path to the output cool file name to generate.
-    binning : int
-        If mat_fmt is set to "cool", the cool file will be further binned to
-        this resolution.
+    binning : int or str
+        The bin size in bp, or the path of a BED file of bins, whose bins on
+        the contigs of info_contigs but those of exclude are the bins of the
+        matrix (see matrix_bins).
     info_contigs : pathlib.Path or str
         The path to the contigs info file
+    exclude : None or str
+        The contigs to leave out of the matrix, comma-separated.
     """
+    if isinstance(binning, str):
+        # The bins of the BED file on the contigs of the matrix, in its order
+        bins_tmp = info_contigs + ".bins"
+        matrix_bins(binning, info_contigs, exclude).to_csv(
+            bins_tmp, sep="\t", header=False, index=False
+        )
+        try:
+            _run_cooler_cload_pairs(bins_tmp, pairs_file, cool_file)
+        finally:
+            os.remove(bins_tmp)
+        return
 
     # Exclude some chromosomes from bins
     chroms_tmp = info_contigs + ".chroms"
@@ -781,11 +1097,17 @@ def pairs2binnedcool(pairs_file, cool_file, binning, info_contigs, exclude):
         os.remove(chroms_tmp)
 
 
-def pairs2metacool(pairs_file, metacool_file, bins_file, exclude, threads=1, cmd=None):
+def pairs2metacool(
+    pairs_file, metacool_file, bins_file, exclude, threads=1, cmd=None, binning=0, info_contigs=None
+):
     """
-    Make a metacool file from the pairs file, with one bin per fragment, with
-    `metacooler create pairs`, through its Python function
-    ``metacooler.from_pairs``. See: https://pypi.org/project/metacooler/.
+    Make a metacool file from the pairs file, with one bin per fragment, or
+    the bins of binning, with `metacooler create pairs`, through its Python
+    function ``metacooler.from_pairs``. See: https://pypi.org/project/metacooler/.
+
+    The pairs are binned from their positions, as for a cool matrix: a binned
+    metacool matrix holds the contacts that ``cooler cload pairs`` counts in
+    the same bins, and metacooler's contact statistics, counted on the pairs.
 
     A metacool file is a cool file, which cooler reads, with metacooler's
     genomes and contigs on top of it. Its contigs are not yet assigned to
@@ -811,13 +1133,24 @@ def pairs2metacool(pairs_file, metacool_file, bins_file, exclude, threads=1, cmd
     cmd : str or None
         The command line that ran the pipeline, stored in the file's metadata
         as the command that made it. None stores no command.
+    binning : int or str
+        0, for one bin per fragment of bins_file; a bin size in bp; or the
+        path of a BED file of bins (see matrix_bins).
+    info_contigs : str or None
+        Path to the info_contigs.txt of the run, whose contigs are binned
+        with binning other than 0.
     """
-    # The names of the contigs are text, even when they are numbers
-    bins = pd.read_csv(
-        bins_file, sep="\t", usecols=[1, 2, 3], skiprows=1, header=None, dtype={1: str}
-    )
-    bins.columns = ["chrom", "start", "end"]
-    bins = bins[~bins.chrom.isin(_excluded(exclude))].reset_index(drop=True)
+    if _binned(binning):
+        if info_contigs is None:
+            raise ValueError("A binned metacool matrix needs info_contigs: the contigs to bin.")
+        bins = matrix_bins(binning, info_contigs, exclude)
+    else:
+        # The names of the contigs are text, even when they are numbers
+        bins = pd.read_csv(
+            bins_file, sep="\t", usecols=[1, 2, 3], skiprows=1, header=None, dtype={1: str}
+        )
+        bins.columns = ["chrom", "start", "end"]
+        bins = bins[~bins.chrom.isin(_excluded(exclude))].reset_index(drop=True)
     metacooler.from_pairs(
         uri=metacool_file,
         bins=bins,
@@ -1305,7 +1638,7 @@ def full_pipeline(
     mapping="normal",
     mat_fmt=None,
     binning=0,
-    zoomify=True,
+    zoomify=None,
     balancing_args=None,
     min_qual=30,
     min_size=0,
@@ -1344,14 +1677,24 @@ def full_pipeline(
         Each pair must start with the same read; the R1 files are concatenated
         in the temporary directory, as are the R2 files, and aligned as one
         pair of files.
-    binning : int
-        If mat_fmt is set to "cool", the cool file will be further binned to
-        this resolution.
-    zoomify : bool
-        Whether to zoomify binned cool matrix (only used if mat_fmt == "cool" and binning is set)
+    binning : int or str
+        The bins of the cool or metacool matrix: 0, the default, for one bin
+        per fragment; a bin size in bp; or the path of a BED file of bins, tab
+        separated, without a header line, whose bins on the contigs of the
+        matrix are its bins, those of each contig tiling it from 0 to its end
+        (see read_bins). The pairs are binned from their positions. Checked
+        before the run starts (see parse_binning), and a BED file against the
+        genome, before the reads are aligned.
+    zoomify : bool or None
+        Whether to zoomify a cool matrix binned at a bin size into a
+        multi-resolution .mcool. None, the default, zoomifies it, and is
+        ignored where zoomify does not apply: a metacool matrix, which is
+        neither zoomified nor balanced, and the bins of a BED file, which give
+        no bin size. True is refused there.
     balancing_args : str
-        Extra arguments passed to `cooler balance` (default: None) (only used if
-        mat_fmt == "cool" and binning is set)
+        Extra arguments passed to `cooler balance` (default: None), which
+        balances a binned cool matrix. Refused with metacool and none, but
+        blank.
     enzyme : int or strtest_data/genome/seq.fa
     circular : bool
         Use if the genome is circular.
@@ -1399,16 +1742,20 @@ def full_pipeline(
     mat_fmt : str or None
         Select the output matrix format. Can be either "bg2" for the
         bedgraph2 format, "cool" for Mirnylab's cool format, "metacool" for
-        metacooler's cool format for metagenomes, with one bin per fragment,
-        graal for a plain text COO format compatible with Koszullab's
-        instagraal software, or "none" for no matrix: the run ends with its
-        pairs file, which tools that build their own contact maps read
-        (metaTOR, metacooler). Options of the cool matrix, binning other than
-        0 and balancing_args that is not blank, are refused with metacool and
-        none, and exclude that is not blank with none. None, the default,
-        writes a cool matrix, or a metacool matrix, with a warning, when it
-        holds MANY_CONTIGS contigs or more (those that min_size and exclude
-        keep) and binning is 0.
+        metacooler's cool format for metagenomes, with one bin per fragment
+        or the bins of binning, but neither zoomified nor balanced, graal for
+        a plain text COO format compatible with Koszullab's instagraal
+        software, or "none" for no matrix: the run ends with its pairs file,
+        which tools that build their own contact maps read (metaTOR,
+        metacooler). Options of the cool matrix are refused with metacool,
+        zoomify True and balancing_args that is not blank, and with none,
+        binning other than 0, and balancing_args and exclude that are not
+        blank; zoomify True is refused with the bins of a BED file too. None,
+        the default, writes a cool matrix, or a metacool matrix,
+        with a warning, when it holds MANY_CONTIGS contigs or more (those that
+        min_size and exclude keep), with or without binning: then zoomify True
+        and balancing_args that is not blank raise DefaultMatrixError, once
+        the genome is read, before the reads are aligned.
     aligner : str
         Read alignment software to use. Can be either "minimap2", "bwa" or
         "bowtie2". Defaults to bowtie2, and to bwa in mapping mode 5spm, which
@@ -1469,7 +1816,28 @@ def full_pipeline(
         msg = f"Unknown matrix format {mat_fmt!r}: choose graal, bg2, cool, metacool or none."
         logger.error(msg)
         raise ValueError(msg)
-    # None is cool, or metacool with many contigs and no binning
+    # The options of the cool matrix that metacool and none refuse, then the
+    # binning, a bin size or a BED file of bins, which is read: all before the
+    # run writes anything.
+    cool_only = _cool_only_options(mat_fmt, binning, zoomify, balancing_args, exclude)
+    if cool_only:
+        msg = _refused_options_message(mat_fmt, cool_only)
+        logger.error(msg)
+        raise ValueError(msg)
+    try:
+        binning = parse_binning(binning)
+        bins_file = binning if isinstance(binning, str) else None
+        bins = read_bins(bins_file) if bins_file else None
+    except ValueError as err:
+        logger.error(str(err))
+        raise
+    # With the default format too: metacool, from MANY_CONTIGS contigs, would
+    # refuse zoomify as well
+    if mat_fmt in ("cool", None) and bins_file and zoomify:
+        msg = _zoomify_refused_message(bins_file)
+        logger.error(msg)
+        raise ValueError(msg)
+    # None is cool, or metacool with many contigs
     if mat_fmt in ("cool", None):
         try:
             import cooler
@@ -1478,30 +1846,9 @@ def full_pipeline(
                 "The cooler package is require to return matrix in cool format, please install it first."
             )
             raise ImportError("The cooler package is required.") from None
-        if binning > 0:
+        if _binned(binning):
             # Fail now on invalid balancing arguments, not after the alignment
             _balancing_args(balancing_args)
-    elif mat_fmt in ("metacool", "none"):
-        cool_only = [
-            name
-            for name, given in [
-                ("binning", binning != 0),
-                ("balancing_args", bool(balancing_args and balancing_args.strip())),
-                (
-                    "exclude",
-                    mat_fmt == "none" and any(name.strip() for name in _excluded(exclude)),
-                ),
-            ]
-            if given
-        ]
-        if cool_only:
-            options = "is an option" if len(cool_only) == 1 else "are options"
-            msg = (
-                f"The matrix format {mat_fmt} {_WRITES[mat_fmt]}: {', '.join(cool_only)} "
-                f"{options} of the cool matrix."
-            )
-            logger.error(msg)
-            raise ValueError(msg)
 
     # Pipeline can start from 3 input types
     start_time = datetime.now()
@@ -1704,29 +2051,60 @@ def full_pipeline(
     # the contigs of the matrix (those --size and --exclude keep), before an
     # index is built: the default format follows from it, and its warnings
     # come first.
+    # With a BED file of bins, the contigs of the genome and their lengths,
+    # which its bins must be on, are kept too.
     excluded = _excluded(exclude)
     n_contigs = 0
+    lengths, kept = {}, set()
     for record in SeqIO.parse(hio.read_compressed(fasta), "fasta"):
-        if len(record.seq) >= int(min_size) and record.id not in excluded:
-            n_contigs += 1
+        in_matrix = len(record.seq) >= int(min_size) and record.id not in excluded
+        n_contigs += in_matrix
+        if bins_file:
+            lengths[record.id] = len(record.seq)
+            if in_matrix:
+                kept.add(record.id)
         if " " in record.id:
             logger.error("Sequence identifiers contain spaces. Please clean the input genome.")
-    # The default matrix: metacool from MANY_CONTIGS contigs, unless binned,
-    # which the cool matrix only is; cool otherwise.
+    # The default matrix: metacool from MANY_CONTIGS contigs, binned or not;
+    # cool otherwise. The options of the cool matrix that metacool refuses are
+    # refused with it.
     default_fmt = mat_fmt is None
     if default_fmt:
-        mat_fmt = "metacool" if n_contigs >= MANY_CONTIGS and binning == 0 else "cool"
+        mat_fmt = "metacool" if n_contigs >= MANY_CONTIGS else "cool"
+        cool_only = _cool_only_options(mat_fmt, binning, zoomify, balancing_args, exclude)
+        if cool_only:
+            error = DefaultMatrixError(n_contigs, cool_only)
+            logger.error(str(error))
+            raise error
+    if bins_file and mat_fmt in ("cool", "metacool"):
+        try:
+            _check_bins(bins, bins_file, lengths, kept)
+        except ValueError as err:
+            logger.error(str(err))
+            raise
+    del bins, lengths, kept
+    # A cool matrix binned at a bin size is zoomified, but with zoomify False
+    zoomified = (
+        mat_fmt == "cool" and bins_file is None and _binned(binning) and zoomify is not False
+    )
     if default_fmt and mat_fmt == "metacool":
         logger.warning(
             f"{n_contigs:,} contigs in the matrix: it will be a metacool matrix, written with "
             "metacooler, rather than a cool matrix, which cooler is slow to write with this many "
-            f"contigs ({_SLOW_COOL}). --matrix cool writes the cool matrix all the same."
+            f"contigs ({_SLOW_COOL})."
+            + (" It is binned, but neither zoomified nor balanced." if _binned(binning) else "")
+            + " --matrix cool writes the cool matrix all the same."
         )
     elif mat_fmt == "cool" and n_contigs >= MANY_CONTIGS:
+        same_bins = (
+            "with the same bins, but neither zoomified nor balanced"
+            if _binned(binning)
+            else "with one bin per fragment"
+        )
         logger.warning(
             f"{n_contigs:,} contigs in the cool matrix: it will be slow to write ({_SLOW_COOL}). "
-            "--matrix metacool writes it with metacooler, which does not pay that time, with one "
-            "bin per fragment; --matrix none ends the run with its pairs file; --matrix bg2 and "
+            f"--matrix metacool writes it with metacooler, which does not pay that time, "
+            f"{same_bins}; --matrix none ends the run with its pairs file; --matrix bg2 and "
             "graal write a text matrix."
         )
     if mat_fmt == "cool":
@@ -2057,13 +2435,22 @@ def full_pipeline(
         )
 
     if mat_fmt == "metacool":
-        pairs2metacool(use_pairs, mat, fragments_list, exclude, threads=threads, cmd=cmd)
+        pairs2metacool(
+            use_pairs,
+            mat,
+            fragments_list,
+            exclude,
+            threads=threads,
+            cmd=cmd,
+            binning=binning,
+            info_contigs=info_contigs,
+        )
     elif mat_fmt == "cool":
         # Name matrix file in .cool
         mat = os.path.splitext(mat)[0] + ".cool"
 
         # If binning is **not** set, parse the pairs into a **un-binned** cool
-        if binning == 0:
+        if not _binned(binning):
             ## THIS NEEDS TO BE FIXED AT SOME POINT
             pairs2cool(use_pairs, mat, fragments_list, exclude)
 
@@ -2073,8 +2460,8 @@ def full_pipeline(
             pairs2binnedcool(use_pairs, cool_file, binning, info_contigs, exclude)
             mat = cool_file
 
-            # If zoomify == True, zoomify binned cool
-            if zoomify:
+            # Zoomify a cool matrix binned at a bin size, but with zoomify False
+            if zoomified:
                 mcool_file = os.path.splitext(mat)[0] + ".mcool"
                 cool2mcool(mat, mcool_file)
                 mat = mcool_file
@@ -2148,7 +2535,7 @@ def full_pipeline(
             pass
 
         # Delete single-resolution matrix if `--zoomify` is set
-        if binning > 0 and zoomify:
+        if zoomified:
             try:
                 tempfiles.append(cool_file)
             except ValueError:

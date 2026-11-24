@@ -2,6 +2,50 @@
 
 ## Unreleased
 
+### Breaking changes
+
+- From 50,000 contigs in the map, `hicstuff pipeline --binning` without
+  `--matrix` writes a binned metacool file,
+  `abs_fragments_contacts_weighted.metacool`, rather than a zoomified and
+  balanced `.mcool`, and warns of it: the default metacool map no longer stops
+  at `--binning`, as metacool now takes it (see New). `-z true` and
+  `--balancing-args`, options of the cool map, given then, stop the run once
+  the genome is read, before the reads are aligned, with an error that says to
+  give `--matrix cool`; `full_pipeline` raises `DefaultMatrixError`, a
+  `ValueError`, there.
+- `-z true` is refused with `--matrix metacool`, as `--balancing-args` is: a
+  metacool map is neither zoomified nor balanced. `--zoomify` left to its
+  default is ignored there. `full_pipeline`'s `zoomify` defaults to `None`,
+  which zoomifies a cool map binned at a bin size, as `True` did; `True` is
+  refused with `metacool`.
+
+### New
+
+- `hicstuff pipeline --matrix metacool` takes `--binning`. The pairs are
+  binned from their positions, as for the cool map: the metacool file holds
+  the contacts that the cool file of the same bins holds, with metacooler's
+  contact statistics counted on the pairs, which metaTOR's `mge` reads, but is
+  neither zoomified nor balanced. `pairs2metacool` takes `binning` and
+  `info_contigs`.
+- `--binning` takes a BED file of bins as well as a bin size in bp, for the
+  cool and metacool maps: the contig, start and end of each bin, tab-separated,
+  without a header line, as `cooler makebins` and `cooler digest` write them,
+  or one bin per contig, for the map of the contigs. The bins of each contig
+  it names must tile it, from 0 to its end, without gap or overlap; the
+  contigs it does not name, and those that `--size` and `--exclude` leave out,
+  are left out of the map. The file is read before the run starts, and checked
+  against the genome before the reads are aligned. The cool map of a BED file
+  is balanced, but not zoomified: `-z true` is refused with it. In Python,
+  `full_pipeline`'s `binning` and `pairs2binnedcool`'s take its path, and
+  `parse_binning`, `read_bins` and `matrix_bins` read it.
+
+### Changed
+
+- `--binning` is checked before the run starts, whatever the matrix format: a
+  negative number, or text that is neither digits nor a file, is a usage error.
+  A negative binning with `--matrix cool` used to fail in cooler, once the
+  pairs were made.
+
 ## 4.0.0 - 2026-11-23
 
 `pip install hicstuff` alone now runs the whole pipeline, from FASTQ files to

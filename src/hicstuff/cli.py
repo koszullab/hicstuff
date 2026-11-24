@@ -15,6 +15,7 @@ import pandas as pd
 import pysam as ps
 import rich_click as click
 from Bio import SeqIO
+from click.core import ParameterSource
 from matplotlib import pyplot as plt
 
 import hicstuff.bwamem as hbm
@@ -821,6 +822,27 @@ def view(
 # pipeline
 # ---------------------------------------------------------------------------
 
+#: The options of the cool matrix, by their names in full_pipeline
+_COOL_OPTIONS = {
+    "binning": "--binning",
+    "zoomify": "--zoomify",
+    "balancing_args": "--balancing-args",
+    "exclude": "--exclude",
+}
+
+
+class _Binning(click.ParamType):
+    """The --binning of the pipeline: 0, a bin size in bp, or the path of a BED
+    file of bins, checked as hicstuff.pipeline.parse_binning checks it."""
+
+    name = "binning"
+
+    def convert(self, value, param, ctx):
+        try:
+            return hpi.parse_binning(value)
+        except ValueError as err:
+            self.fail(str(err), param, ctx)
+
 
 @cli.command("pipeline")
 @click.argument("inputs", nargs=-1, required=True, metavar="INPUT1... [INPUT2...]")
@@ -849,9 +871,10 @@ def view(
     "--binning",
     default=0,
     show_default=True,
-    type=int,
-    metavar="INT",
-    help="Bin the cool matrix to this resolution (bp). 0 means no binning.",
+    type=_Binning(),
+    metavar="INT|FILE",
+    help="Bin the cool or metacool matrix: a bin size in bp, or a BED file of bins (contig, "
+    "start, end; no header). 0 keeps one bin per fragment.",
 )
 @click.option("-d", "--distance-law", is_flag=True, help="Generate a distance law output file.")
 @click.option("-D", "--duplicates", is_flag=True, help="Filter PCR duplicates.")
@@ -888,7 +911,8 @@ def view(
     show_default=True,
     type=bool,
     metavar="BOOL",
-    help="Generate multi-resolution .mcool from the binned cool matrix.",
+    help="Generate multi-resolution .mcool from the cool matrix binned at a bin size. A metacool "
+    "matrix and the bins of a BED file are not zoomified: true is refused with them.",
 )
 @click.option(
     "-a",
@@ -910,9 +934,9 @@ def view(
     "--balancing-args",
     default=None,
     metavar="STR",
-    help="Extra arguments passed to `cooler balance`, checked before the run "
-    "starts. Balancing uses -t processes unless they set --nproc. A balancing "
-    "failure is logged as a warning and does not stop the run.",
+    help="Extra arguments passed to `cooler balance`, which balances a binned cool matrix, "
+    "checked before the run starts. Balancing uses -t processes unless they set --nproc. A "
+    "balancing failure is logged as a warning and does not stop the run.",
 )
 @click.option(
     "-c", "--centromeres", default=None, metavar="FILE", help="Centromere positions file."
@@ -935,9 +959,9 @@ def view(
     metavar="STR",
     type=click.Choice(hpi.MATRIX_FORMATS),
     help="Output matrix format: graal, bg2, cool or metacool, metacooler's cool "
-    "matrix for metagenomes, with one bin per fragment; or none, to end the run with "
-    "its pairs file, as metaTOR and metacooler read it. cooler is slow to write a cool "
-    "matrix of many contigs: from that many, the default is metacool, but with --binning.",
+    "matrix for metagenomes, binned as the cool one but neither zoomified nor balanced; or "
+    "none, to end the run with its pairs file, as metaTOR and metacooler read it. cooler is "
+    "slow to write a cool matrix of many contigs: from that many, the default is metacool.",
 )
 # The former name of --matrix, which still works, and which the help no longer
 # shows.
@@ -1064,31 +1088,27 @@ def pipeline(
                 f"--matfmt is the former name of --matrix: give --matrix {matrix} alone."
             )
         matrix = matfmt
-    if matrix in ("metacool", "none"):
-        # The options that would shape the cool matrix, which -M metacool,
-        # with one bin per fragment, and -M none, which writes no matrix, do not
-        # take; -M metacool leaves the contigs of --exclude out of its matrix.
-        # --zoomify has an effect with --binning only.
-        cool_only = [
-            option
-            for option, given in [
-                ("--binning", binning != 0),
-                ("--balancing-args", bool(balancing_args and balancing_args.strip())),
-                (
-                    "--exclude",
-                    matrix == "none"
-                    and bool(exclude)
-                    and any(name.strip() for name in exclude.split(",")),
-                ),
-            ]
-            if given
-        ]
-        if cool_only:
-            options = "is an option" if len(cool_only) == 1 else "are options"
-            raise click.UsageError(
-                f"--matrix {matrix} {hpi._WRITES[matrix]}: {', '.join(cool_only)} {options} "
-                "of the cool matrix."
+    # --zoomify left to its default is ignored where zoomify does not apply: a
+    # metacool matrix, and the bins of a BED file. Given true, it is refused
+    # there.
+    if click.get_current_context().get_parameter_source("zoomify") in (
+        ParameterSource.DEFAULT,
+        ParameterSource.DEFAULT_MAP,
+    ):
+        zoomify = None
+    # The options that would shape the cool matrix, which -M metacool, neither
+    # zoomified nor balanced, and -M none, which writes no matrix, do not take;
+    # -M metacool is binned, and leaves the contigs of --exclude out of its
+    # matrix.
+    cool_only = hpi._cool_only_options(matrix, binning, zoomify, balancing_args, exclude)
+    if cool_only:
+        raise click.UsageError(
+            hpi._refused_options_message(
+                matrix, [_COOL_OPTIONS[name] for name in cool_only], subject=f"--matrix {matrix}"
             )
+        )
+    if matrix in ("cool", None) and isinstance(binning, str) and zoomify:
+        raise click.UsageError(hpi._zoomify_refused_message(binning, "--zoomify"))
     if enzyme in ("mnase", "dnase"):
         logger.info("Enzyme is '%s', setting chunk size to 100 bp.", enzyme)
         enzyme = "100"
@@ -1098,39 +1118,47 @@ def pipeline(
         input1, input2 = hpi.split_inputs(inputs, start_stage)
     except ValueError as error:
         raise click.UsageError(str(error)) from None
-    hpi.full_pipeline(
-        genome=genome,
-        input1=input1,
-        input2=input2 or None,
-        aligner=aligner,
-        centromeres=centromeres,
-        circular=circular,
-        exclude=exclude,
-        distance_law=distance_law,
-        enzyme=enzyme,
-        filter_events=filter_events,
-        force=force,
-        mapping=mapping,
-        mat_fmt=matrix,
-        binning=binning,
-        zoomify=zoomify,
-        balancing_args=balancing_args,
-        min_qual=quality_min,
-        min_size=size,
-        no_cleanup=no_cleanup,
-        out_dir=outdir,
-        pcr_duplicates=duplicates,
-        plot=plot,
-        prefix=prefix,
-        read_len=read_len,
-        remove_centros=remove_centromeres,
-        start_stage=start_stage,
-        threads=threads,
-        tmp_dir=tmpdir,
-        skip_count=skip_count,
-        aligner_backend=aligner_backend,
-        cmd=_command_line(),
-    )
+    try:
+        hpi.full_pipeline(
+            genome=genome,
+            input1=input1,
+            input2=input2 or None,
+            aligner=aligner,
+            centromeres=centromeres,
+            circular=circular,
+            exclude=exclude,
+            distance_law=distance_law,
+            enzyme=enzyme,
+            filter_events=filter_events,
+            force=force,
+            mapping=mapping,
+            mat_fmt=matrix,
+            binning=binning,
+            zoomify=zoomify,
+            balancing_args=balancing_args,
+            min_qual=quality_min,
+            min_size=size,
+            no_cleanup=no_cleanup,
+            out_dir=outdir,
+            pcr_duplicates=duplicates,
+            plot=plot,
+            prefix=prefix,
+            read_len=read_len,
+            remove_centros=remove_centromeres,
+            start_stage=start_stage,
+            threads=threads,
+            tmp_dir=tmpdir,
+            skip_count=skip_count,
+            aligner_backend=aligner_backend,
+            cmd=_command_line(),
+        )
+    except hpi.DefaultMatrixError as error:
+        # Found once the genome is read: the default matrix, metacool from
+        # MANY_CONTIGS contigs, given options of the cool matrix
+        options = [_COOL_OPTIONS[name] for name in error.options]
+        raise click.UsageError(
+            hpi._default_metacool_message(error.n_contigs, options, "--matrix cool")
+        ) from None
 
 
 # ---------------------------------------------------------------------------

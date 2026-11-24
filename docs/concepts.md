@@ -77,7 +77,8 @@ them.
 **Bins** of a fixed size come with `--binning`: `--binning 1000` counts the
 contacts in 1 kb bins, whatever the fragments. The pipeline then writes a
 `.mcool` file at 1, 2, 5, 10, 20, 50 and 100 times that size, balanced at each
-of them. `hicstuff rebin` and `hicstuff view --binning` bin an existing map,
+of them, or a metacool file at that size alone. `--binning` also takes a BED
+file of bins, such as one bin per contig. `hicstuff rebin` and `hicstuff view --binning` bin an existing map,
 either by merging a number of bins (`--binning 10`) or to a size in base pairs
 (`--binning 10kb`).
 
@@ -126,7 +127,7 @@ for both mates. `--duplicates` keeps one of each.
 | Format | `--matrix` | Files | Read by |
 |---|---|---|---|
 | cool (default, below 50,000 contigs) | `cool` | `.cool`, or `.mcool` with `--binning` | cooler, cooltools, HiGlass, … |
-| metacool (default from 50,000 contigs) | `metacool` | `.metacool`, one bin per fragment | metacooler, cooler, … |
+| metacool (default from 50,000 contigs) | `metacool` | `.metacool`, one bin per fragment, or binned with `--binning` | metacooler, cooler, … |
 | 2D bedgraph | `bg2` | `.bg2` | `cooler load -f bg2` |
 | graal | `graal` | a sparse matrix, `fragments_list.txt`, `info_contigs.txt` | instaGRAAL |
 | none | `none` | no map: the run ends with its pairs file | metaTOR, metacooler, … |
